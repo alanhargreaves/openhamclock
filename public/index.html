@@ -426,7 +426,7 @@
           }
         };
         fetchData();
-        const interval = setInterval(fetchData, CONFIG.refreshIntervals.spaceWeather);
+        const interval = setInterval(fetchData, DEFAULT_CONFIG.refreshIntervals.spaceWeather);
         return () => clearInterval(interval);
       }, []);
 
@@ -466,7 +466,7 @@
           finally { setLoading(false); }
         };
         fetchPOTA();
-        const interval = setInterval(fetchPOTA, CONFIG.refreshIntervals.pota);
+        const interval = setInterval(fetchPOTA, DEFAULT_CONFIG.refreshIntervals.pota);
         return () => clearInterval(interval);
       }, []);
 
