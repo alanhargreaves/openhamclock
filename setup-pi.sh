@@ -35,7 +35,7 @@ sudo apt-get update -qq
 # Install required packages
 echo ">>> Installing required packages..."
 sudo apt-get install -y -qq \
-    chromium-browser \
+    chromium \
     unclutter \
     xdotool \
     x11-xserver-utils
@@ -86,11 +86,11 @@ xset s noblank
 unclutter -idle 3 -root &
 
 # Kill any existing Chromium processes
-pkill -f chromium-browser || true
+pkill -f chromium || true
 sleep 2
 
 # Start Chromium in kiosk mode
-chromium-browser \
+chromium \
     --kiosk \
     --noerrdialogs \
     --disable-infobars \
