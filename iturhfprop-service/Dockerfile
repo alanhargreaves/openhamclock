@@ -7,6 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     curl \
     tar \
+    unzip \
     ca-certificates \
     findutils \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
@@ -22,33 +23,26 @@ RUN curl -L -o ITURHFProp "https://github.com/ITU-R-Study-Group-3/ITU-R-HF/relea
     && curl -L -o libp372.so "https://github.com/ITU-R-Study-Group-3/ITU-R-HF/releases/download/v14.3/libp372.so" \
     && chmod +x ITURHFProp
 
-# Download source to get Data files
-RUN curl -L -o source.tar.gz "https://github.com/ITU-R-Study-Group-3/ITU-R-HF/archive/refs/tags/v14.3.tar.gz" \
-    && tar -xzf source.tar.gz \
-    && echo "=== Finding all Data directories ===" \
-    && find ITU-R-HF-14.3 -type d -name "Data" \
-    && echo "=== Finding ionos files ===" \
-    && find ITU-R-HF-14.3 -name "ionos*.bin" \
-    && echo "=== Finding ant files ===" \
-    && find ITU-R-HF-14.3 -name "*.ant" \
-    && echo "=== Finding COEFF files ===" \
-    && find ITU-R-HF-14.3 -name "COEFF*.BIN" | head -5
+# Download source to get Data files from official ITU download
+RUN curl -L -o itu-hf.zip "https://www.itu.int/en/ITU-R/study-groups/rsg3/rwp3m/Software%20Products/ITU-R-HF_14.3.zip" \
+    && unzip itu-hf.zip \
+    && echo "=== Contents of ITU download ===" \
+    && ls -la \
+    && echo "=== Looking for Data directory ===" \
+    && find . -type d -name "Data" \
+    && echo "=== Looking for ionos files ===" \
+    && find . -name "ionos*.bin" \
+    && find . -name "*.ant"
 
-# Create Data directory and copy ALL required files from various locations
-RUN mkdir -p Data \
-    && echo "=== Copying COEFF files ===" \
-    && find ITU-R-HF-14.3 -name "COEFF*.BIN" -exec cp {} Data/ \; \
-    && find ITU-R-HF-14.3 -name "COEFF*.txt" -exec cp {} Data/ \; \
-    && echo "=== Copying ionos files ===" \
-    && find ITU-R-HF-14.3 -name "ionos*.bin" -exec cp {} Data/ \; \
-    && echo "=== Copying antenna files ===" \
-    && find ITU-R-HF-14.3 -name "*.ant" -exec cp {} Data/ \; \
-    && echo "=== Copying any other data files ===" \
-    && find ITU-R-HF-14.3 -name "P372*.txt" -exec cp {} Data/ \; 2>/dev/null || true \
-    && find ITU-R-HF-14.3 -name "*.csv" -exec cp {} Data/ \; 2>/dev/null || true
+# Copy all data files from ITU download
+RUN if [ -d "Data" ]; then echo "Found Data at root"; \
+    elif [ -d "ITU-R-HF_14.3/Data" ]; then mv ITU-R-HF_14.3/Data .; \
+    elif [ -d "P533/Data" ]; then mv P533/Data .; \
+    else find . -type d -name "Data" -exec cp -r {} . \; ; fi \
+    && echo "=== Final Data contents ===" && ls -la Data/ | head -20
 
 # Cleanup
-RUN rm -rf ITU-R-HF-14.3 source.tar.gz
+RUN rm -rf ITU-R-HF_14.3 itu-hf.zip P533 *.exe *.dll 2>/dev/null || true
 
 # Set library path so ITURHFProp can find shared libs
 ENV LD_LIBRARY_PATH=/opt/iturhfprop:$LD_LIBRARY_PATH

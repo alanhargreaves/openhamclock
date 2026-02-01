@@ -95,7 +95,7 @@ Path.Relr ${requiredReliability}
 Path.ManMadeNoise ${manMadeNoise}
 Path.Modulation ANALOG
 Path.SorL SHORTPATH
-DataFilePath ${ITURHFPROP_DATA}/Data/
+DataFilePath "${ITURHFPROP_DATA}/Data/"
 `;
 
   return input;
@@ -348,6 +348,58 @@ app.get('/api/diag', async (req, res) => {
     results.testRun.usage = output.split('\n').slice(0, 10);
   } catch (e) {
     results.testRun.usage = { error: e.message, stderr: e.stderr?.toString(), stdout: e.stdout?.toString() };
+  }
+  
+  // List ALL files in Data directory
+  try {
+    const allDataFiles = fs.readdirSync(ITURHFPROP_DATA + '/Data');
+    results.data.allFiles = allDataFiles;
+    results.data.hasIonos = allDataFiles.some(f => f.includes('ionos'));
+    results.data.hasAnt = allDataFiles.some(f => f.endsWith('.ant'));
+    results.data.fileCount = allDataFiles.length;
+  } catch (e) {
+    results.data.allFiles = { error: e.message };
+  }
+  
+  // Create a minimal test input file and try to run
+  try {
+    const { execSync } = require('child_process');
+    const testInput = `Path.L_tx.lat 40.0
+Path.L_tx.lng -75.0
+Path.L_rx.lat 51.0
+Path.L_rx.lng 0.0
+Path.year 2026
+Path.month 2
+Path.hour 12
+Path.SSN 100
+Path.frequency 14.0
+Path.txpower -10.0
+Path.BW 3000
+Path.SNRr 15
+Path.Relr 90
+Path.ManMadeNoise RESIDENTIAL
+Path.Modulation ANALOG
+Path.SorL SHORTPATH
+DataFilePath "${ITURHFPROP_DATA}/Data/"
+`;
+    fs.writeFileSync('/tmp/test_input.txt', testInput);
+    results.testRun.inputFile = testInput.split('\n');
+    
+    const testOutput = execSync(`${ITURHFPROP_PATH} /tmp/test_input.txt /tmp/test_output.txt 2>&1 || echo "Exit code: $?"`, {
+      encoding: 'utf8',
+      env: { ...process.env, LD_LIBRARY_PATH: '/opt/iturhfprop' }
+    });
+    results.testRun.testExec = testOutput.split('\n').slice(0, 20);
+    
+    // Check if output was created
+    if (fs.existsSync('/tmp/test_output.txt')) {
+      const output = fs.readFileSync('/tmp/test_output.txt', 'utf8');
+      results.testRun.testOutput = output.split('\n').slice(0, 20);
+    } else {
+      results.testRun.testOutput = 'No output file created';
+    }
+  } catch (e) {
+    results.testRun.testExec = { error: e.message, stderr: e.stderr?.toString(), stdout: e.stdout?.toString() };
   }
   
   res.json(results);
