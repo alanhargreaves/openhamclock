@@ -2096,18 +2096,43 @@ app.get('/api/propagation', async (req, res) => {
         };
       }).sort((a, b) => b.reliability - a.reliability);
       
-      // Still generate 24-hour predictions using built-in (ITURHFProp hourly is too slow for real-time)
+      // Generate 24-hour predictions with correction ratios from hybrid data
+      // This makes predictions more accurate by scaling them to match the hybrid model
       bands.forEach((band, idx) => {
         const freq = bandFreqs[idx];
         predictions[band] = [];
+        
+        // Calculate built-in reliability for current hour
+        const builtInCurrentReliability = calculateEnhancedReliability(
+          freq, distance, midLat, midLon, currentHour, sfi, ssn, kIndex, de, dx, effectiveIonoData, currentHour
+        );
+        
+        // Get hybrid reliability for this band (the accurate one)
+        const hybridBand = hybridResult.bands?.[band];
+        const hybridReliability = hybridBand?.reliability || builtInCurrentReliability;
+        
+        // Calculate correction ratio (how much to scale predictions)
+        // Avoid division by zero, and cap the ratio to prevent extreme corrections
+        let correctionRatio = 1.0;
+        if (builtInCurrentReliability > 5) {
+          correctionRatio = hybridReliability / builtInCurrentReliability;
+          // Cap correction ratio to reasonable bounds (0.2x to 3x)
+          correctionRatio = Math.max(0.2, Math.min(3.0, correctionRatio));
+        } else if (hybridReliability > 20) {
+          // Built-in thinks band is closed but hybrid says it's open
+          correctionRatio = 2.0;
+        }
+        
         for (let hour = 0; hour < 24; hour++) {
-          const reliability = calculateEnhancedReliability(
+          const baseReliability = calculateEnhancedReliability(
             freq, distance, midLat, midLon, hour, sfi, ssn, kIndex, de, dx, effectiveIonoData, currentHour
           );
+          // Apply correction ratio and clamp to valid range
+          const correctedReliability = Math.min(99, Math.max(0, Math.round(baseReliability * correctionRatio)));
           predictions[band].push({
             hour,
-            reliability: Math.round(reliability),
-            snr: calculateSNR(reliability)
+            reliability: correctedReliability,
+            snr: calculateSNR(correctedReliability)
           });
         }
       });
