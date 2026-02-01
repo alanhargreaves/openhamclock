@@ -26,8 +26,8 @@ const CONFIG = {
   ],
   callsign: process.env.CALLSIGN || 'OPENHAMCLOCK',
   spotRetentionMs: 30 * 60 * 1000, // 30 minutes
-  reconnectDelayMs: 5000, // 5 seconds between reconnect attempts
-  maxReconnectAttempts: 5,
+  reconnectDelayMs: 10000, // 10 seconds between reconnect attempts
+  maxReconnectAttempts: 3,
   cleanupIntervalMs: 60000, // 1 minute
   keepAliveIntervalMs: 120000 // 2 minutes - send keepalive
 };
@@ -36,6 +36,7 @@ const CONFIG = {
 let spots = [];
 let client = null;
 let connected = false;
+let connecting = false;  // NEW: Prevent concurrent connection attempts
 let currentNode = null;
 let currentNodeIndex = 0;
 let reconnectAttempts = 0;
@@ -171,16 +172,27 @@ const cleanupSpots = () => {
 
 // Connect to DX Spider
 const connect = () => {
-  if (client) {
-    try {
-      client.destroy();
-    } catch (e) {}
-    client = null;
+  // Prevent concurrent connection attempts
+  if (connecting) {
+    log('CONNECT', 'Connection attempt already in progress, skipping');
+    return;
   }
   
+  connecting = true;
+  
+  // Clear any pending reconnect timer
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
+  }
+  
+  // Clean up existing client without triggering reconnect
+  if (client) {
+    try {
+      client.removeAllListeners(); // Remove listeners BEFORE destroy to prevent close->reconnect loop
+      client.destroy();
+    } catch (e) {}
+    client = null;
   }
   
   const node = CONFIG.nodes[currentNodeIndex];
@@ -193,6 +205,7 @@ const connect = () => {
   
   client.connect(node.port, node.host, () => {
     connected = true;
+    connecting = false;
     reconnectAttempts = 0;
     connectionStartTime = new Date();
     buffer = '';
@@ -233,16 +246,21 @@ const connect = () => {
   
   client.on('timeout', () => {
     log('TIMEOUT', 'Connection timed out');
+    connecting = false;
     handleDisconnect();
   });
   
   client.on('error', (err) => {
     log('ERROR', `Connection error: ${err.message}`);
+    connecting = false;
     handleDisconnect();
   });
   
   client.on('close', () => {
-    log('CLOSE', 'Connection closed');
+    if (connected) {
+      log('CLOSE', 'Connection closed');
+    }
+    connecting = false;
     handleDisconnect();
   });
 };
@@ -268,11 +286,22 @@ const startKeepAlive = () => {
 
 // Handle disconnection and reconnection
 const handleDisconnect = () => {
+  // Prevent re-entrant calls
+  if (!connected && !connecting && reconnectTimer) {
+    return; // Already disconnected and reconnect scheduled
+  }
+  
   connected = false;
+  connecting = false;
   
   if (keepAliveTimer) {
     clearInterval(keepAliveTimer);
     keepAliveTimer = null;
+  }
+  
+  // Don't schedule another reconnect if one is already pending
+  if (reconnectTimer) {
+    return;
   }
   
   reconnectAttempts++;
@@ -284,9 +313,10 @@ const handleDisconnect = () => {
     log('FAILOVER', `Switching to node: ${CONFIG.nodes[currentNodeIndex].name}`);
   }
   
-  log('RECONNECT', `Attempting reconnect in ${CONFIG.reconnectDelayMs}ms (attempt ${reconnectAttempts + 1})`);
+  log('RECONNECT', `Attempting reconnect in ${CONFIG.reconnectDelayMs}ms (attempt ${reconnectAttempts})`);
   
   reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
     connect();
   }, CONFIG.reconnectDelayMs);
 };
