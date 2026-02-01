@@ -2533,9 +2533,11 @@ function parseContestRSS(xml) {
     }
   }
   
-  // Sort by start date and limit
-  contests.sort((a, b) => new Date(a.start) - new Date(b.start));
-  return contests.slice(0, 20);
+  // Sort by start date, filter out past contests, and limit
+  const now = new Date();
+  const currentAndFuture = contests.filter(c => new Date(c.end) >= now);
+  currentAndFuture.sort((a, b) => new Date(a.start) - new Date(b.start));
+  return currentAndFuture.slice(0, 20);
 }
 
 // Parse contest date/time strings
