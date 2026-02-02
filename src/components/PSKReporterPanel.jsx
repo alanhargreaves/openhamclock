@@ -16,11 +16,11 @@ const PSKReporterPanel = ({ callsign, onShowOnMap }) => {
     rxCount, 
     stats,
     loading, 
+    error,
     lastUpdate,
     refresh 
   } = usePSKReporter(callsign, { 
     minutes: timeWindow,
-    direction: 'both',
     enabled: callsign && callsign !== 'N0CALL'
   });
 

@@ -1,10 +1,10 @@
 /**
  * usePSKReporter Hook
- * Fetches PSKReporter data showing where your signal is being received
+ * Fetches PSKReporter data showing where your digital mode signals are being received
  * 
  * Uses HTTP API with server-side caching to respect PSKReporter rate limits.
- * For real-time updates, connect directly to mqtt.pskreporter.info:1886 (wss)
- * Topic: pskr/filter/v2/+/+/YOURCALL/#
+ * 
+ * For real-time MQTT updates, see mqtt.pskreporter.info (requires mqtt.js library)
  */
 import { useState, useEffect, useCallback } from 'react';
 
@@ -43,7 +43,6 @@ export const usePSKReporter = (callsign, options = {}) => {
   const [rxReports, setRxReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [rateLimited, setRateLimited] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(null);
 
   const fetchData = useCallback(async () => {
@@ -90,7 +89,6 @@ export const usePSKReporter = (callsign, options = {}) => {
         
         setTxReports(processedTx);
         setRxReports(processedRx);
-        setRateLimited(data.tx?.rateLimited || data.rx?.rateLimited || false);
         setLastUpdate(new Date());
         
         // Check for errors in response
@@ -139,7 +137,8 @@ export const usePSKReporter = (callsign, options = {}) => {
     stats,
     loading,
     error,
-    rateLimited,
+    connected: false, // HTTP mode - not real-time connected
+    source: 'http',
     lastUpdate,
     refresh: fetchData
   };

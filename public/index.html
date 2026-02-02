@@ -50,6 +50,19 @@
       background: none;
       padding: 5px 0;
     }
+    a.button {
+      display: inline-block;
+      background: #4ade80;
+      color: #1a1a2e;
+      padding: 12px 24px;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: bold;
+      margin: 20px 0;
+    }
+    a.button:hover {
+      background: #22c55e;
+    }
     .note {
       font-size: 0.9rem;
       color: #888;
@@ -60,22 +73,20 @@
 <body>
   <div class="container">
     <h1>📻 OpenHamClock</h1>
-    <p>The frontend needs to be built before running.</p>
+    <p>The modular frontend needs to be built first.</p>
     
+    <a href="/index-monolithic.html" class="button">Use Classic Version Instead</a>
+    
+    <p style="margin-top: 30px;">Or build the modular version:</p>
     <div class="command">
       <code>npm install</code>
       <code>npm run build</code>
       <code>npm start</code>
     </div>
     
-    <p>Or use the quick start:</p>
-    <div class="command">
-      <code>npm install && npm start</code>
-    </div>
-    
     <p class="note">
-      If you're seeing this page, the build step was skipped.<br>
-      Running <code>npm start</code> should auto-build if needed.
+      The classic version works without building.<br>
+      The modular version requires Node.js 18+ to build.
     </p>
   </div>
 </body>
