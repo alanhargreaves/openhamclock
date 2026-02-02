@@ -24,8 +24,9 @@ const CONFIG = {
     { host: 'dxc.ai9t.com', port: 7373, name: 'AI9T' },
     { host: 'dxc.w6cua.org', port: 7300, name: 'W6CUA' }
   ],
-  // Callsign with SSID -56 for OpenHamClock (HamClock uses -55)
-  callsign: (process.env.CALLSIGN || 'OPENHAMCLOCK') + '-56',
+  // Callsign with SSID - use env var as-is, or default to OPENHAMCLOCK-56
+  // Set CALLSIGN=YOURCALL-56 for production, CALLSIGN=YOURCALL-57 for staging
+  callsign: process.env.CALLSIGN || 'OPENHAMCLOCK-56',
   spotRetentionMs: 30 * 60 * 1000, // 30 minutes
   reconnectDelayMs: 10000, // 10 seconds between reconnect attempts
   maxReconnectAttempts: 3,
