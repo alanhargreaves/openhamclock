@@ -1,360 +1,407 @@
 /**
  * DXFilterManager Component
- * Modal for DX cluster filtering (zones, bands, modes, watchlist)
+ * Filter modal with tabs for Zones, Bands, Modes, Watchlist, Exclude
  */
 import React, { useState } from 'react';
-import { HF_BANDS, CONTINENTS, MODES } from '../utils/callsign.js';
 
 export const DXFilterManager = ({ filters, onFilterChange, isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState('zones');
-  const [newWatchlistCall, setNewWatchlistCall] = useState('');
-  const [newExcludeCall, setNewExcludeCall] = useState('');
-  
-  // CQ Zones (1-40)
-  const cqZones = Array.from({ length: 40 }, (_, i) => i + 1);
-  
-  // ITU Zones (1-90)
-  const ituZones = Array.from({ length: 90 }, (_, i) => i + 1);
-  
-  // Toggle functions
+
+  if (!isOpen) return null;
+
+  const continents = [
+    { code: 'NA', name: 'North America' },
+    { code: 'SA', name: 'South America' },
+    { code: 'EU', name: 'Europe' },
+    { code: 'AF', name: 'Africa' },
+    { code: 'AS', name: 'Asia' },
+    { code: 'OC', name: 'Oceania' },
+    { code: 'AN', name: 'Antarctica' }
+  ];
+
+  const bands = ['160m', '80m', '60m', '40m', '30m', '20m', '17m', '15m', '12m', '11m', '10m', '6m', '2m', '70cm'];
+  const modes = ['CW', 'SSB', 'FT8', 'FT4', 'RTTY', 'PSK', 'JT65', 'JS8', 'SSTV', 'AM', 'FM'];
+
   const toggleArrayItem = (key, item) => {
-    const current = filters?.[key] || [];
+    const current = filters[key] || [];
     const newArray = current.includes(item)
-      ? current.filter(i => i !== item)
+      ? current.filter(x => x !== item)
       : [...current, item];
-    onFilterChange({ ...filters, [key]: newArray.length > 0 ? newArray : undefined });
+    onFilterChange({ ...filters, [key]: newArray.length ? newArray : undefined });
   };
-  
-  const selectAllZones = (type, zones) => {
-    onFilterChange({ ...filters, [type]: [...zones] });
+
+  const selectAll = (key, items) => {
+    onFilterChange({ ...filters, [key]: [...items] });
   };
-  
-  const clearZones = (type) => {
-    onFilterChange({ ...filters, [type]: undefined });
+
+  const clearFilter = (key) => {
+    const newFilters = { ...filters };
+    delete newFilters[key];
+    onFilterChange(newFilters);
   };
-  
-  const addToWatchlist = () => {
-    if (!newWatchlistCall.trim()) return;
-    const current = filters?.watchlist || [];
-    const call = newWatchlistCall.toUpperCase().trim();
-    if (!current.includes(call)) {
-      onFilterChange({ ...filters, watchlist: [...current, call] });
-    }
-    setNewWatchlistCall('');
-  };
-  
-  const removeFromWatchlist = (call) => {
-    const current = filters?.watchlist || [];
-    onFilterChange({ ...filters, watchlist: current.filter(c => c !== call) });
-  };
-  
-  const addToExclude = () => {
-    if (!newExcludeCall.trim()) return;
-    const current = filters?.excludeList || [];
-    const call = newExcludeCall.toUpperCase().trim();
-    if (!current.includes(call)) {
-      onFilterChange({ ...filters, excludeList: [...current, call] });
-    }
-    setNewExcludeCall('');
-  };
-  
-  const removeFromExclude = (call) => {
-    const current = filters?.excludeList || [];
-    onFilterChange({ ...filters, excludeList: current.filter(c => c !== call) });
-  };
-  
+
   const clearAllFilters = () => {
     onFilterChange({});
   };
-  
+
   const getActiveFilterCount = () => {
     let count = 0;
-    if (filters?.cqZones?.length) count++;
-    if (filters?.ituZones?.length) count++;
-    if (filters?.continents?.length) count++;
-    if (filters?.bands?.length) count++;
-    if (filters?.modes?.length) count++;
-    if (filters?.watchlist?.length) count++;
-    if (filters?.excludeList?.length) count++;
-    if (filters?.callsign) count++;
-    if (filters?.watchlistOnly) count++;
+    if (filters?.continents?.length) count += filters.continents.length;
+    if (filters?.cqZones?.length) count += filters.cqZones.length;
+    if (filters?.ituZones?.length) count += filters.ituZones.length;
+    if (filters?.bands?.length) count += filters.bands.length;
+    if (filters?.modes?.length) count += filters.modes.length;
+    if (filters?.watchlist?.length) count += filters.watchlist.length;
+    if (filters?.excludeList?.length) count += filters.excludeList.length;
     return count;
   };
-  
-  if (!isOpen) return null;
-  
+
   const tabStyle = (active) => ({
     padding: '8px 16px',
-    background: active ? 'var(--accent-cyan)' : 'transparent',
-    color: active ? '#000' : 'var(--text-secondary)',
+    background: active ? 'var(--bg-tertiary)' : 'transparent',
     border: 'none',
-    borderRadius: '4px 4px 0 0',
+    borderBottom: active ? '2px solid var(--accent-cyan)' : '2px solid transparent',
+    color: active ? 'var(--accent-cyan)' : 'var(--text-muted)',
+    fontSize: '13px',
     cursor: 'pointer',
-    fontFamily: 'JetBrains Mono',
-    fontSize: '11px',
-    fontWeight: active ? '700' : '400'
+    fontFamily: 'inherit'
   });
-  
-  const pillStyle = (active) => ({
-    padding: '4px 10px',
-    background: active ? 'rgba(0, 255, 136, 0.3)' : 'rgba(60,60,60,0.5)',
-    border: `1px solid ${active ? '#00ff88' : '#444'}`,
-    color: active ? '#00ff88' : '#888',
+
+  const chipStyle = (selected) => ({
+    padding: '6px 12px',
+    background: selected ? 'rgba(0, 221, 255, 0.2)' : 'var(--bg-tertiary)',
+    border: `1px solid ${selected ? 'var(--accent-cyan)' : 'var(--border-color)'}`,
     borderRadius: '4px',
-    fontSize: '10px',
+    color: selected ? 'var(--accent-cyan)' : 'var(--text-secondary)',
+    fontSize: '12px',
     cursor: 'pointer',
-    fontFamily: 'JetBrains Mono',
-    transition: 'all 0.15s'
+    fontFamily: 'JetBrains Mono, monospace'
   });
-  
+
+  const zoneButtonStyle = (selected) => ({
+    width: '36px',
+    height: '32px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: selected ? 'rgba(0, 221, 255, 0.2)' : 'var(--bg-tertiary)',
+    border: `1px solid ${selected ? 'var(--accent-cyan)' : 'var(--border-color)'}`,
+    borderRadius: '4px',
+    color: selected ? 'var(--accent-cyan)' : 'var(--text-secondary)',
+    fontSize: '12px',
+    cursor: 'pointer',
+    fontFamily: 'JetBrains Mono, monospace'
+  });
+
+  const renderZonesTab = () => (
+    <div>
+      {/* Continents */}
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '10px' }}>
+          Continents
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {continents.map(c => (
+            <button
+              key={c.code}
+              onClick={() => toggleArrayItem('continents', c.code)}
+              style={chipStyle(filters?.continents?.includes(c.code))}
+            >
+              {c.code} - {c.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* CQ Zones */}
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+          <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>CQ Zones</span>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button onClick={() => selectAll('cqZones', Array.from({length: 40}, (_, i) => i + 1))} style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', fontSize: '12px', cursor: 'pointer' }}>Select All</button>
+            <button onClick={() => clearFilter('cqZones')} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', fontSize: '12px', cursor: 'pointer' }}>Clear</button>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(15, 1fr)', gap: '4px' }}>
+          {Array.from({ length: 40 }, (_, i) => i + 1).map(zone => (
+            <button
+              key={zone}
+              onClick={() => toggleArrayItem('cqZones', zone)}
+              style={zoneButtonStyle(filters?.cqZones?.includes(zone))}
+            >
+              {zone}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ITU Zones */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+          <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>ITU Zones</span>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button onClick={() => selectAll('ituZones', Array.from({length: 90}, (_, i) => i + 1))} style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', fontSize: '12px', cursor: 'pointer' }}>Select All</button>
+            <button onClick={() => clearFilter('ituZones')} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', fontSize: '12px', cursor: 'pointer' }}>Clear</button>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(15, 1fr)', gap: '4px' }}>
+          {Array.from({ length: 90 }, (_, i) => i + 1).map(zone => (
+            <button
+              key={zone}
+              onClick={() => toggleArrayItem('ituZones', zone)}
+              style={zoneButtonStyle(filters?.ituZones?.includes(zone))}
+            >
+              {zone}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderBandsTab = () => (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>HF/VHF/UHF Bands</span>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={() => selectAll('bands', bands)} style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', fontSize: '12px', cursor: 'pointer' }}>Select All</button>
+          <button onClick={() => clearFilter('bands')} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', fontSize: '12px', cursor: 'pointer' }}>Clear</button>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+        {bands.map(band => (
+          <button
+            key={band}
+            onClick={() => toggleArrayItem('bands', band)}
+            style={chipStyle(filters?.bands?.includes(band))}
+          >
+            {band}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderModesTab = () => (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>Operating Modes</span>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={() => selectAll('modes', modes)} style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', fontSize: '12px', cursor: 'pointer' }}>Select All</button>
+          <button onClick={() => clearFilter('modes')} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', fontSize: '12px', cursor: 'pointer' }}>Clear</button>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+        {modes.map(mode => (
+          <button
+            key={mode}
+            onClick={() => toggleArrayItem('modes', mode)}
+            style={chipStyle(filters?.modes?.includes(mode))}
+          >
+            {mode}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderWatchlistTab = () => {
+    const [newCall, setNewCall] = useState('');
+    const addToWatchlist = () => {
+      if (newCall.trim()) {
+        const current = filters?.watchlist || [];
+        if (!current.includes(newCall.toUpperCase())) {
+          onFilterChange({ ...filters, watchlist: [...current, newCall.toUpperCase()] });
+        }
+        setNewCall('');
+      }
+    };
+    return (
+      <div>
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '8px' }}>
+            Watchlist - Highlight these callsigns
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              type="text"
+              value={newCall}
+              onChange={(e) => setNewCall(e.target.value.toUpperCase())}
+              onKeyPress={(e) => e.key === 'Enter' && addToWatchlist()}
+              placeholder="Enter callsign..."
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                color: 'var(--text-primary)',
+                fontSize: '13px',
+                fontFamily: 'JetBrains Mono'
+              }}
+            />
+            <button onClick={addToWatchlist} style={{ padding: '8px 16px', background: 'var(--accent-cyan)', border: 'none', borderRadius: '4px', color: '#000', fontWeight: '600', cursor: 'pointer' }}>Add</button>
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {(filters?.watchlist || []).map(call => (
+            <div key={call} style={{ ...chipStyle(true), display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {call}
+              <button onClick={() => toggleArrayItem('watchlist', call)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 0, fontSize: '14px' }}>×</button>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: '16px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={filters?.watchlistOnly || false}
+              onChange={(e) => onFilterChange({ ...filters, watchlistOnly: e.target.checked || undefined })}
+            />
+            Show only watchlist callsigns
+          </label>
+        </div>
+      </div>
+    );
+  };
+
+  const renderExcludeTab = () => {
+    const [newCall, setNewCall] = useState('');
+    const addToExclude = () => {
+      if (newCall.trim()) {
+        const current = filters?.excludeList || [];
+        if (!current.includes(newCall.toUpperCase())) {
+          onFilterChange({ ...filters, excludeList: [...current, newCall.toUpperCase()] });
+        }
+        setNewCall('');
+      }
+    };
+    return (
+      <div>
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '8px' }}>
+            Exclude List - Hide these callsigns
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              type="text"
+              value={newCall}
+              onChange={(e) => setNewCall(e.target.value.toUpperCase())}
+              onKeyPress={(e) => e.key === 'Enter' && addToExclude()}
+              placeholder="Enter callsign..."
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                color: 'var(--text-primary)',
+                fontSize: '13px',
+                fontFamily: 'JetBrains Mono'
+              }}
+            />
+            <button onClick={addToExclude} style={{ padding: '8px 16px', background: 'var(--accent-red)', border: 'none', borderRadius: '4px', color: '#fff', fontWeight: '600', cursor: 'pointer' }}>Add</button>
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {(filters?.excludeList || []).map(call => (
+            <div key={call} style={{ ...chipStyle(false), background: 'rgba(255, 68, 68, 0.2)', borderColor: 'var(--accent-red)', color: 'var(--accent-red)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {call}
+              <button onClick={() => toggleArrayItem('excludeList', call)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 0, fontSize: '14px' }}>×</button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div style={{
       position: 'fixed',
-      top: 0, left: 0, right: 0, bottom: 0,
-      background: 'rgba(0,0,0,0.8)',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'rgba(0, 0, 0, 0.8)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 10000
-    }} onClick={onClose}>
+    }}>
       <div style={{
-        background: 'var(--bg-primary)',
+        background: 'var(--bg-secondary)',
         border: '1px solid var(--border-color)',
         borderRadius: '12px',
-        width: '90%',
-        maxWidth: '700px',
+        width: '700px',
         maxHeight: '85vh',
-        overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column'
-      }} onClick={e => e.stopPropagation()}>
+      }}>
         {/* Header */}
-        <div style={{
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
           padding: '16px 20px',
-          borderBottom: '1px solid var(--border-color)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
+          borderBottom: '1px solid var(--border-color)'
         }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '18px', color: 'var(--accent-cyan)' }}>🔍 DX Cluster Filters</h2>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-              {getActiveFilterCount()} filter{getActiveFilterCount() !== 1 ? 's' : ''} active
+            <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--accent-cyan)' }}>
+              🔍 DX Cluster Filters
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+              {getActiveFilterCount()} filters active
             </div>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={clearAllFilters} style={{
-              padding: '8px 16px',
-              background: 'rgba(255, 100, 100, 0.2)',
-              border: '1px solid #ff6666',
-              color: '#ff6666',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontFamily: 'JetBrains Mono',
-              fontSize: '11px'
-            }}>
+            <button
+              onClick={clearAllFilters}
+              style={{
+                padding: '8px 16px',
+                background: 'rgba(255, 68, 102, 0.2)',
+                border: '1px solid var(--accent-red)',
+                borderRadius: '6px',
+                color: 'var(--accent-red)',
+                fontSize: '13px',
+                cursor: 'pointer'
+              }}
+            >
               Clear All
             </button>
-            <button onClick={onClose} style={{
-              padding: '8px 16px',
-              background: 'var(--accent-cyan)',
-              border: 'none',
-              color: '#000',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontWeight: '600',
-              fontSize: '12px'
-            }}>
+            <button
+              onClick={onClose}
+              style={{
+                padding: '8px 20px',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+            >
               Done
             </button>
           </div>
         </div>
-        
+
         {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', padding: '0 20px' }}>
-          {['zones', 'bands', 'modes', 'watchlist'].map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)} style={tabStyle(activeTab === tab)}>
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </button>
-          ))}
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)' }}>
+          <button onClick={() => setActiveTab('zones')} style={tabStyle(activeTab === 'zones')}>Zones</button>
+          <button onClick={() => setActiveTab('bands')} style={tabStyle(activeTab === 'bands')}>Bands</button>
+          <button onClick={() => setActiveTab('modes')} style={tabStyle(activeTab === 'modes')}>Modes</button>
+          <button onClick={() => setActiveTab('watchlist')} style={tabStyle(activeTab === 'watchlist')}>Watchlist</button>
+          <button onClick={() => setActiveTab('exclude')} style={tabStyle(activeTab === 'exclude')}>Exclude</button>
         </div>
-        
+
         {/* Tab Content */}
-        <div style={{ padding: '20px', overflow: 'auto', flex: 1 }}>
-          {activeTab === 'zones' && (
-            <div>
-              {/* CQ Zones */}
-              <div style={{ marginBottom: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                  <span style={{ fontWeight: '600' }}>CQ Zones</span>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => selectAllZones('cqZones', cqZones)} style={{ ...pillStyle(false), fontSize: '9px' }}>Select All</button>
-                    <button onClick={() => clearZones('cqZones')} style={{ ...pillStyle(false), fontSize: '9px' }}>Clear</button>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {cqZones.map(zone => (
-                    <button key={zone} onClick={() => toggleArrayItem('cqZones', zone)} style={{ ...pillStyle(filters?.cqZones?.includes(zone)), width: '36px', textAlign: 'center' }}>
-                      {zone}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              
-              {/* Continents */}
-              <div>
-                <div style={{ fontWeight: '600', marginBottom: '10px' }}>Continents</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {CONTINENTS.map(({ code, name }) => (
-                    <button key={code} onClick={() => toggleArrayItem('continents', code)} style={{ ...pillStyle(filters?.continents?.includes(code)), padding: '8px 16px' }}>
-                      {code} - {name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {activeTab === 'bands' && (
-            <div>
-              <div style={{ fontWeight: '600', marginBottom: '10px' }}>Select bands to show</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {HF_BANDS.map(band => (
-                  <button key={band} onClick={() => toggleArrayItem('bands', band)} style={{ ...pillStyle(filters?.bands?.includes(band)), padding: '10px 20px', fontSize: '12px' }}>
-                    {band}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {activeTab === 'modes' && (
-            <div>
-              <div style={{ fontWeight: '600', marginBottom: '10px' }}>Select modes to show</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {MODES.map(mode => (
-                  <button key={mode} onClick={() => toggleArrayItem('modes', mode)} style={{ ...pillStyle(filters?.modes?.includes(mode)), padding: '10px 20px', fontSize: '12px' }}>
-                    {mode}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {activeTab === 'watchlist' && (
-            <div>
-              {/* Watchlist Only Toggle */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={filters?.watchlistOnly || false}
-                    onChange={e => onFilterChange({ ...filters, watchlistOnly: e.target.checked })}
-                    style={{ width: '18px', height: '18px' }}
-                  />
-                  <span style={{ fontWeight: '600' }}>Show ONLY watchlist callsigns</span>
-                </label>
-              </div>
-              
-              {/* Add to Watchlist */}
-              <div style={{ marginBottom: '20px' }}>
-                <div style={{ fontWeight: '600', marginBottom: '10px' }}>Watchlist (highlight these calls)</div>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                  <input
-                    type="text"
-                    value={newWatchlistCall}
-                    onChange={e => setNewWatchlistCall(e.target.value)}
-                    onKeyPress={e => e.key === 'Enter' && addToWatchlist()}
-                    placeholder="Add callsign..."
-                    style={{
-                      flex: 1,
-                      padding: '8px 12px',
-                      background: 'var(--bg-tertiary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      color: 'var(--text-primary)',
-                      fontFamily: 'JetBrains Mono'
-                    }}
-                  />
-                  <button onClick={addToWatchlist} style={{ ...pillStyle(true), padding: '8px 16px' }}>Add</button>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {(filters?.watchlist || []).map(call => (
-                    <span key={call} style={{
-                      padding: '4px 10px',
-                      background: 'rgba(0, 255, 136, 0.2)',
-                      border: '1px solid var(--accent-green)',
-                      borderRadius: '4px',
-                      color: 'var(--accent-green)',
-                      fontSize: '11px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}>
-                      {call}
-                      <button onClick={() => removeFromWatchlist(call)} style={{
-                        background: 'none',
-                        border: 'none',
-                        color: 'var(--accent-red)',
-                        cursor: 'pointer',
-                        padding: 0,
-                        fontSize: '14px'
-                      }}>×</button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-              
-              {/* Exclude List */}
-              <div>
-                <div style={{ fontWeight: '600', marginBottom: '10px' }}>Exclude List (hide these calls)</div>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                  <input
-                    type="text"
-                    value={newExcludeCall}
-                    onChange={e => setNewExcludeCall(e.target.value)}
-                    onKeyPress={e => e.key === 'Enter' && addToExclude()}
-                    placeholder="Add callsign..."
-                    style={{
-                      flex: 1,
-                      padding: '8px 12px',
-                      background: 'var(--bg-tertiary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      color: 'var(--text-primary)',
-                      fontFamily: 'JetBrains Mono'
-                    }}
-                  />
-                  <button onClick={addToExclude} style={{ ...pillStyle(false), padding: '8px 16px', borderColor: '#ff6666', color: '#ff6666' }}>Add</button>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {(filters?.excludeList || []).map(call => (
-                    <span key={call} style={{
-                      padding: '4px 10px',
-                      background: 'rgba(255, 100, 100, 0.2)',
-                      border: '1px solid var(--accent-red)',
-                      borderRadius: '4px',
-                      color: 'var(--accent-red)',
-                      fontSize: '11px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}>
-                      {call}
-                      <button onClick={() => removeFromExclude(call)} style={{
-                        background: 'none',
-                        border: 'none',
-                        color: 'var(--accent-red)',
-                        cursor: 'pointer',
-                        padding: 0,
-                        fontSize: '14px'
-                      }}>×</button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+        <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+          {activeTab === 'zones' && renderZonesTab()}
+          {activeTab === 'bands' && renderBandsTab()}
+          {activeTab === 'modes' && renderModesTab()}
+          {activeTab === 'watchlist' && renderWatchlistTab()}
+          {activeTab === 'exclude' && renderExcludeTab()}
         </div>
       </div>
     </div>

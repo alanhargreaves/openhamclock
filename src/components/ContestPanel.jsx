@@ -1,6 +1,6 @@
 /**
  * ContestPanel Component
- * Displays upcoming contests (compact version)
+ * Displays upcoming contests with contestcalendar.com credit
  */
 import React from 'react';
 
@@ -11,6 +11,7 @@ export const ContestPanel = ({ data, loading }) => {
       case 'SSB': return 'var(--accent-amber)';
       case 'RTTY': return 'var(--accent-purple)';
       case 'FT8': case 'FT4': return 'var(--accent-green)';
+      case 'Mixed': return 'var(--text-secondary)';
       default: return 'var(--text-secondary)';
     }
   };
@@ -37,12 +38,12 @@ export const ContestPanel = ({ data, loading }) => {
           </div>
         ) : data && data.length > 0 ? (
           <div style={{ fontSize: '10px', fontFamily: 'JetBrains Mono, monospace' }}>
-            {data.slice(0, 5).map((contest, i) => (
+            {data.slice(0, 6).map((contest, i) => (
               <div 
                 key={`${contest.name}-${i}`}
                 style={{ 
                   padding: '4px 0',
-                  borderBottom: i < Math.min(data.length, 5) - 1 ? '1px solid var(--border-color)' : 'none'
+                  borderBottom: i < Math.min(data.length, 6) - 1 ? '1px solid var(--border-color)' : 'none'
                 }}
               >
                 <div style={{ 
@@ -66,6 +67,27 @@ export const ContestPanel = ({ data, loading }) => {
             No upcoming contests
           </div>
         )}
+      </div>
+      
+      {/* Contest Calendar Credit */}
+      <div style={{ 
+        marginTop: '6px', 
+        paddingTop: '6px', 
+        borderTop: '1px solid var(--border-color)',
+        textAlign: 'right'
+      }}>
+        <a 
+          href="https://www.contestcalendar.com" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          style={{ 
+            fontSize: '9px', 
+            color: 'var(--text-muted)', 
+            textDecoration: 'none'
+          }}
+        >
+          WA7BNM Contest Calendar
+        </a>
       </div>
     </div>
   );

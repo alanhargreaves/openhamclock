@@ -62,10 +62,13 @@ export const useSatellites = (observerLocation) => {
       };
 
       Object.entries(tleData).forEach(([name, tle]) => {
-        if (!tle.line1 || !tle.line2) return;
+        // Server returns tle1/tle2, handle both formats
+        const line1 = tle.line1 || tle.tle1;
+        const line2 = tle.line2 || tle.tle2;
+        if (!line1 || !line2) return;
 
         try {
-          const satrec = satellite.twoline2satrec(tle.line1, tle.line2);
+          const satrec = satellite.twoline2satrec(line1, line2);
           const positionAndVelocity = satellite.propagate(satrec, now);
           
           if (!positionAndVelocity.position) return;
