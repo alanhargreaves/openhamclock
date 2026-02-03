@@ -14,6 +14,7 @@ import { filterDXPaths, getBandColor } from '../utils/callsign.js';
 
 import { getAllLayers } from '../plugins/layerRegistry.js';
 import PluginLayer from './PluginLayer.jsx';
+import { DXNewsTicker } from './DXNewsTicker.jsx';
 
 
 export const WorldMap = ({ 
@@ -732,22 +733,26 @@ export const WorldMap = ({
         </button>
       )}
       
-      {/* Legend */}
+      {/* DX News Ticker - left side of bottom bar */}
+      <DXNewsTicker />
+
+      {/* Legend - right side */}
       <div style={{
         position: 'absolute',
         bottom: '8px',
-        left: '50%',
-        transform: 'translateX(-50%)',
+        right: '8px',
         background: 'rgba(0, 0, 0, 0.85)',
         border: '1px solid #444',
         borderRadius: '6px',
-        padding: '8px 14px',
+        padding: '6px 10px',
         zIndex: 1000,
         display: 'flex',
-        gap: '10px',
+        gap: '8px',
         alignItems: 'center',
-        fontSize: '12px',
-        fontFamily: 'JetBrains Mono, monospace'
+        fontSize: '11px',
+        fontFamily: 'JetBrains Mono, monospace',
+        flexWrap: 'nowrap',
+        maxWidth: '50%'
       }}>
         {showDXPaths && (
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

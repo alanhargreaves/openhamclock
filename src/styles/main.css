@@ -323,6 +323,7 @@ body::before {
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes dxnews-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 
 .loading-spinner {
   width: 14px; height: 14px;

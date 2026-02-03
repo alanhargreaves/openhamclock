@@ -703,6 +703,74 @@ app.get('/api/noaa/aurora', async (req, res) => {
   }
 });
 
+// DX News from dxnews.com
+let dxNewsCache = { data: null, timestamp: 0 };
+const DXNEWS_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+app.get('/api/dxnews', async (req, res) => {
+  try {
+    if (dxNewsCache.data && (Date.now() - dxNewsCache.timestamp) < DXNEWS_CACHE_TTL) {
+      return res.json(dxNewsCache.data);
+    }
+
+    const response = await fetch('https://dxnews.com/', {
+      headers: { 'User-Agent': 'OpenHamClock/1.0 (amateur radio dashboard)' }
+    });
+    const html = await response.text();
+
+    // Parse news items from HTML
+    const items = [];
+    // Match pattern: <h3><a href="URL" title="TITLE">TITLE</a></h3> followed by date and description
+    const articleRegex = /<h3[^>]*>\s*<a\s+href="([^"]+)"\s+title="([^"]+)"[^>]*>[^<]*<\/a>\s*<\/h3>\s*[\s\S]*?(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s*[\s\S]*?<\/li>\s*<\/ul>\s*([\s\S]*?)(?:<ul|<div\s+class="more"|<\/div>)/g;
+
+    // Simpler approach: split by article blocks
+    const blocks = html.split(/<h3[^>]*>\s*<a\s+href="/);
+    for (let i = 1; i < blocks.length && items.length < 20; i++) {
+      try {
+        const block = blocks[i];
+        // Extract URL
+        const urlMatch = block.match(/^([^"]+)"/);
+        // Extract title
+        const titleMatch = block.match(/title="([^"]+)"/);
+        // Extract date
+        const dateMatch = block.match(/(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/);
+        // Extract description - text after the date, before "Views" or next element
+        const descParts = block.split(/\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}/);
+        let desc = '';
+        if (descParts[1]) {
+          // Get text content, strip HTML tags
+          desc = descParts[1]
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .replace(/Views\d+.*$/, '')
+            .replace(/More\.\.\..*$/, '')
+            .trim()
+            .substring(0, 200);
+        }
+
+        if (titleMatch && urlMatch) {
+          items.push({
+            title: titleMatch[1],
+            url: 'https://dxnews.com/' + urlMatch[1],
+            date: dateMatch ? dateMatch[1] : null,
+            description: desc || titleMatch[1]
+          });
+        }
+      } catch (e) {
+        // Skip malformed entries
+      }
+    }
+
+    const result = { items, fetched: new Date().toISOString() };
+    dxNewsCache = { data: result, timestamp: Date.now() };
+    res.json(result);
+  } catch (error) {
+    console.error('DX News fetch error:', error.message);
+    if (dxNewsCache.data) return res.json(dxNewsCache.data);
+    res.status(500).json({ error: 'Failed to fetch DX news', items: [] });
+  }
+});
+
 // POTA Spots
 // POTA cache (2 minutes)
 let potaCache = { data: null, timestamp: 0 };
