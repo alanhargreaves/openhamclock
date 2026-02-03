@@ -876,7 +876,7 @@ body::before {
 .earthquake-icon {
   z-index: 10000 !important;
   pointer-events: auto;
-  position: relative !important;
+  /* Removed position: relative - was causing icons to appear offset from marker position */
 }
 
 .earthquake-icon div {
@@ -885,7 +885,7 @@ body::before {
   justify-content: center;
   cursor: pointer;
   user-select: none;
-  position: relative;
+  /* position: relative removed here too */
   z-index: 10000 !important;
 }
 
