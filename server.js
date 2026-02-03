@@ -2253,6 +2253,7 @@ app.get('/api/pskreporter/:callsign', async (req, res) => {
 // ============================================
 
 // RBN endpoint - who's hearing YOUR signal
+// Using RBN Aggregator API: http://rbn.telegraphy.de/
 let rbnCache = new Map(); // Cache by callsign
 const RBN_CACHE_TTL = 2 * 60 * 1000; // 2 minutes cache
 
@@ -2273,17 +2274,20 @@ app.get('/api/rbn', async (req, res) => {
   }
   
   try {
-    // RBN API endpoint - using their telnet/web gateway
-    // Format: Recent spots where callsign was heard
-    const url = `https://www.reversebeacon.net/dxsd1/dxsd1.php?f=0&c=${encodeURIComponent(callsign)}&t=skimmer`;
+    // RBN Aggregator JSON API
+    // Endpoint: http://rbn.telegraphy.de/api/v1/dx/
+    // Query for spots where YOUR callsign was heard (you are the dx_call)
+    const url = `http://rbn.telegraphy.de/api/v1/dx/?dx_call=${encodeURIComponent(callsign)}&limit=${limit}`;
+    
+    console.log(`[RBN] Fetching: ${url}`);
     
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(() => controller.abort(), 15000);
     
     const response = await fetch(url, {
       headers: { 
         'User-Agent': 'OpenHamClock/3.12 (Amateur Radio Dashboard)',
-        'Accept': 'application/json, text/plain, */*'
+        'Accept': 'application/json'
       },
       signal: controller.signal
     });
@@ -2293,36 +2297,22 @@ app.get('/api/rbn', async (req, res) => {
       throw new Error(`RBN API returned ${response.status}`);
     }
     
-    const contentType = response.headers.get('content-type');
-    let spots = [];
+    const data = await response.json();
+    console.log(`[RBN] Received ${data.length || 0} spots for ${callsign}`);
     
-    if (contentType && contentType.includes('application/json')) {
-      spots = await response.json();
-    } else {
-      // Parse text/HTML response if needed
-      const text = await response.text();
-      
-      // Try to extract JSON from response
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        try {
-          spots = JSON.parse(jsonMatch[0]);
-        } catch (e) {
-          console.error('[RBN] Failed to parse JSON from response');
-        }
-      }
-    }
-    
-    // Normalize the data format
-    const normalizedSpots = (Array.isArray(spots) ? spots : []).map(spot => ({
-      callsign: spot.callsign || spot.de || spot.dx_call,
-      frequency: spot.frequency || spot.freq || spot.dx_freq,
-      band: spot.band,
-      snr: spot.snr !== undefined ? spot.snr : (spot.db || spot.decibels || 0),
-      mode: spot.mode || 'CW',
-      grid: spot.grid || spot.de_grid || spot.dx_grid,
-      timestamp: spot.timestamp || spot.time || spot.dx_time || new Date().toISOString(),
-      wpm: spot.wpm || spot.speed,
+    // Normalize the data format from RBN aggregator
+    // RBN aggregator format: {dx_call, de_call, de_cont, dx_freq, dx_band, dx_snr, de_pfx, dx_time, ...}
+    const normalizedSpots = (Array.isArray(data) ? data : []).map(spot => ({
+      callsign: spot.de_call || spot.de || spot.callsign,        // Skimmer that heard you
+      frequency: spot.dx_freq ? Math.round(spot.dx_freq * 1000) : 0, // Convert MHz to kHz
+      band: spot.dx_band || spot.band,
+      snr: spot.dx_snr !== undefined ? spot.dx_snr : (spot.db || spot.snr || 0),
+      mode: spot.dx_mode || spot.mode || 'CW',
+      grid: spot.de_grid || spot.grid,
+      timestamp: spot.dx_time || spot.time || new Date().toISOString(),
+      wpm: spot.dx_wpm || spot.wpm || spot.speed,
+      continent: spot.de_cont || spot.continent,
+      prefix: spot.de_pfx || spot.prefix,
       comment: spot.comment
     })).slice(0, limit);
     
@@ -2339,7 +2329,7 @@ app.get('/api/rbn', async (req, res) => {
       }
     }
     
-    console.log(`[RBN] Fetched ${normalizedSpots.length} spots for ${callsign}`);
+    console.log(`[RBN] Returning ${normalizedSpots.length} normalized spots for ${callsign}`);
     res.json(normalizedSpots);
     
   } catch (error) {
