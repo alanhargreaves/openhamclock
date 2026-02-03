@@ -157,8 +157,8 @@ export const DXClusterPanel = ({
                 onMouseLeave={() => onHoverSpot?.(null)}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '60px 1fr auto',
-                  gap: '8px',
+                  gridTemplateColumns: '55px 1fr 1fr auto',
+                  gap: '6px',
                   padding: '5px 6px',
                   borderRadius: '3px',
                   marginBottom: '2px',
@@ -179,6 +179,16 @@ export const DXClusterPanel = ({
                   whiteSpace: 'nowrap'
                 }}>
                   {spot.call}
+                </div>
+                <div style={{ 
+                  color: 'var(--text-muted)', 
+                  fontSize: '10px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  alignSelf: 'center'
+                }}>
+                  de {spot.spotter || '?'}
                 </div>
                 <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
                   {spot.time || ''}

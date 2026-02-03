@@ -99,6 +99,9 @@ export const WorldMap = ({
       maxZoom: 18,
       worldCopyJump: true,
       zoomControl: true,
+      zoomSnap: 0.1,
+      zoomDelta: 0.25,
+      wheelPxPerZoomLevel: 200,
       maxBounds: [[-90, -Infinity], [90, Infinity]],
       maxBoundsViscosity: 0.8
     });
@@ -264,28 +267,28 @@ export const WorldMap = ({
           const freq = parseFloat(path.freq);
           const color = getBandColor(freq);
           
-          const isHovered = hoveredSpot && hoveredSpot.call === path.dxCall && 
-                           Math.abs(parseFloat(hoveredSpot.freq) - parseFloat(path.freq)) < 0.01;
+          const isHovered = hoveredSpot && 
+                           hoveredSpot.call?.toUpperCase() === path.dxCall?.toUpperCase();
           
-          // Handle segments
-          const isSegmented = Array.isArray(pathPoints[0]) && pathPoints[0].length > 0 && Array.isArray(pathPoints[0][0]);
-          const segments = isSegmented ? pathPoints : [pathPoints];
-          
-          segments.forEach(segment => {
-            if (segment && Array.isArray(segment) && segment.length > 1) {
-              const line = L.polyline(segment, {
-                color: isHovered ? '#ffffff' : color,
-                weight: isHovered ? 4 : 1.5,
-                opacity: isHovered ? 1 : 0.5
-              }).addTo(map);
-              if (isHovered) line.bringToFront();
-              dxPathsLinesRef.current.push(line);
-            }
-          });
+          // Handle path rendering (single continuous array, unwrapped across antimeridian)
+          if (pathPoints && Array.isArray(pathPoints) && pathPoints.length > 1) {
+            const line = L.polyline(pathPoints, {
+              color: isHovered ? '#ffffff' : color,
+              weight: isHovered ? 4 : 1.5,
+              opacity: isHovered ? 1 : 0.5
+            }).addTo(map);
+            if (isHovered) line.bringToFront();
+            dxPathsLinesRef.current.push(line);
+          }
+
+          // Use unwrapped endpoint so marker sits where the line ends
+          const endPoint = pathPoints[pathPoints.length - 1];
+          const dxLatDisplay = endPoint[0];
+          const dxLonDisplay = endPoint[1];
 
           // Add DX marker
-          const dxCircle = L.circleMarker([path.dxLat, path.dxLon], {
-            radius: isHovered ? 10 : 6,
+          const dxCircle = L.circleMarker([dxLatDisplay, dxLonDisplay], {
+            radius: isHovered ? 12 : 6,
             fillColor: isHovered ? '#ffffff' : color,
             color: isHovered ? color : '#fff',
             weight: isHovered ? 3 : 1.5,
@@ -301,11 +304,15 @@ export const WorldMap = ({
           if (showDXLabels || isHovered) {
             const labelIcon = L.divIcon({
               className: '',
-              html: `<span style="display:inline-block;background:${isHovered ? '#fff' : color};color:${isHovered ? color : '#000'};padding:4px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;white-space:nowrap;border:2px solid ${isHovered ? color : 'rgba(0,0,0,0.5)'};box-shadow:0 2px 4px rgba(0,0,0,0.4);">${path.dxCall}</span>`,
+              html: `<span style="display:inline-block;background:${isHovered ? '#fff' : color};color:${isHovered ? color : '#000'};padding:${isHovered ? '5px 10px' : '4px 8px'};border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:${isHovered ? '14px' : '12px'};font-weight:700;white-space:nowrap;border:2px solid ${isHovered ? color : 'rgba(0,0,0,0.5)'};box-shadow:0 2px ${isHovered ? '8px' : '4px'} rgba(0,0,0,${isHovered ? '0.6' : '0.4'});">${path.dxCall}</span>`,
               iconSize: null,
               iconAnchor: [0, 0]
             });
-            const label = L.marker([path.dxLat, path.dxLon], { icon: labelIcon, interactive: false }).addTo(map);
+            const label = L.marker([dxLatDisplay, dxLonDisplay], { 
+              icon: labelIcon, 
+              interactive: false,
+              zIndexOffset: isHovered ? 10000 : 0
+            }).addTo(map);
             dxPathsMarkersRef.current.push(label);
           }
         } catch (err) {
@@ -358,34 +365,20 @@ export const WorldMap = ({
         
         // Draw orbit track if available
         if (sat.track && sat.track.length > 1) {
-          // Split track into segments to handle date line crossing
-          let segments = [];
-          let currentSegment = [sat.track[0]];
-          
-          for (let i = 1; i < sat.track.length; i++) {
-            const prevLon = sat.track[i-1][1];
-            const currLon = sat.track[i][1];
-            // If longitude jumps more than 180 degrees, start new segment
-            if (Math.abs(currLon - prevLon) > 180) {
-              segments.push(currentSegment);
-              currentSegment = [];
-            }
-            currentSegment.push(sat.track[i]);
+          // Unwrap longitudes for continuous rendering across antimeridian
+          const unwrapped = sat.track.map(p => [...p]);
+          for (let i = 1; i < unwrapped.length; i++) {
+            while (unwrapped[i][1] - unwrapped[i-1][1] > 180) unwrapped[i][1] -= 360;
+            while (unwrapped[i][1] - unwrapped[i-1][1] < -180) unwrapped[i][1] += 360;
           }
-          segments.push(currentSegment);
           
-          // Draw each segment
-          segments.forEach(segment => {
-            if (segment.length > 1) {
-              const trackLine = L.polyline(segment, {
-                color: sat.visible ? satColor : satColorDark,
-                weight: 2,
-                opacity: sat.visible ? 0.8 : 0.4,
-                dashArray: sat.visible ? null : '5, 5'
-              }).addTo(map);
-              satTracksRef.current.push(trackLine);
-            }
-          });
+          const trackLine = L.polyline(unwrapped, {
+            color: sat.visible ? satColor : satColorDark,
+            weight: 2,
+            opacity: sat.visible ? 0.8 : 0.4,
+            dashArray: sat.visible ? null : '5, 5'
+          }).addTo(map);
+          satTracksRef.current.push(trackLine);
         }
         
         // Draw footprint circle if available and satellite is visible
@@ -521,8 +514,8 @@ export const WorldMap = ({
     if (showPSKReporter && pskReporterSpots && pskReporterSpots.length > 0 && hasValidDE) {
       pskReporterSpots.forEach(spot => {
         // Validate spot coordinates are valid numbers
-        const spotLat = parseFloat(spot.lat);
-        const spotLon = parseFloat(spot.lon);
+        let spotLat = parseFloat(spot.lat);
+        let spotLon = parseFloat(spot.lon);
         
         if (!isNaN(spotLat) && !isNaN(spotLon)) {
           const displayCall = spot.receiver || spot.sender;
@@ -537,8 +530,9 @@ export const WorldMap = ({
               50
             );
             
-            // Validate points before creating polyline
-            if (points && points.length > 1 && points.every(p => Array.isArray(p) && !isNaN(p[0]) && !isNaN(p[1]))) {
+            // Validate points before creating polyline (single continuous array, unwrapped across antimeridian)
+            if (points && Array.isArray(points) && points.length > 1 && 
+                points.every(p => Array.isArray(p) && !isNaN(p[0]) && !isNaN(p[1]))) {
               const line = L.polyline(points, {
                 color: bandColor,
                 weight: 1.5,
@@ -546,6 +540,11 @@ export const WorldMap = ({
                 dashArray: '4, 4'
               }).addTo(map);
               pskMarkersRef.current.push(line);
+              
+              // Use unwrapped endpoint so dot sits where the line ends
+              const endPoint = points[points.length - 1];
+              spotLat = endPoint[0];
+              spotLon = endPoint[1];
             }
             
             // Add small dot marker at spot location

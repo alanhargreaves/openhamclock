@@ -205,26 +205,14 @@ export const getGreatCirclePoints = (lat1, lon1, lat2, lon2, n = 100) => {
     rawPoints.push([toDeg(Math.atan2(z, Math.sqrt(x*x+y*y))), toDeg(Math.atan2(y, x))]);
   }
   
-  // Split path at antimeridian crossings for proper Leaflet rendering
-  const segments = [];
-  let currentSegment = [rawPoints[0]];
-  
+  // Unwrap longitudes to be continuous (no jumps > 180°)
+  // This lets Leaflet draw smoothly across the antimeridian and world copies
   for (let i = 1; i < rawPoints.length; i++) {
-    const prevLon = rawPoints[i-1][1];
-    const currLon = rawPoints[i][1];
-    
-    // Check if we crossed the antimeridian (lon jumps more than 180°)
-    if (Math.abs(currLon - prevLon) > 180) {
-      // Finish current segment
-      segments.push(currentSegment);
-      // Start new segment
-      currentSegment = [];
-    }
-    currentSegment.push(rawPoints[i]);
+    while (rawPoints[i][1] - rawPoints[i-1][1] > 180) rawPoints[i][1] -= 360;
+    while (rawPoints[i][1] - rawPoints[i-1][1] < -180) rawPoints[i][1] += 360;
   }
-  segments.push(currentSegment);
   
-  return segments;
+  return rawPoints;
 };
 
 export default {
