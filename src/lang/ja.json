@@ -9,6 +9,7 @@
   "station.settings.language.ja": "日本語",
   "station.settings.language.it": "Italiano",
   "station.settings.language.nl": "Nederlands",
+  "station.settings.language.ko": "한국어",
   "station.settings.altitude": "標高 (m)",
   "station.settings.antenna": "アンテナ",
   "station.settings.button.save": "設定を保存",
@@ -45,5 +46,16 @@
   "station.settings.useLocation": "📍 現在地を使用",
   "station.settings.useLocation.error1": "位置情報を取得できません。手動で入力してください。",
   "station.settings.useLocation.error2": "お使いのブラウザはジオロケーションに対応していません。",
-  "station.settings.welcome": "👋 OpenHamClockへようこそ！"
+  "station.settings.welcome": "👋 OpenHamClockへようこそ！",
+  "plugins.layers.aurora.name": "オーロラ予報",
+  "plugins.layers.aurora.description": "NOAA OVATION オーロラ出現確率予報（30分）",
+  "plugins.layers.earthquakes.name": "地震",
+  "plugins.layers.earthquakes.description": "USGSのリアルタイム地震データ（過去24時間のM2.5以上）",
+  "plugins.layers.wxradar.name": "気象レーダー",
+  "plugins.layers.wxradar.description": "北米向けNEXRAD気象レーダーのオーバーレイ",
+  "plugins.layers.wxradar.attribution": "気象データ © Iowa State University Mesonet",
+  "station.settings.layout.tablet": "Tablet",
+  "station.settings.layout.tablet.describe": "→ Optimized for 7-10\" widescreen displays (16:9)",
+  "station.settings.layout.compact": "Compact",
+  "station.settings.layout.compact.describe": "→ Data-first layout for 4:3 and smaller screens"
 }

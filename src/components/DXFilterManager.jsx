@@ -279,7 +279,7 @@ export const DXFilterManager = ({ filters, onFilterChange, isOpen, onClose }) =>
     <div>
       <div style={{ marginBottom: '16px' }}>
         <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '8px' }}>
-          Exclude List - Hide these callsigns
+          Exclude List - Hide DX callsigns beginning with:
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <input

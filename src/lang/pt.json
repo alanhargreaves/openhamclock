@@ -9,6 +9,7 @@
   "station.settings.language.ja": "日本語",
   "station.settings.language.it": "Italiano",
   "station.settings.language.nl": "Nederlands",
+  "station.settings.language.ko": "한국어",
   "station.settings.altitude": "Altitude (m)",
   "station.settings.antenna": "Antena",
   "station.settings.button.save": "Salvar Configurações",
@@ -45,5 +46,16 @@
   "station.settings.useLocation": "📍 Usar Minha Localização Atual",
   "station.settings.useLocation.error1": "Não foi possível obter a localização. Por favor, insira manualmente.",
   "station.settings.useLocation.error2": "Geolocalização não é suportada pelo seu navegador.",
-  "station.settings.welcome": "👋 Bem-vindo ao OpenHamClock!"
+  "station.settings.welcome": "👋 Bem-vindo ao OpenHamClock!",
+  "plugins.layers.aurora.name": "Previsão de aurora",
+  "plugins.layers.aurora.description": "Previsão de probabilidade de aurora NOAA OVATION (30 min)",
+  "plugins.layers.earthquakes.name": "Terremotos",
+  "plugins.layers.earthquakes.description": "Dados sísmicos do USGS ao vivo (M2,5+ das últimas 24 horas)",
+  "plugins.layers.wxradar.name": "Radar meteorológico",
+  "plugins.layers.wxradar.description": "Sobreposição do radar meteorológico NEXRAD para a América do Norte",
+  "plugins.layers.wxradar.attribution": "Dados meteorológicos © Iowa State University Mesonet",
+  "station.settings.layout.tablet": "Tablet",
+  "station.settings.layout.tablet.describe": "→ Optimized for 7-10\" widescreen displays (16:9)",
+  "station.settings.layout.compact": "Compact",
+  "station.settings.layout.compact.describe": "→ Data-first layout for 4:3 and smaller screens"
 }

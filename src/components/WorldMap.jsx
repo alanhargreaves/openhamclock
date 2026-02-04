@@ -38,7 +38,8 @@ export const WorldMap = ({
   showWSJTX,
   onToggleSatellites, 
   hoveredSpot,
-  callsign = 'N0CALL'
+  callsign = 'N0CALL',
+  hideOverlays
 }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -418,20 +419,33 @@ export const WorldMap = ({
     if (showPOTA && potaSpots) {
       potaSpots.forEach(spot => {
         if (spot.lat && spot.lon) {
-          const icon = L.divIcon({
+          // Green triangle marker for POTA activators
+          const triangleIcon = L.divIcon({
             className: '',
-            html: `<span style="display:inline-block;background:#aa66ff;color:#fff;padding:4px 8px;border-radius:4px;font-size:12px;font-family:'JetBrains Mono',monospace;font-weight:700;white-space:nowrap;border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.4);">${spot.call}</span>`,
-            iconSize: null,
-            iconAnchor: [0, 0]
+            html: `<span style="display:inline-block;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:14px solid #44cc44;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));"></span>`,
+            iconSize: [14, 14],
+            iconAnchor: [7, 14]
           });
-          const marker = L.marker([spot.lat, spot.lon], { icon })
-            .bindPopup(`<b>${spot.call}</b><br>${spot.ref}<br>${spot.freq} ${spot.mode}`)
+          const marker = L.marker([spot.lat, spot.lon], { icon: triangleIcon })
+            .bindPopup(`<b style="color:#44cc44">${spot.call}</b><br><span style="color:#888">${spot.ref}</span> ${spot.locationDesc || ''}<br>${spot.name ? `<i>${spot.name}</i><br>` : ''}${spot.freq} ${spot.mode || ''} <span style="color:#888">${spot.time || ''}</span>`)
             .addTo(map);
           potaMarkersRef.current.push(marker);
+
+          // Only show callsign label when labels are enabled
+          if (showDXLabels) {
+            const labelIcon = L.divIcon({
+              className: '',
+              html: `<span style="display:inline-block;background:#44cc44;color:#000;padding:4px 8px;border-radius:4px;font-size:12px;font-family:'JetBrains Mono',monospace;font-weight:700;white-space:nowrap;border:2px solid rgba(0,0,0,0.5);box-shadow:0 2px 4px rgba(0,0,0,0.4);">${spot.call}</span>`,
+              iconSize: null,
+              iconAnchor: [0, -2]
+            });
+            const label = L.marker([spot.lat, spot.lon], { icon: labelIcon, interactive: false }).addTo(map);
+            potaMarkersRef.current.push(label);
+          }
         }
       });
     }
-  }, [potaSpots, showPOTA]);
+  }, [potaSpots, showPOTA, showDXLabels]);
 
   // Update satellite markers with orbit tracks
   useEffect(() => {
@@ -825,9 +839,10 @@ export const WorldMap = ({
       )}
       
       {/* DX News Ticker - left side of bottom bar */}
-      <DXNewsTicker />
+      {!hideOverlays && <DXNewsTicker />}
 
       {/* Legend - right side */}
+      {!hideOverlays && (
       <div style={{
         position: 'absolute',
         bottom: '8px',
@@ -866,7 +881,7 @@ export const WorldMap = ({
         </div>
         {showPOTA && (
           <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-            <span style={{ background: '#aa66ff', color: '#fff', padding: '2px 5px', borderRadius: '3px', fontWeight: '600' }}>● POTA</span>
+            <span style={{ background: '#44cc44', color: '#000', padding: '2px 5px', borderRadius: '3px', fontWeight: '600' }}>▲ POTA</span>
           </div>
         )}
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -874,6 +889,7 @@ export const WorldMap = ({
           <span style={{ color: '#aaaaaa' }}>☽ Moon</span>
         </div>
       </div>
+      )}
     </div>
   );
 };

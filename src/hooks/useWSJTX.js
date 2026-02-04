@@ -14,20 +14,20 @@ const API_URL = '/api/wsjtx';
 const DECODES_URL = '/api/wsjtx/decodes';
 
 // Generate or retrieve persistent session ID
+// NOTE: Kept short (8 chars) intentionally — long UUIDs in query strings
+// trigger false positives in Bitdefender and similar security software
 function getSessionId() {
   const KEY = 'ohc-wsjtx-session';
+  const generate = () => Math.random().toString(36).substring(2, 10);
   try {
     let id = localStorage.getItem(KEY);
-    if (id && id.length >= 16) return id;
-    // Generate a random ID
-    id = (typeof crypto !== 'undefined' && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : Math.random().toString(36).substring(2) + Date.now().toString(36) + Math.random().toString(36).substring(2);
+    if (id && id.length >= 8) return id;
+    id = generate();
     localStorage.setItem(KEY, id);
     return id;
   } catch {
     // Fallback for privacy browsers that block localStorage
-    return Math.random().toString(36).substring(2) + Date.now().toString(36) + Math.random().toString(36).substring(2);
+    return generate();
   }
 }
 

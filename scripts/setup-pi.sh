@@ -225,6 +225,9 @@ else
     CHROME_CMD="chromium-browser"
 fi
 
+# Trap Ctrl+Q to exit kiosk cleanly
+trap 'pkill -f "chromium.*kiosk"; exit 0' SIGTERM SIGINT
+
 $CHROME_CMD \
     --kiosk \
     --noerrdialogs \
@@ -237,7 +240,17 @@ $CHROME_CMD \
     --overscroll-history-navigation=0 \
     --disable-pinch \
     --incognito \
-    http://localhost:3000
+    http://localhost:3000 &
+
+CHROME_PID=$!
+
+echo "OpenHamClock kiosk running (PID: $CHROME_PID)"
+echo "Exit methods:"
+echo "  - Alt+F4        (close Chromium)"
+echo "  - Ctrl+Alt+T    (open terminal, then: pkill -f kiosk)"
+echo "  - SSH in and run: pkill -f kiosk.sh"
+
+wait $CHROME_PID
 EOF
     
     chmod +x "$INSTALL_DIR/kiosk.sh"
@@ -339,7 +352,14 @@ print_summary() {
     if [ "$KIOSK_MODE" = true ]; then
         echo -e "  ${GREEN}Kiosk Mode:${NC} Enabled"
         echo "    OpenHamClock will auto-start on boot in fullscreen"
-        echo "    To disable: rm ~/.config/autostart/openhamclock-kiosk.desktop"
+        echo ""
+        echo -e "    ${YELLOW}Exit kiosk:${NC}"
+        echo "      Alt+F4          Close Chromium"
+        echo "      Ctrl+Alt+T      Open terminal (then: pkill -f kiosk)"
+        echo "      SSH:            pkill -f kiosk.sh"
+        echo ""
+        echo -e "    ${YELLOW}Disable auto-start:${NC}"
+        echo "      rm ~/.config/autostart/openhamclock-kiosk.desktop"
         echo ""
     fi
     

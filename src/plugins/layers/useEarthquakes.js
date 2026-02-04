@@ -1,3 +1,5 @@
+import i18n from '../../lang/i18n';
+
 import { useState, useEffect, useRef } from 'react';
 
 //Scaled markers - Bigger circles for stronger quakes
@@ -11,8 +13,8 @@ import { useState, useEffect, useRef } from 'react';
 
 export const metadata = {
   id: 'earthquakes',
-  name: 'Earthquakes',
-  description: 'Live USGS earthquake data (all earthquakes from last hour) with animated detection',
+  name: i18n.t('plugins.layers.earthquakes.name'),
+  description: i18n.t('plugins.layers.earthquakes.description'),
   icon: '🌋',
   category: 'geology',
   defaultEnabled: false,

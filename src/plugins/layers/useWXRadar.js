@@ -1,9 +1,11 @@
+import i18n from '../../lang/i18n';
+
 import { useState, useEffect } from 'react';
 
 export const metadata = {
   id: 'wxradar',
-  name: 'Weather Radar',
-  description: 'NEXRAD weather radar overlay for North America',
+  name: i18n.t('plugins.layers.wxradar.name'),
+  description: i18n.t('plugins.layers.wxradar.description'),
   icon: '☁️',
   category: 'weather',
   defaultEnabled: false,
@@ -21,7 +23,7 @@ export function useLayer({ enabled = false, opacity = 0.6, map = null }) {
       layers: 'nexrad-n0r-900913',
       format: 'image/png',
       transparent: true,
-      attribution: 'Weather data © Iowa State University Mesonet',
+      attribution: i18n.t('plugins.layers.wxradar.attribution'),
       opacity: opacity,
       zIndex: 200
     }

@@ -148,7 +148,7 @@ const CONFIG = {
   
   // DX Cluster settings
   spotRetentionMinutes: parseInt(process.env.SPOT_RETENTION_MINUTES) || jsonConfig.dxCluster?.spotRetentionMinutes || 30,
-  dxClusterSource: jsonConfig.dxCluster?.source || 'auto',
+  dxClusterSource: process.env.DX_CLUSTER_SOURCE || jsonConfig.dxCluster?.source || 'auto',
   
   // API keys (don't expose to frontend)
   _openWeatherApiKey: process.env.OPENWEATHER_API_KEY || '',
@@ -229,9 +229,24 @@ app.use('/api', (req, res, next) => {
 });
 
 // ============================================
-// RATE-LIMITED LOGGING
+// LOGGING SYSTEM
 // ============================================
-// Prevents log spam when services are down
+// LOG_LEVEL: 'debug' = verbose, 'info' = normal, 'warn' = warnings+errors, 'error' = errors only
+const LOG_LEVEL = (process.env.LOG_LEVEL || 'warn').toLowerCase();
+const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
+const currentLogLevel = LOG_LEVELS[LOG_LEVEL] ?? LOG_LEVELS.warn;
+
+function logDebug(...args) {
+  if (currentLogLevel <= LOG_LEVELS.debug) console.log(...args);
+}
+function logInfo(...args) {
+  if (currentLogLevel <= LOG_LEVELS.info) console.log(...args);
+}
+function logWarn(...args) {
+  if (currentLogLevel <= LOG_LEVELS.warn) console.warn(...args);
+}
+
+// Rate-limited error logging - prevents log spam when services are down
 const errorLogState = {};
 const ERROR_LOG_INTERVAL = 5 * 60 * 1000; // Only log same error once per 5 minutes
 
@@ -247,6 +262,82 @@ function logErrorOnce(category, message) {
   }
   return false;
 }
+
+// ============================================
+// VISITOR TRACKING
+// ============================================
+// Lightweight in-memory visitor counter — tracks unique IPs per day
+// No cookies, no external analytics, no persistent storage
+// Resets on server restart; logs daily summary
+
+const visitorStats = {
+  today: new Date().toISOString().slice(0, 10),  // YYYY-MM-DD
+  uniqueIPs: new Set(),
+  totalRequests: 0,
+  allTimeVisitors: 0,    // Cumulative unique visitors since server start
+  allTimeRequests: 0,    // Cumulative requests since server start
+  serverStarted: new Date().toISOString(),
+  history: []  // Last 30 days of { date, uniqueVisitors, totalRequests }
+};
+
+function rolloverVisitorStats() {
+  const now = new Date().toISOString().slice(0, 10);
+  if (now !== visitorStats.today) {
+    // Save yesterday's stats to history
+    visitorStats.history.push({
+      date: visitorStats.today,
+      uniqueVisitors: visitorStats.uniqueIPs.size,
+      totalRequests: visitorStats.totalRequests
+    });
+    // Keep only last 30 days
+    if (visitorStats.history.length > 30) {
+      visitorStats.history = visitorStats.history.slice(-30);
+    }
+    const avg = visitorStats.history.length > 0
+      ? Math.round(visitorStats.history.reduce((sum, d) => sum + d.uniqueVisitors, 0) / visitorStats.history.length)
+      : 0;
+    console.log(`[Visitors] Daily summary for ${visitorStats.today}: ${visitorStats.uniqueIPs.size} unique visitors, ${visitorStats.totalRequests} requests | All-time: ${visitorStats.allTimeVisitors} visitors, ${visitorStats.allTimeRequests} requests | ${visitorStats.history.length}-day avg: ${avg}/day`);
+    // Reset daily counters for new day
+    visitorStats.today = now;
+    visitorStats.uniqueIPs = new Set();
+    visitorStats.totalRequests = 0;
+  }
+}
+
+// Visitor tracking middleware — only counts page loads and API config fetches
+// (not every API poll, which would inflate the count)
+app.use((req, res, next) => {
+  rolloverVisitorStats();
+  
+  // Only count meaningful "visits" — initial page load or config fetch
+  // This avoids counting every 5-second DX cluster poll as a "visit"
+  const countableRoutes = ['/', '/index.html', '/api/config'];
+  if (countableRoutes.includes(req.path)) {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || req.connection?.remoteAddress || 'unknown';
+    const isNew = !visitorStats.uniqueIPs.has(ip);
+    visitorStats.uniqueIPs.add(ip);
+    visitorStats.totalRequests++;
+    visitorStats.allTimeRequests++;
+    
+    if (isNew) {
+      visitorStats.allTimeVisitors++;
+      logInfo(`[Visitors] New visitor today (#${visitorStats.uniqueIPs.size}, #${visitorStats.allTimeVisitors} all-time) from ${ip.replace(/\d+$/, 'x')}`);
+    }
+  }
+  
+  next();
+});
+
+// Log visitor count every hour
+setInterval(() => {
+  rolloverVisitorStats();
+  if (visitorStats.uniqueIPs.size > 0 || visitorStats.allTimeVisitors > 0) {
+    const avg = visitorStats.history.length > 0
+      ? Math.round(visitorStats.history.reduce((sum, d) => sum + d.uniqueVisitors, 0) / visitorStats.history.length)
+      : visitorStats.uniqueIPs.size;
+    console.log(`[Visitors] Today so far: ${visitorStats.uniqueIPs.size} unique, ${visitorStats.totalRequests} requests | All-time: ${visitorStats.allTimeVisitors} visitors | Avg: ${avg}/day`);
+  }
+}, 60 * 60 * 1000);
 
 // Serve static files
 // dist/ contains the built React app (from npm run build)
@@ -310,7 +401,7 @@ app.get('/api/noaa/flux', async (req, res) => {
     noaaCache.flux = { data, timestamp: Date.now() };
     res.json(data);
   } catch (error) {
-    console.error('NOAA Flux API error:', error.message);
+    logErrorOnce('NOAA Flux', error.message);
     if (noaaCache.flux.data) return res.json(noaaCache.flux.data);
     res.status(500).json({ error: 'Failed to fetch solar flux data' });
   }
@@ -327,7 +418,7 @@ app.get('/api/noaa/kindex', async (req, res) => {
     noaaCache.kindex = { data, timestamp: Date.now() };
     res.json(data);
   } catch (error) {
-    console.error('NOAA K-Index API error:', error.message);
+    logErrorOnce('NOAA K-Index', error.message);
     if (noaaCache.kindex.data) return res.json(noaaCache.kindex.data);
     res.status(500).json({ error: 'Failed to fetch K-index data' });
   }
@@ -344,7 +435,7 @@ app.get('/api/noaa/sunspots', async (req, res) => {
     noaaCache.sunspots = { data, timestamp: Date.now() };
     res.json(data);
   } catch (error) {
-    console.error('NOAA Sunspots API error:', error.message);
+    logErrorOnce('NOAA Sunspots', error.message);
     if (noaaCache.sunspots.data) return res.json(noaaCache.sunspots.data);
     res.status(500).json({ error: 'Failed to fetch sunspot data' });
   }
@@ -431,7 +522,7 @@ app.get('/api/solar-indices', async (req, res) => {
     
     res.json(result);
   } catch (error) {
-    console.error('Solar Indices API error:', error.message);
+    logErrorOnce('Solar Indices', error.message);
     // Return stale cache on error
     if (noaaCache.solarIndices.data) return res.json(noaaCache.solarIndices.data);
     res.status(500).json({ error: 'Failed to fetch solar indices' });
@@ -444,24 +535,24 @@ let dxpeditionCache = { data: null, timestamp: 0, maxAge: 30 * 60 * 1000 }; // 3
 app.get('/api/dxpeditions', async (req, res) => {
   try {
     const now = Date.now();
-    console.log('[DXpeditions] API called');
+    logDebug('[DXpeditions] API called');
     
     // Return cached data if fresh
     if (dxpeditionCache.data && (now - dxpeditionCache.timestamp) < dxpeditionCache.maxAge) {
-      console.log('[DXpeditions] Returning cached data:', dxpeditionCache.data.dxpeditions?.length, 'entries');
+      logDebug('[DXpeditions] Returning cached data:', dxpeditionCache.data.dxpeditions?.length, 'entries');
       return res.json(dxpeditionCache.data);
     }
     
     // Fetch NG3K ADXO plain text version
-    console.log('[DXpeditions] Fetching from NG3K...');
+    logDebug('[DXpeditions] Fetching from NG3K...');
     const response = await fetch('https://www.ng3k.com/Misc/adxoplain.html');
     if (!response.ok) {
-      console.log('[DXpeditions] NG3K fetch failed:', response.status);
+      logDebug('[DXpeditions] NG3K fetch failed:', response.status);
       throw new Error('Failed to fetch NG3K: ' + response.status);
     }
     
     let text = await response.text();
-    console.log('[DXpeditions] Received', text.length, 'bytes raw');
+    logDebug('[DXpeditions] Received', text.length, 'bytes raw');
     
     // Strip HTML tags and decode entities - the "plain" page is actually HTML!
     text = text
@@ -478,8 +569,8 @@ app.get('/api/dxpeditions', async (req, res) => {
       .replace(/\s+/g, ' ') // Normalize whitespace
       .trim();
     
-    console.log('[DXpeditions] Cleaned text length:', text.length);
-    console.log('[DXpeditions] First 500 chars:', text.substring(0, 500));
+    logDebug('[DXpeditions] Cleaned text length:', text.length);
+    logDebug('[DXpeditions] First 500 chars:', text.substring(0, 500));
     
     const dxpeditions = [];
     
@@ -488,11 +579,11 @@ app.get('/api/dxpeditions', async (req, res) => {
     const entryPattern = /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}[^D]*?DXCC:[^·]+?)(?=(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}|$)/gi;
     const entries = text.match(entryPattern) || [];
     
-    console.log('[DXpeditions] Found', entries.length, 'potential entries');
+    logDebug('[DXpeditions] Found', entries.length, 'potential entries');
     
     // Log first 3 entries for debugging
     entries.slice(0, 3).forEach((e, i) => {
-      console.log(`[DXpeditions] Entry ${i}:`, e.substring(0, 150));
+      logDebug(`[DXpeditions] Entry ${i}:`, e.substring(0, 150));
     });
     
     for (const entry of entries) {
@@ -557,7 +648,7 @@ app.get('/api/dxpeditions', async (req, res) => {
       
       // Log first few successful parses
       if (dxpeditions.length < 3) {
-        console.log(`[DXpeditions] Parsed: ${callsign} - ${entity} - ${dateStr}`);
+        logDebug(`[DXpeditions] Parsed: ${callsign} - ${entity} - ${dateStr}`);
       }
       
       // Try to extract entity from context if not found
@@ -646,9 +737,9 @@ app.get('/api/dxpeditions', async (req, res) => {
       return 0;
     });
     
-    console.log('[DXpeditions] Parsed', uniqueDxpeditions.length, 'unique entries');
+    logDebug('[DXpeditions] Parsed', uniqueDxpeditions.length, 'unique entries');
     if (uniqueDxpeditions.length > 0) {
-      console.log('[DXpeditions] First entry:', JSON.stringify(uniqueDxpeditions[0]));
+      logDebug('[DXpeditions] First entry:', JSON.stringify(uniqueDxpeditions[0]));
     }
     
     const result = {
@@ -659,17 +750,17 @@ app.get('/api/dxpeditions', async (req, res) => {
       timestamp: new Date().toISOString()
     };
     
-    console.log('[DXpeditions] Result:', result.active, 'active,', result.upcoming, 'upcoming');
+    logDebug('[DXpeditions] Result:', result.active, 'active,', result.upcoming, 'upcoming');
     
     dxpeditionCache.data = result;
     dxpeditionCache.timestamp = now;
     
     res.json(result);
   } catch (error) {
-    console.error('[DXpeditions] API error:', error.message);
+    logErrorOnce('DXpeditions', error.message);
     
     if (dxpeditionCache.data) {
-      console.log('[DXpeditions] Returning stale cache');
+      logDebug('[DXpeditions] Returning stale cache');
       return res.json({ ...dxpeditionCache.data, stale: true });
     }
     
@@ -688,7 +779,7 @@ app.get('/api/noaa/xray', async (req, res) => {
     noaaCache.xray = { data, timestamp: Date.now() };
     res.json(data);
   } catch (error) {
-    console.error('NOAA X-Ray API error:', error.message);
+    logErrorOnce('NOAA X-Ray', error.message);
     if (noaaCache.xray.data) return res.json(noaaCache.xray.data);
     res.status(500).json({ error: 'Failed to fetch X-ray data' });
   }
@@ -706,7 +797,7 @@ app.get('/api/noaa/aurora', async (req, res) => {
     noaaCache.aurora = { data, timestamp: Date.now() };
     res.json(data);
   } catch (error) {
-    console.error('NOAA Aurora API error:', error.message);
+    logErrorOnce('NOAA Aurora', error.message);
     if (noaaCache.aurora.data) return res.json(noaaCache.aurora.data);
     res.status(500).json({ error: 'Failed to fetch aurora data' });
   }
@@ -776,16 +867,16 @@ app.get('/api/dxnews', async (req, res) => {
     dxNewsCache = { data: result, timestamp: Date.now() };
     res.json(result);
   } catch (error) {
-    console.error('DX News fetch error:', error.message);
+    logErrorOnce('DX News', error.message);
     if (dxNewsCache.data) return res.json(dxNewsCache.data);
     res.status(500).json({ error: 'Failed to fetch DX news', items: [] });
   }
 });
 
 // POTA Spots
-// POTA cache (2 minutes)
+// POTA cache (1 minute)
 let potaCache = { data: null, timestamp: 0 };
-const POTA_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+const POTA_CACHE_TTL = 60 * 1000; // 1 minute
 
 app.get('/api/pota/spots', async (req, res) => {
   try {
@@ -797,12 +888,25 @@ app.get('/api/pota/spots', async (req, res) => {
     const response = await fetch('https://api.pota.app/spot/activator');
     const data = await response.json();
     
+    // Log diagnostic info about the response
+    if (Array.isArray(data) && data.length > 0) {
+      const sample = data[0];
+      logDebug('[POTA] API returned', data.length, 'spots. Sample fields:', Object.keys(sample).join(', '));
+      
+      // Count coordinate coverage
+      const withLatLon = data.filter(s => s.latitude && s.longitude).length;
+      const withGrid6 = data.filter(s => s.grid6).length;
+      const withGrid4 = data.filter(s => s.grid4).length;
+      const noCoords = data.filter(s => !s.latitude && !s.longitude && !s.grid6 && !s.grid4).length;
+      logDebug(`[POTA] Coords: ${withLatLon} lat/lon, ${withGrid6} grid6, ${withGrid4} grid4, ${noCoords} no coords`);
+    }
+    
     // Cache the response
     potaCache = { data, timestamp: Date.now() };
     
     res.json(data);
   } catch (error) {
-    console.error('POTA API error:', error.message);
+    logErrorOnce('POTA', error.message);
     // Return stale cache on error
     if (potaCache.data) return res.json(potaCache.data);
     res.status(500).json({ error: 'Failed to fetch POTA spots' });
@@ -829,7 +933,7 @@ app.get('/api/sota/spots', async (req, res) => {
     
     res.json(data);
   } catch (error) {
-    console.error('SOTA API error:', error.message);
+    logErrorOnce('SOTA', error.message);
     if (sotaCache.data) return res.json(sotaCache.data);
     res.status(500).json({ error: 'Failed to fetch SOTA spots' });
   }
@@ -857,7 +961,7 @@ app.get('/api/hamqsl/conditions', async (req, res) => {
     res.set('Content-Type', 'application/xml');
     res.send(text);
   } catch (error) {
-    console.error('HamQSL API error:', error.message);
+    logErrorOnce('HamQSL', error.message);
     if (hamqslCache.data) {
       res.set('Content-Type', 'application/xml');
       return res.send(hamqslCache.data);
@@ -879,7 +983,7 @@ let dxSpiderCache = { spots: [], timestamp: 0 };
 const DXSPIDER_CACHE_TTL = 90000; // 90 seconds cache - reduces reconnection frequency
 
 app.get('/api/dxcluster/spots', async (req, res) => {
-  const source = (req.query.source || 'auto').toLowerCase();
+  const source = (req.query.source || CONFIG.dxClusterSource || 'auto').toLowerCase();
   
   // Helper function for HamQTH (HTTP-based, works everywhere)
   async function fetchHamQTH() {
@@ -927,7 +1031,7 @@ app.get('/api/dxcluster/spots', async (req, res) => {
               source: 'HamQTH'
             };
           });
-          console.log('[DX Cluster] HamQTH:', spots.length, 'spots');
+          logDebug('[DX Cluster] HamQTH:', spots.length, 'spots');
           return spots;
         }
       }
@@ -955,7 +1059,7 @@ app.get('/api/dxcluster/spots', async (req, res) => {
       if (response.ok) {
         const spots = await response.json();
         if (Array.isArray(spots) && spots.length > 0) {
-          console.log('[DX Cluster] DX Spider Proxy:', spots.length, 'spots');
+          logDebug('[DX Cluster] DX Spider Proxy:', spots.length, 'spots');
           return spots;
         }
       }
@@ -983,7 +1087,7 @@ app.get('/api/dxcluster/spots', async (req, res) => {
   async function fetchDXSpider() {
     // Check cache first (use longer cache to reduce connection attempts)
     if (Date.now() - dxSpiderCache.timestamp < DXSPIDER_CACHE_TTL && dxSpiderCache.spots.length > 0) {
-      console.log('[DX Cluster] DX Spider: returning', dxSpiderCache.spots.length, 'cached spots');
+      logDebug('[DX Cluster] DX Spider: returning', dxSpiderCache.spots.length, 'cached spots');
       return dxSpiderCache.spots;
     }
     
@@ -995,7 +1099,7 @@ app.get('/api/dxcluster/spots', async (req, res) => {
       }
     }
     
-    console.log('[DX Cluster] DX Spider: all nodes failed');
+    logDebug('[DX Cluster] DX Spider: all nodes failed');
     return null;
   }
   
@@ -1019,7 +1123,7 @@ app.get('/api/dxcluster/spots', async (req, res) => {
       
       // Try connecting to DX Spider node
       client.connect(node.port, node.host, () => {
-        console.log(`[DX Cluster] DX Spider: connected to ${node.host}:${node.port}`);
+        logDebug(`[DX Cluster] DX Spider: connected to ${node.host}:${node.port}`);
       });
       
       client.on('data', (data) => {
@@ -1098,7 +1202,7 @@ app.get('/api/dxcluster/spots', async (req, res) => {
         if (!resolved) {
           resolved = true;
           if (spots.length > 0) {
-            console.log('[DX Cluster] DX Spider:', spots.length, 'spots from', node.host);
+            logDebug('[DX Cluster] DX Spider:', spots.length, 'spots from', node.host);
             dxSpiderCache = { spots: spots, timestamp: Date.now() };
             resolve(spots);
           } else {
@@ -1112,7 +1216,7 @@ app.get('/api/dxcluster/spots', async (req, res) => {
         if (!resolved) {
           if (spots.length > 0) {
             resolved = true;
-            console.log('[DX Cluster] DX Spider:', spots.length, 'spots from', node.host);
+            logDebug('[DX Cluster] DX Spider:', spots.length, 'spots from', node.host);
             dxSpiderCache = { spots: spots, timestamp: Date.now() };
             resolve(spots);
           }
@@ -1135,14 +1239,14 @@ app.get('/api/dxcluster/spots', async (req, res) => {
     spots = await fetchDXSpiderProxy();
     // Fallback to HamQTH if proxy fails
     if (!spots) {
-      console.log('[DX Cluster] Proxy failed, falling back to HamQTH');
+      logDebug('[DX Cluster] Proxy failed, falling back to HamQTH');
       spots = await fetchHamQTH();
     }
   } else if (source === 'dxspider') {
     spots = await fetchDXSpider();
     // Fallback to HamQTH if DX Spider fails
     if (!spots) {
-      console.log('[DX Cluster] DX Spider failed, falling back to HamQTH');
+      logDebug('[DX Cluster] DX Spider failed, falling back to HamQTH');
       spots = await fetchHamQTH();
     }
   } else {
@@ -1182,7 +1286,7 @@ const DXPATHS_RETENTION = 30 * 60 * 1000; // 30 minute spot retention
 app.get('/api/dxcluster/paths', async (req, res) => {
   // Check cache first
   if (Date.now() - dxSpotPathsCache.timestamp < DXPATHS_CACHE_TTL && dxSpotPathsCache.paths.length > 0) {
-    console.log('[DX Paths] Returning', dxSpotPathsCache.paths.length, 'cached paths');
+    logDebug('[DX Paths] Returning', dxSpotPathsCache.paths.length, 'cached paths');
     return res.json(dxSpotPathsCache.paths);
   }
   
@@ -1215,11 +1319,11 @@ app.get('/api/dxcluster/paths', async (req, res) => {
             time: s.time || '',
             id: `${s.call}-${s.freqKhz || s.freq}-${s.spotter}`
           }));
-          console.log('[DX Paths] Got', newSpots.length, 'spots from proxy');
+          logDebug('[DX Paths] Got', newSpots.length, 'spots from proxy');
         }
       }
     } catch (proxyErr) {
-      console.log('[DX Paths] Proxy failed, trying HamQTH');
+      logDebug('[DX Paths] Proxy failed, trying HamQTH');
     }
     
     // Fallback to HamQTH if proxy failed
@@ -1261,10 +1365,10 @@ app.get('/api/dxcluster/paths', async (req, res) => {
               id: `${dxCall}-${freqKhz}-${spotter}`
             });
           }
-          console.log('[DX Paths] Got', newSpots.length, 'spots from HamQTH');
+          logDebug('[DX Paths] Got', newSpots.length, 'spots from HamQTH');
         }
       } catch (hamqthErr) {
-        console.log('[DX Paths] HamQTH also failed');
+        logDebug('[DX Paths] HamQTH also failed');
       }
     }
     
@@ -1415,7 +1519,7 @@ app.get('/api/dxcluster/paths', async (req, res) => {
     // Sort by timestamp (newest first) and limit
     const sortedPaths = mergedPaths.sort((a, b) => b.timestamp - a.timestamp).slice(0, 100);
     
-    console.log('[DX Paths]', sortedPaths.length, 'total paths (', newPaths.length, 'new from', newSpots.length, 'spots)');
+    logDebug('[DX Paths]', sortedPaths.length, 'total paths (', newPaths.length, 'new from', newSpots.length, 'spots)');
     
     // Update cache
     dxSpotPathsCache = { 
@@ -1426,7 +1530,7 @@ app.get('/api/dxcluster/paths', async (req, res) => {
     
     res.json(dxSpotPathsCache.paths);
   } catch (error) {
-    console.error('[DX Paths] Error:', error.message);
+    logErrorOnce('DX Paths', error.message);
     // Return cached data on error
     res.json(dxSpotPathsCache.paths || []);
   }
@@ -1439,7 +1543,7 @@ app.get('/api/dxcluster/paths', async (req, res) => {
 // Simple callsign to grid/location lookup using HamQTH
 app.get('/api/callsign/:call', async (req, res) => {
   const callsign = req.params.call.toUpperCase();
-  console.log('[Callsign Lookup] Looking up:', callsign);
+  logDebug('[Callsign Lookup] Looking up:', callsign);
   
   try {
     // Try HamQTH XML API (no auth needed for basic lookup)
@@ -1463,7 +1567,7 @@ app.get('/api/callsign/:call', async (req, res) => {
           cqZone: cqMatch ? cqMatch[1] : '',
           ituZone: ituMatch ? ituMatch[1] : ''
         };
-        console.log('[Callsign Lookup] Found:', result);
+        logDebug('[Callsign Lookup] Found:', result);
         return res.json(result);
       }
     }
@@ -1471,13 +1575,13 @@ app.get('/api/callsign/:call', async (req, res) => {
     // Fallback: estimate location from callsign prefix
     const estimated = estimateLocationFromPrefix(callsign);
     if (estimated) {
-      console.log('[Callsign Lookup] Estimated from prefix:', estimated);
+      logDebug('[Callsign Lookup] Estimated from prefix:', estimated);
       return res.json(estimated);
     }
     
     res.status(404).json({ error: 'Callsign not found' });
   } catch (error) {
-    console.error('[Callsign Lookup] Error:', error.message);
+    logErrorOnce('Callsign Lookup', error.message);
     res.status(500).json({ error: 'Lookup failed' });
   }
 });
@@ -1869,7 +1973,7 @@ function getCountryFromPrefix(prefix) {
 
 app.get('/api/myspots/:callsign', async (req, res) => {
   const callsign = req.params.callsign.toUpperCase();
-  console.log('[My Spots] Searching for callsign:', callsign);
+  logDebug('[My Spots] Searching for callsign:', callsign);
   
   const mySpots = [];
   
@@ -1918,7 +2022,7 @@ app.get('/api/myspots/:callsign', async (req, res) => {
       }
     }
     
-    console.log('[My Spots] Found', mySpots.length, 'spots involving', callsign);
+    logDebug('[My Spots] Found', mySpots.length, 'spots involving', callsign);
     
     // Now try to get locations for each unique callsign
     const uniqueCalls = [...new Set(mySpots.map(s => s.isMySpot ? s.dxCall : s.spotter))];
@@ -2178,7 +2282,7 @@ app.get('/api/pskreporter/http/:callsign', async (req, res) => {
     // Cache it
     pskHttpCache[cacheKey] = { data: result, timestamp: now };
     
-    console.log(`[PSKReporter HTTP] Found ${reports.length} ${direction} reports for ${callsign}`);
+    logDebug(`[PSKReporter HTTP] Found ${reports.length} ${direction} reports for ${callsign}`);
     res.json(result);
     
   } catch (error) {
@@ -2756,7 +2860,7 @@ app.get('/api/satellites/tle', async (req, res) => {
       return res.json(tleCache.data);
     }
     
-    console.log('[Satellites] Fetching fresh TLE data...');
+    logDebug('[Satellites] Fetching fresh TLE data...');
     
     // Fetch fresh TLE data from CelesTrak
     const tleData = {};
@@ -2826,7 +2930,7 @@ app.get('/api/satellites/tle', async (req, res) => {
               tle1: issLines[1].trim(),
               tle2: issLines[2].trim()
             };
-            console.log('[Satellites] Found ISS TLE');
+            logDebug('[Satellites] Found ISS TLE');
           }
         }
       } catch (e) {
@@ -2839,7 +2943,7 @@ app.get('/api/satellites/tle', async (req, res) => {
     // Cache the result
     tleCache = { data: tleData, timestamp: now };
     
-    console.log('[Satellites] Loaded TLE for', Object.keys(tleData).length, 'satellites');
+    logDebug('[Satellites] Loaded TLE for', Object.keys(tleData).length, 'satellites');
     res.json(tleData);
     
   } catch (error) {
@@ -2906,7 +3010,7 @@ async function fetchIonosondeData() {
       timestamp: now
     };
     
-    console.log(`[Ionosonde] Fetched ${validStations.length} valid stations from KC2G`);
+    logDebug(`[Ionosonde] Fetched ${validStations.length} valid stations from KC2G`);
     return validStations;
     
   } catch (error) {
@@ -2962,7 +3066,7 @@ function interpolateFoF2(lat, lon, stations) {
   
   // Check if nearest station is within valid range
   if (stationsWithDist[0].distance > MAX_VALID_DISTANCE) {
-    console.log(`[Ionosonde] Nearest station ${stationsWithDist[0].name} is ${Math.round(stationsWithDist[0].distance)}km away - too far, using estimates`);
+    logDebug(`[Ionosonde] Nearest station ${stationsWithDist[0].name} is ${Math.round(stationsWithDist[0].distance)}km away - too far, using estimates`);
     return {
       foF2: null,
       mufd: null,
@@ -3135,7 +3239,7 @@ function calculateIonoCorrection(expectedFoF2, actualFoF2, kIndex) {
     confidence = 'low';    // Model significantly off - rely more on ionosonde
   }
   
-  console.log(`[Hybrid] Correction factor: ${factor.toFixed(2)} (expected foF2: ${expectedFoF2.toFixed(1)}, actual: ${actualFoF2.toFixed(1)}, K: ${kIndex})`);
+  logDebug(`[Hybrid] Correction factor: ${factor.toFixed(2)} (expected foF2: ${expectedFoF2.toFixed(1)}, actual: ${actualFoF2.toFixed(1)}, K: ${kIndex})`);
   
   return { factor, confidence, ratio, kFactor };
 }
@@ -3220,7 +3324,7 @@ app.get('/api/propagation', async (req, res) => {
   const { deLat, deLon, dxLat, dxLon } = req.query;
   
   const useHybrid = ITURHFPROP_URL !== null;
-  console.log(`[Propagation] ${useHybrid ? 'Hybrid' : 'Standalone'} calculation for DE:`, deLat, deLon, 'to DX:', dxLat, dxLon);
+  logDebug(`[Propagation] ${useHybrid ? 'Hybrid' : 'Standalone'} calculation for DE:`, deLat, deLon, 'to DX:', dxLat, dxLon);
   
   try {
     // Get current space weather data
@@ -3242,7 +3346,7 @@ app.get('/api/propagation', async (req, res) => {
       }
       ssn = Math.max(0, Math.round((sfi - 67) / 0.97));
     } catch (e) {
-      console.log('[Propagation] Using default solar values');
+      logDebug('[Propagation] Using default solar values');
     }
     
     // Get real ionosonde data
@@ -3269,10 +3373,10 @@ app.get('/api/propagation', async (req, res) => {
     const currentHour = new Date().getUTCHours();
     const currentMonth = new Date().getMonth() + 1;
     
-    console.log('[Propagation] Distance:', Math.round(distance), 'km');
-    console.log('[Propagation] Solar: SFI', sfi, 'SSN', ssn, 'K', kIndex);
+    logDebug('[Propagation] Distance:', Math.round(distance), 'km');
+    logDebug('[Propagation] Solar: SFI', sfi, 'SSN', ssn, 'K', kIndex);
     if (hasValidIonoData) {
-      console.log('[Propagation] Real foF2:', ionoData.foF2?.toFixed(2), 'MHz from', ionoData.nearestStation || ionoData.source);
+      logDebug('[Propagation] Real foF2:', ionoData.foF2?.toFixed(2), 'MHz from', ionoData.nearestStation || ionoData.source);
     }
     
     // ===== HYBRID MODE: Try ITURHFProp first =====
@@ -3285,7 +3389,7 @@ app.get('/api/propagation', async (req, res) => {
       if (iturhfpropData && hasValidIonoData) {
         // Full hybrid: ITURHFProp + ionosonde correction
         hybridResult = applyHybridCorrection(iturhfpropData, ionoData, kIndex, sfi);
-        console.log('[Propagation] Using HYBRID mode (ITURHFProp + ionosonde correction)');
+        logDebug('[Propagation] Using HYBRID mode (ITURHFProp + ionosonde correction)');
       } else if (iturhfpropData) {
         // ITURHFProp only (no ionosonde coverage)
         hybridResult = {
@@ -3293,7 +3397,7 @@ app.get('/api/propagation', async (req, res) => {
           muf: iturhfpropData.muf,
           model: 'ITU-R P.533-14 (ITURHFProp)'
         };
-        console.log('[Propagation] Using ITURHFProp only (no ionosonde coverage)');
+        logDebug('[Propagation] Using ITURHFProp only (no ionosonde coverage)');
       }
     }
     
@@ -3377,7 +3481,7 @@ app.get('/api/propagation', async (req, res) => {
       
     } else {
       // Full fallback - use built-in calculations
-      console.log('[Propagation] Using FALLBACK mode (built-in calculations)');
+      logDebug('[Propagation] Using FALLBACK mode (built-in calculations)');
       
       bands.forEach((band, idx) => {
         const freq = bandFreqs[idx];
@@ -3464,7 +3568,7 @@ app.get('/api/propagation', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('[Propagation] Error:', error.message);
+    logErrorOnce('Propagation', error.message);
     res.status(500).json({ error: 'Failed to calculate propagation' });
   }
 });
@@ -3697,23 +3801,23 @@ app.get('/api/contests', async (req, res) => {
       const contests = parseContestRSS(text);
       
       if (contests.length > 0) {
-        console.log('[Contests] WA7BNM RSS:', contests.length, 'contests');
+        logDebug('[Contests] WA7BNM RSS:', contests.length, 'contests');
         return res.json(contests);
       }
     }
   } catch (error) {
     if (error.name !== 'AbortError') {
-      console.error('[Contests] RSS error:', error.message);
+      logErrorOnce('Contests RSS', error.message);
     }
   }
 
   // Fallback: Use calculated contests
   try {
     const contests = calculateUpcomingContests();
-    console.log('[Contests] Using calculated:', contests.length, 'contests');
+    logDebug('[Contests] Using calculated:', contests.length, 'contests');
     return res.json(contests);
   } catch (error) {
-    console.error('[Contests] Calculation error:', error.message);
+    logErrorOnce('Contests', error.message);
   }
 
   res.json([]);
@@ -3994,11 +4098,29 @@ function getLastWeekendOfMonth(year, month) {
 // ============================================
 
 app.get('/api/health', (req, res) => {
+  rolloverVisitorStats();
+  const avg = visitorStats.history.length > 0
+    ? Math.round(visitorStats.history.reduce((sum, d) => sum + d.uniqueVisitors, 0) / visitorStats.history.length)
+    : visitorStats.uniqueIPs.size;
   res.json({
     status: 'ok',
     version: APP_VERSION,
     uptime: process.uptime(),
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    visitors: {
+      today: {
+        date: visitorStats.today,
+        uniqueVisitors: visitorStats.uniqueIPs.size,
+        totalRequests: visitorStats.totalRequests
+      },
+      allTime: {
+        since: visitorStats.serverStarted,
+        uniqueVisitors: visitorStats.allTimeVisitors,
+        totalRequests: visitorStats.allTimeRequests
+      },
+      dailyAverage: avg,
+      history: visitorStats.history
+    }
   });
 });
 
@@ -4939,6 +5061,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`  🔗 Network access: http://<your-ip>:${PORT}`);
   }
   console.log('  📡 API proxy enabled for NOAA, POTA, SOTA, DX Cluster');
+  console.log(`  📋 Log level: ${LOG_LEVEL} (set LOG_LEVEL=debug for verbose)`);
   if (WSJTX_ENABLED) {
     console.log(`  🔊 WSJT-X UDP listener on port ${WSJTX_UDP_PORT}`);
   }

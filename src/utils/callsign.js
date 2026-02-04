@@ -242,8 +242,7 @@ export const filterDXPaths = (paths, filters) => {
     // Exclude list - hide matching callsigns
     if (filters.excludeList?.length > 0) {
       const isExcluded = filters.excludeList.some(e =>
-        path.dxCall?.toUpperCase().includes(e.toUpperCase()) ||
-        path.spotter?.toUpperCase().includes(e.toUpperCase())
+        path.dxCall?.toUpperCase().startsWith(e.toUpperCase())
       );
       if (isExcluded) return false;
     }
