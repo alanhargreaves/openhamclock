@@ -70,7 +70,7 @@ function getMarkerSize(snr) {
   return 14;
 }
 
-// Calculate great circle path
+// Calculate great circle path with proper dateline handling
 function getGreatCirclePath(lat1, lon1, lat2, lon2, numPoints = 30) {
   if (!isFinite(lat1) || !isFinite(lon1) || !isFinite(lat2) || !isFinite(lon2)) {
     return [[lat1, lon1], [lat2, lon2]];
@@ -82,19 +82,38 @@ function getGreatCirclePath(lat1, lon1, lat2, lon2, numPoints = 30) {
     return [[lat1, lon1], [lat2, lon2]];
   }
   
+  // Normalize longitudes to handle dateline crossing
+  let lon1Norm = lon1;
+  let lon2Norm = lon2;
+  
+  // Check if path crosses dateline (longitude difference > 180°)
+  if (Math.abs(lon2 - lon1) > 180) {
+    // Adjust longitudes to take shorter path
+    if (lon2 > lon1) {
+      lon1Norm = lon1 + 360;
+    } else {
+      lon2Norm = lon2 + 360;
+    }
+  }
+  
   const path = [];
   
   // Convert to radians
   const lat1Rad = lat1 * Math.PI / 180;
-  const lon1Rad = lon1 * Math.PI / 180;
+  const lon1Rad = lon1Norm * Math.PI / 180;
   const lat2Rad = lat2 * Math.PI / 180;
-  const lon2Rad = lon2 * Math.PI / 180;
+  const lon2Rad = lon2Norm * Math.PI / 180;
   
   // Calculate distance
   const d = Math.acos(
     Math.sin(lat1Rad) * Math.sin(lat2Rad) +
     Math.cos(lat1Rad) * Math.cos(lat2Rad) * Math.cos(lon2Rad - lon1Rad)
   );
+  
+  // Handle very small distances
+  if (isNaN(d) || d < 0.0001) {
+    return [[lat1, lon1], [lat2, lon2]];
+  }
   
   // Generate points along the path
   for (let i = 0; i <= numPoints; i++) {
@@ -109,7 +128,11 @@ function getGreatCirclePath(lat1, lon1, lat2, lon2, numPoints = 30) {
     const z = A * Math.sin(lat1Rad) + B * Math.sin(lat2Rad);
     
     const lat = Math.atan2(z, Math.sqrt(x * x + y * y)) * 180 / Math.PI;
-    const lon = Math.atan2(y, x) * 180 / Math.PI;
+    let lon = Math.atan2(y, x) * 180 / Math.PI;
+    
+    // Normalize longitude back to -180 to 180 range
+    while (lon > 180) lon -= 360;
+    while (lon < -180) lon += 360;
     
     path.push([lat, lon]);
   }
@@ -413,7 +436,7 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null, callsign 
           </label>
         </div>
         <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #444; font-size: 10px; color: #888;">
-          Data: reversebeacon.net | Update: 2min
+          Data: reversebeacon.net | Update: 10sec
         </div>
       `;
 
