@@ -163,8 +163,17 @@ export const WorldMap = ({
 
     mapInstanceRef.current = map;
 
+    // ResizeObserver to handle panel resize/maximize in dockable layout
+    const resizeObserver = new ResizeObserver(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    });
+    resizeObserver.observe(mapRef.current);
+
     return () => {
       clearInterval(terminatorInterval);
+      resizeObserver.disconnect();
       map.remove();
       mapInstanceRef.current = null;
     };
