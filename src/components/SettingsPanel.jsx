@@ -7,7 +7,7 @@ import { calculateGridSquare } from '../utils/geo.js';
 import { useTranslation, Trans } from 'react-i18next';
 import { LANGUAGES } from '../lang/i18n.js';
 
-export const SettingsPanel = ({ isOpen, onClose, config, onSave }) => {
+export const SettingsPanel = ({ isOpen, onClose, config, onSave, onResetLayout }) => {
   const [callsign, setCallsign] = useState(config?.callsign || '');
   const [headerSize, setheaderSize] = useState(config?.headerSize || 1.0);
   const [gridSquare, setGridSquare] = useState('');
@@ -178,7 +178,8 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave }) => {
     modern: t('station.settings.layout.modern.describe'),
     classic: t('station.settings.layout.classic.describe'),
     tablet: t('station.settings.layout.tablet.describe'),
-    compact: t('station.settings.layout.compact.describe')
+    compact: t('station.settings.layout.compact.describe'),
+    dockable: 'Resizable, draggable panels with tabs'
   };
 
   return (
@@ -462,8 +463,8 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave }) => {
               <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px' }}>
                 {t('station.settings.layout')}
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-                {['modern', 'classic', 'tablet', 'compact'].map((l) => (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                {['modern', 'classic', 'tablet', 'compact', 'dockable'].map((l) => (
                   <button
                     key={l}
                     onClick={() => setLayout(l)}
@@ -473,18 +474,46 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave }) => {
                       border: `1px solid ${layout === l ? 'var(--accent-amber)' : 'var(--border-color)'}`,
                       borderRadius: '6px',
                       color: layout === l ? '#000' : 'var(--text-secondary)',
-                      fontSize: '13px',
+                      fontSize: '12px',
                       cursor: 'pointer',
                       fontWeight: layout === l ? '600' : '400'
                     }}
                   >
-                    {l === 'modern' ? '🖥️' : l === 'classic' ? '📺' : l === 'tablet' ? '📱' : '📊'} {t('station.settings.layout.' + l)}
+                    {l === 'modern' ? '🖥️' : l === 'classic' ? '📺' : l === 'tablet' ? '📱' : l === 'compact' ? '📊' : '⊞'} {l === 'dockable' ? 'Dockable' : t('station.settings.layout.' + l)}
                   </button>
                 ))}
               </div>
               <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
                 {layoutDescriptions[layout]}
               </div>
+              {layout === 'dockable' && onResetLayout && (
+                <button
+                  onClick={() => {
+                    if (confirm('Reset panel layout to default?')) {
+                      onResetLayout();
+                    }
+                  }}
+                  style={{
+                    marginTop: '10px',
+                    padding: '8px 12px',
+                    background: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-secondary)',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                    <path d="M3 3v5h5" />
+                  </svg>
+                  Reset Panel Layout
+                </button>
+              )}
             </div>
 
             {/* DX Cluster Source */}

@@ -533,6 +533,19 @@ export function useLayer({ enabled = false, opacity = 0.5, map = null }) {
     setTimeout(() => {
       const container = document.querySelector('.grayline-control');
       if (container) {
+        // Apply saved position IMMEDIATELY before making draggable
+        const saved = localStorage.getItem('grayline-position');
+        if (saved) {
+          try {
+            const { top, left } = JSON.parse(saved);
+            container.style.position = 'fixed';
+            container.style.top = top + 'px';
+            container.style.left = left + 'px';
+            container.style.right = 'auto';
+            container.style.bottom = 'auto';
+          } catch (e) {}
+        }
+        
         makeDraggable(container, 'grayline-position');
         addMinimizeToggle(container, 'grayline-position');
       }

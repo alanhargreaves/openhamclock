@@ -255,13 +255,22 @@ function makeDraggable(element, storageKey) {
 
 // Add minimize/maximize functionality to control panels
 function addMinimizeToggle(element, storageKey) {
-  if (!element) return;
+  if (!element) {
+    console.warn('[WSPR] addMinimizeToggle: element is null/undefined for', storageKey);
+    return;
+  }
   
   const minimizeKey = storageKey + '-minimized';
   
   // Create minimize button
-  const header = element.querySelector('div:first-child');
-  if (!header) return;
+  // Use firstElementChild instead of querySelector
+  const header = element.firstElementChild;
+  if (!header) {
+    console.warn('[WSPR] No header found for minimize toggle on', storageKey, 'children:', element.children.length);
+    return;
+  }
+  
+  console.log('[WSPR] Adding minimize toggle to', storageKey, 'header:', header.innerHTML.substring(0, 50));
   
   // Wrap content (everything except header)
   const content = Array.from(element.children).slice(1);
@@ -497,6 +506,19 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
     setTimeout(() => {
       const container = document.querySelector('.wspr-filter-control');
       if (container) {
+        // Apply saved position IMMEDIATELY before making draggable
+        const saved = localStorage.getItem('wspr-filter-position');
+        if (saved) {
+          try {
+            const { top, left } = JSON.parse(saved);
+            container.style.position = 'fixed';
+            container.style.top = top + 'px';
+            container.style.left = left + 'px';
+            container.style.right = 'auto';
+            container.style.bottom = 'auto';
+          } catch (e) {}
+        }
+        
         makeDraggable(container, 'wspr-filter-position');
         addMinimizeToggle(container, 'wspr-filter-position');
       }
@@ -557,6 +579,7 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
           font-size: 11px;
           color: white;
           box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+          min-width: 160px;
         `;
         div.innerHTML = `
           <div style="font-weight: bold; margin-bottom: 6px; font-size: 13px;">📊 WSPR Activity</div>
@@ -570,6 +593,11 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
           <div>Total: <span style="color: #00ff00;">0</span></div>
           <div style="margin-top: 6px; font-size: 10px; opacity: 0.7;">Initializing...</div>
         `;
+        
+        // Prevent map interaction when clicking/dragging on this control
+        L.DomEvent.disableClickPropagation(div);
+        L.DomEvent.disableScrollPropagation(div);
+        
         return div;
       }
     });
@@ -582,6 +610,19 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
     setTimeout(() => {
       const container = document.querySelector('.wspr-stats');
       if (container) {
+        // Apply saved position IMMEDIATELY before making draggable
+        const saved = localStorage.getItem('wspr-stats-position');
+        if (saved) {
+          try {
+            const { top, left } = JSON.parse(saved);
+            container.style.position = 'fixed';
+            container.style.top = top + 'px';
+            container.style.left = left + 'px';
+            container.style.right = 'auto';
+            container.style.bottom = 'auto';
+          } catch (e) {}
+        }
+        
         makeDraggable(container, 'wspr-stats-position');
         addMinimizeToggle(container, 'wspr-stats-position');
       }
@@ -623,6 +664,19 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
     setTimeout(() => {
       const container = document.querySelector('.wspr-legend');
       if (container) {
+        // Apply saved position IMMEDIATELY before making draggable
+        const saved = localStorage.getItem('wspr-legend-position');
+        if (saved) {
+          try {
+            const { top, left } = JSON.parse(saved);
+            container.style.position = 'fixed';
+            container.style.top = top + 'px';
+            container.style.left = left + 'px';
+            container.style.right = 'auto';
+            container.style.bottom = 'auto';
+          } catch (e) {}
+        }
+        
         makeDraggable(container, 'wspr-legend-position');
         addMinimizeToggle(container, 'wspr-legend-position');
       }
@@ -641,9 +695,14 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
           font-size: 10px;
           color: white;
           box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-          max-width: 200px;
+          min-width: 160px;
         `;
         div.innerHTML = '<div style="font-weight: bold; margin-bottom: 6px; font-size: 11px;">📊 Band Activity</div><div style="opacity: 0.7;">Loading...</div>';
+        
+        // Prevent map interaction when clicking/dragging on this control
+        L.DomEvent.disableClickPropagation(div);
+        L.DomEvent.disableScrollPropagation(div);
+        
         return div;
       }
     });
@@ -656,6 +715,19 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
     setTimeout(() => {
       const container = document.querySelector('.wspr-chart');
       if (container) {
+        // Apply saved position IMMEDIATELY before making draggable
+        const saved = localStorage.getItem('wspr-chart-position');
+        if (saved) {
+          try {
+            const { top, left } = JSON.parse(saved);
+            container.style.position = 'fixed';
+            container.style.top = top + 'px';
+            container.style.left = left + 'px';
+            container.style.right = 'auto';
+            container.style.bottom = 'auto';
+          } catch (e) {}
+        }
+        
         makeDraggable(container, 'wspr-chart-position');
         addMinimizeToggle(container, 'wspr-chart-position');
       }
@@ -805,8 +877,7 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
     setTimeout(() => {
       const statsContainer = document.querySelector('.wspr-stats');
       if (statsContainer && enabled) {
-        statsContainer.innerHTML = `
-          <div style="font-weight: bold; margin-bottom: 6px; font-size: 13px;">📊 WSPR Activity</div>
+        const contentHTML = `
           <div style="margin-bottom: 8px; padding: 6px; background: rgba(255,255,255,0.1); border-radius: 3px;">
             <div style="font-size: 10px; opacity: 0.8; margin-bottom: 2px;">Propagation Score</div>
             <div style="font-size: 18px; font-weight: bold; color: ${scoreColor};">${propScore}/100</div>
@@ -817,6 +888,19 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
           <div>Total: <span style="color: #00ff00;">${totalStations}</span></div>
           <div style="margin-top: 6px; font-size: 10px; opacity: 0.7;">Last ${timeWindow} min</div>
         `;
+        
+        // Check if minimize toggle has been added (content is wrapped)
+        const contentWrapper = statsContainer.querySelector('.wspr-panel-content');
+        if (contentWrapper) {
+          // Update only the content wrapper to preserve header and minimize button
+          contentWrapper.innerHTML = contentHTML;
+        } else {
+          // Initial render before minimize toggle is added
+          statsContainer.innerHTML = `
+            <div style="font-weight: bold; margin-bottom: 6px; font-size: 13px;">📊 WSPR Activity</div>
+            ${contentHTML}
+          `;
+        }
       }
     }, 50);
     
@@ -830,7 +914,7 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
           bandCounts[band] = (bandCounts[band] || 0) + 1;
         });
         
-        let chartHTML = '<div style="font-weight: bold; margin-bottom: 6px; font-size: 11px;">📊 Band Activity</div>';
+        let chartContentHTML = '';
         
         Object.entries(bandCounts)
           .sort((a, b) => b[1] - a[1])
@@ -838,7 +922,7 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
           .forEach(([band, count]) => {
             const percentage = (count / limitedData.length) * 100;
             const barWidth = Math.max(percentage, 5);
-            chartHTML += `
+            chartContentHTML += `
               <div style="margin-bottom: 4px;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
                   <span>${band}</span>
@@ -851,7 +935,18 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
             `;
           });
         
-        chartContainer.innerHTML = chartHTML;
+        // Check if minimize toggle has been added (content is wrapped)
+        const contentWrapper = chartContainer.querySelector('.wspr-panel-content');
+        if (contentWrapper) {
+          // Update only the content wrapper to preserve header and minimize button
+          contentWrapper.innerHTML = chartContentHTML;
+        } else {
+          // Initial render before minimize toggle is added
+          chartContainer.innerHTML = `
+            <div style="font-weight: bold; margin-bottom: 6px; font-size: 11px;">📊 Band Activity</div>
+            ${chartContentHTML}
+          `;
+        }
       }
     }, 50);
     

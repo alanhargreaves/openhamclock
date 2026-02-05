@@ -38,6 +38,7 @@ export const WorldMap = ({
   showWSJTX,
   onToggleSatellites, 
   hoveredSpot,
+  callsign = 'N0CALL',
   hideOverlays
 }) => {
   const mapRef = useRef(null);
@@ -163,8 +164,17 @@ export const WorldMap = ({
 
     mapInstanceRef.current = map;
 
+    // ResizeObserver to handle panel resize/maximize in dockable layout
+    const resizeObserver = new ResizeObserver(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    });
+    resizeObserver.observe(mapRef.current);
+
     return () => {
       clearInterval(terminatorInterval);
+      resizeObserver.disconnect();
       map.remove();
       mapInstanceRef.current = null;
     };
@@ -760,6 +770,7 @@ export const WorldMap = ({
           enabled={pluginLayerStates[layerDef.id]?.enabled || false}
           opacity={pluginLayerStates[layerDef.id]?.opacity || layerDef.defaultOpacity}
           map={mapInstanceRef.current}
+          callsign={callsign}
         />
       ))}
       

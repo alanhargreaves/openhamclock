@@ -65,7 +65,7 @@ npm run dev
   - [DXpeditions](#dxpeditions)
   - [DX News Ticker](#dx-news-ticker)
   - [WSJT-X Integration](#wsjt-x-integration)
-  - [Local Weather](#local-weather)
+  - [Weather](#weather)
   - [DE / DX Location Panels](#de--dx-location-panels)
   - [Header Bar](#header-bar)
 - [Themes and Layouts](#themes-and-layouts)
@@ -421,18 +421,21 @@ WSJT-X sends data over UDP, which only works on a local network. For cloud deplo
 
 ---
 
-### Local Weather
+### Weather
 
-Current weather conditions at your station location, displayed in the header bar and the DE location panel.
+Current weather conditions at your station location, displayed in the header bar and the DE location panel and, optionally, weather at the currently selected DX target station.
 
-**What it shows:**
+**In the header:**
 
-- Temperature in both °F and °C (always shown in the header)
+- Weather description icon and temperature in both °F and °C
+
+**Below the DE and optionally DX Location panel:**
+- Temperature in either °F or °C with a toggle to select which one (note that the toggle affects both the DE and DX temperature display)
 - Weather description (clear, cloudy, rain, snow, etc.) with an emoji icon
 - Humidity and wind speed
 - Collapsible detail view in the DE panel (click to expand/collapse)
 
-**How to use it:** The weather is shown automatically based on your configured station coordinates. Click the weather line in the DE panel to expand full details or collapse to a one-line summary.
+**How to use it:** The weather is shown automatically based on your configured station coordinates and, optionally, at the currently selected DX target station. Click the weather line in the DE/DX panel to expand full details or collapse to a one-line summary.
 
 **Data sources:**
 
@@ -462,6 +465,7 @@ Information panels for your station (DE) and the currently selected DX target st
 - DXCC entity, CQ zone, and ITU zone
 - Bearing (azimuth) and distance from your station
 - Sunrise and sunset times at the DX location
+- DX location weather (optional and collapsible)
 
 **How to use it:** The DX panel updates whenever you click a spot in the DX cluster, click a location on the map, or manually enter a callsign/grid in the DX panel. The bearing shown is useful for rotating a directional antenna.
 
@@ -538,9 +542,9 @@ Layer preferences persist in localStorage.
 
 ## Languages
 
-The interface is available in 8 languages, selectable in Settings:
+The interface is available in 10 languages, selectable in Settings:
 
-🇬🇧 English · 🇫🇷 Français · 🇪🇸 Español · 🇩🇪 Deutsch · 🇳🇱 Nederlands · 🇧🇷 Português · 🇯🇵 日本語 · 🇮🇹 Italiano
+🇬🇧 English · 🇫🇷 Français · 🇪🇸 Español · 🇩🇪 Deutsch · 🇳🇱 Nederlands · 🇧🇷 Português · 🇯🇵 日本語 · 🇰🇷 한국어 · 🇮🇹 Italiano · 🇸🇮 Slovenščina
 
 Language files are in `src/lang/`. Each is a JSON file with translation keys. Contributions of new translations are welcome — just copy `en.json`, translate the values, and submit a PR.
 
@@ -584,6 +588,7 @@ All configuration is done through the `.env` file. On first run, this file is au
 | `SHOW_POTA` | `true` | Show POTA activator markers on the map. |
 | `SHOW_SATELLITES` | `true` | Show satellite tracks on the map. |
 | `SHOW_DX_PATHS` | `true` | Show great-circle DX signal paths on the map. |
+| `SHOW_DX_WEATHER` | `true` | Show weather for the selected DX location. |
 
 ### External Services
 
@@ -892,7 +897,7 @@ openhamclock/
 │   │   ├── useDXpeditions.js     # DXpedition list — polls every 30 minutes
 │   │   ├── useDXPaths.js         # DX spot paths for map — polls every 10 seconds
 │   │   ├── useMySpots.js         # Your callsign spotted by others — polls every 30 seconds
-│   │   ├── useLocalWeather.js    # Weather — polls every 15 minutes
+│   │   ├── useWeather.js         # Weather — polls every 15 minutes
 │   │   └── useWSJTX.js           # WSJT-X decoded messages — polls every 2 seconds
 │   ├── utils/
 │   │   ├── config.js             # App configuration (localStorage read/write, theme application)

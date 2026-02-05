@@ -404,13 +404,20 @@ export const SolarPanel = ({ solarIndices }) => {
   };
 
   return (
-    <div className="panel" style={{ padding: '8px' }}>
+    <div style={{
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      padding: '8px',
+      boxSizing: 'border-box'
+    }}>
       {/* Header with cycle button */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: '6px'
+        marginBottom: '6px',
+        flexShrink: 0
       }}>
         <span style={{ fontSize: '12px', color: mode === 'lunar' ? 'var(--accent-purple)' : 'var(--accent-amber)', fontWeight: '700' }}>
           {mode === 'lunar' ? '🌙' : '☀'} {MODE_LABELS[mode]}
@@ -456,7 +463,7 @@ export const SolarPanel = ({ solarIndices }) => {
       
       {mode === 'indices' ? (
         /* Solar Indices View */
-        <div>
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
           {solarIndices?.data ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {/* SFI Row */}
@@ -570,19 +577,34 @@ export const SolarPanel = ({ solarIndices }) => {
         </div>
       ) : mode === 'xray' ? (
         /* X-Ray Flux Chart View */
-        renderXrayChart()
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+          {renderXrayChart()}
+        </div>
       ) : mode === 'lunar' ? (
         /* Lunar Phase View */
-        renderLunar()
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+          {renderLunar()}
+        </div>
       ) : (
         /* Solar Image View */
-        <div style={{ textAlign: 'center' }}>
-          <img 
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: 0,
+          overflow: 'hidden'
+        }}>
+          <img
             src={imageUrl}
             alt="SDO Solar Image"
-            style={{ 
-              width: '100%', 
-              maxWidth: '200px',
+            style={{
+              maxHeight: '100%',
+              maxWidth: '100%',
+              width: 'auto',
+              height: 'auto',
+              objectFit: 'contain',
               borderRadius: '50%',
               border: '2px solid var(--border-color)'
             }}
@@ -590,7 +612,7 @@ export const SolarPanel = ({ solarIndices }) => {
               e.target.style.display = 'none';
             }}
           />
-          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px', flexShrink: 0 }}>
             SDO/AIA • Live from NASA
           </div>
         </div>
