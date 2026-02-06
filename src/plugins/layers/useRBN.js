@@ -202,8 +202,8 @@ function addMinimizeToggle(element, storageKey) {
 
 export const metadata = {
   id: 'rbn',
-  name: 'Reverse Beacon Network',
-  description: 'See who\'s hearing YOUR signal with SNR heatmap',
+  name: 'plugins.layers.rbn.name',
+  description: 'plugins.layers.rbn.description',
   icon: '📡',
   category: 'propagation',
   defaultEnabled: false,
@@ -636,25 +636,26 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null, callsign 
 
     control.onAdd = function() {
       const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control rbn-control');
-      div.style.background = 'rgba(0, 0, 0, 0.85)';
+      div.style.background = 'var(--bg-panel)';
       div.style.padding = '10px';
       div.style.borderRadius = '8px';
       div.style.minWidth = '250px';
-      div.style.color = '#fff';
+      div.style.color = 'var(--text-primary)';
       div.style.fontFamily = "'JetBrains Mono', monospace";
       div.style.fontSize = '12px';
+      div.style.border = '1px solid var(--border-color)';
 
       div.innerHTML = `
         <div style="margin-bottom: 8px;">
           <b>📡 RBN: ${callsign}</b>
         </div>
-        <div id="rbn-stats-display" style="margin-bottom: 8px; color: #aaa;">
+        <div id="rbn-stats-display" style="margin-bottom: 8px; color: var(--text-secondary);">
           Spots: <b>0</b> | Skimmers: <b>0</b><br>
           Avg SNR: <b>0 dB</b>
         </div>
         <div style="margin-bottom: 6px;">
           <label>Band:</label>
-          <select id="rbn-band-select" style="width: 100%; background: #333; color: #fff; border: 1px solid #555; padding: 4px;">
+          <select id="rbn-band-select" style="width: 100%; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 4px;">
             <option value="all">All Bands</option>
             <option value="160m">160m</option>
             <option value="80m">80m</option>
@@ -682,7 +683,7 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null, callsign 
             Show Paths
           </label>
         </div>
-        <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #444; font-size: 10px; color: #888;">
+        <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-color); font-size: 10px; color: var(--text-muted);">
           Data: reversebeacon.net | Update: 10sec
         </div>
       `;

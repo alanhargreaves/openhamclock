@@ -30,8 +30,8 @@ import { useState, useEffect, useRef } from 'react';
 
 export const metadata = {
   id: 'wspr',
-  name: 'WSPR Propagation',
-  description: 'Advanced WSPR propagation visualization with filters, analytics, and heatmaps',
+  name: 'plugins.layers.wspr.name',
+  description: 'plugins.layers.wspr.description',
   icon: '📡',
   category: 'propagation',
   defaultEnabled: false,
@@ -414,12 +414,13 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
       onAdd: function() {
         const container = L.DomUtil.create('div', 'wspr-filter-control');
         container.style.cssText = `
-          background: rgba(0, 0, 0, 0.9);
+          background: var(--bg-panel);
           padding: 12px;
           border-radius: 5px;
           font-family: 'JetBrains Mono', monospace;
           font-size: 11px;
-          color: white;
+          color: var(--text-primary);
+          border: 1px solid var(--border-color);
           box-shadow: 0 2px 8px rgba(0,0,0,0.3);
           min-width: 180px;
         `;
@@ -429,7 +430,7 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
           
           <div style="margin-bottom: 8px;">
             <label style="display: block; margin-bottom: 3px;">Band:</label>
-            <select id="wspr-band-filter" style="width: 100%; padding: 4px; background: #333; color: white; border: 1px solid #555; border-radius: 3px;">
+            <select id="wspr-band-filter" style="width: 100%; padding: 4px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 3px;">
               <option value="all">All Bands</option>
               <option value="160m">160m</option>
               <option value="80m">80m</option>
@@ -447,7 +448,7 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
           
           <div style="margin-bottom: 8px;">
             <label style="display: block; margin-bottom: 3px;">Time Window:</label>
-            <select id="wspr-time-filter" style="width: 100%; padding: 4px; background: #333; color: white; border: 1px solid #555; border-radius: 3px;">
+            <select id="wspr-time-filter" style="width: 100%; padding: 4px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 3px;">
               <option value="15">15 minutes</option>
               <option value="30" selected>30 minutes</option>
               <option value="60">1 hour</option>
@@ -572,25 +573,26 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
       onAdd: function() {
         const div = L.DomUtil.create('div', 'wspr-stats');
         div.style.cssText = `
-          background: rgba(0, 0, 0, 0.9);
+          background: var(--bg-panel);
           padding: 12px;
           border-radius: 5px;
           font-family: 'JetBrains Mono', monospace;
           font-size: 11px;
-          color: white;
+          color: var(--text-primary);
+          border: 1px solid var(--border-color);
           box-shadow: 0 2px 8px rgba(0,0,0,0.3);
           min-width: 160px;
         `;
         div.innerHTML = `
           <div style="font-weight: bold; margin-bottom: 6px; font-size: 13px;">📊 WSPR Activity</div>
-          <div style="margin-bottom: 8px; padding: 6px; background: rgba(255,255,255,0.1); border-radius: 3px;">
+          <div style="margin-bottom: 8px; padding: 6px; background: var(--bg-tertiary); border-radius: 3px;">
             <div style="font-size: 10px; opacity: 0.8; margin-bottom: 2px;">Propagation Score</div>
-            <div style="font-size: 18px; font-weight: bold; color: #888;">--/100</div>
+            <div style="font-size: 18px; font-weight: bold; color: var(--text-muted);">--/100</div>
           </div>
-          <div>Paths: <span style="color: #00aaff;">0</span></div>
-          <div>TX Stations: <span style="color: #ff6600;">0</span></div>
-          <div>RX Stations: <span style="color: #0088ff;">0</span></div>
-          <div>Total: <span style="color: #00ff00;">0</span></div>
+          <div>Paths: <span style="color: var(--accent-cyan);">0</span></div>
+          <div>TX Stations: <span style="color: var(--accent-amber);">0</span></div>
+          <div>RX Stations: <span style="color: var(--accent-blue);">0</span></div>
+          <div>Total: <span style="color: var(--accent-green);">0</span></div>
           <div style="margin-top: 6px; font-size: 10px; opacity: 0.7;">Initializing...</div>
         `;
         
@@ -634,23 +636,24 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
       onAdd: function() {
         const div = L.DomUtil.create('div', 'wspr-legend');
         div.style.cssText = `
-          background: rgba(0, 0, 0, 0.9);
+          background: var(--bg-panel);
           padding: 10px;
           border-radius: 5px;
           font-family: 'JetBrains Mono', monospace;
           font-size: 11px;
-          color: white;
+          color: var(--text-primary);
+          border: 1px solid var(--border-color);
           box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         `;
         div.innerHTML = `
           <div style="font-weight: bold; margin-bottom: 5px; font-size: 12px;">📡 Signal Strength</div>
-          <div><span style="color: #00ff00;">●</span> Excellent (&gt; 5 dB)</div>
-          <div><span style="color: #ffff00;">●</span> Good (0 to 5 dB)</div>
-          <div><span style="color: #ffaa00;">●</span> Moderate (-10 to 0 dB)</div>
-          <div><span style="color: #ff6600;">●</span> Weak (-20 to -10 dB)</div>
-          <div><span style="color: #ff0000;">●</span> Very Weak (&lt; -20 dB)</div>
-          <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #555;">
-            <span style="color: #00ffff;">●</span> Best DX Paths
+          <div><span style="color: var(--accent-green);">●</span> Excellent (&gt; 5 dB)</div>
+          <div><span style="color: var(--accent-green-dim);">●</span> Good (0 to 5 dB)</div>
+          <div><span style="color: var(--accent-amber);">●</span> Moderate (-10 to 0 dB)</div>
+          <div><span style="color: var(--accent-amber-dim);">●</span> Weak (-20 to -10 dB)</div>
+          <div><span style="color: var(--accent-red);">●</span> Very Weak (&lt; -20 dB)</div>
+          <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border-color);">
+            <span style="color: var(--accent-cyan);">●</span> Best DX Paths
           </div>
         `;
         return div;
@@ -688,12 +691,13 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
       onAdd: function() {
         const div = L.DomUtil.create('div', 'wspr-chart');
         div.style.cssText = `
-          background: rgba(0, 0, 0, 0.9);
+          background: var(--bg-panel);
           padding: 10px;
           border-radius: 5px;
           font-family: 'JetBrains Mono', monospace;
           font-size: 10px;
-          color: white;
+          color: var(--text-primary);
+          border: 1px solid var(--border-color);
           box-shadow: 0 2px 8px rgba(0,0,0,0.3);
           min-width: 160px;
         `;
@@ -878,14 +882,14 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
       const statsContainer = document.querySelector('.wspr-stats');
       if (statsContainer && enabled) {
         const contentHTML = `
-          <div style="margin-bottom: 8px; padding: 6px; background: rgba(255,255,255,0.1); border-radius: 3px;">
+          <div style="margin-bottom: 8px; padding: 6px; background: var(--bg-tertiary); border-radius: 3px;">
             <div style="font-size: 10px; opacity: 0.8; margin-bottom: 2px;">Propagation Score</div>
             <div style="font-size: 18px; font-weight: bold; color: ${scoreColor};">${propScore}/100</div>
           </div>
-          <div>Paths: <span style="color: #00aaff;">${newPaths.length}</span></div>
-          <div>TX Stations: <span style="color: #ff6600;">${txStations.size}</span></div>
-          <div>RX Stations: <span style="color: #0088ff;">${rxStations.size}</span></div>
-          <div>Total: <span style="color: #00ff00;">${totalStations}</span></div>
+          <div>Paths: <span style="color: var(--accent-cyan);">${newPaths.length}</span></div>
+          <div>TX Stations: <span style="color: var(--accent-amber);">${txStations.size}</span></div>
+          <div>RX Stations: <span style="color: var(--accent-blue);">${rxStations.size}</span></div>
+          <div>Total: <span style="color: var(--accent-green);">${totalStations}</span></div>
           <div style="margin-top: 6px; font-size: 10px; opacity: 0.7;">Last ${timeWindow} min</div>
         `;
         
@@ -926,10 +930,10 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null }) {
               <div style="margin-bottom: 4px;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
                   <span>${band}</span>
-                  <span style="color: #00aaff;">${count}</span>
+                  <span style="color: var(--accent-cyan);">${count}</span>
                 </div>
-                <div style="background: #333; height: 6px; border-radius: 3px; overflow: hidden;">
-                  <div style="background: linear-gradient(90deg, #ff6600, #00aaff); height: 100%; width: ${barWidth}%;"></div>
+                <div style="background: var(--bg-tertiary); height: 6px; border-radius: 3px; overflow: hidden;">
+                  <div style="background: linear-gradient(90deg, var(--accent-amber), var(--accent-cyan)); height: 100%; width: ${barWidth}%;"></div>
                 </div>
               </div>
             `;
