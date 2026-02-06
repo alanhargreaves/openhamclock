@@ -1394,13 +1394,16 @@ app.get('/api/dxcluster/spots', async (req, res) => {
     return null;
   }
   
-  function tryDXSpiderNode(node) {
+  function tryDXSpiderNode(node, userCallsign = null) {
     return new Promise((resolve) => {
       const spots = [];
       let buffer = '';
       let loginSent = false;
       let commandSent = false;
       let resolved = false;
+      
+      // Use user's callsign with SSID if provided, otherwise GUEST
+      const loginCallsign = userCallsign ? `${userCallsign.toUpperCase()}${DXSPIDER_SSID}` : 'GUEST';
       
       const client = new net.Socket();
       client.setTimeout(12000);
@@ -1414,7 +1417,7 @@ app.get('/api/dxcluster/spots', async (req, res) => {
       
       // Try connecting to DX Spider node
       client.connect(node.port, node.host, () => {
-        logDebug(`[DX Cluster] DX Spider: connected to ${node.host}:${node.port}`);
+        logDebug(`[DX Cluster] DX Spider: connected to ${node.host}:${node.port} as ${loginCallsign}`);
       });
       
       client.on('data', (data) => {
@@ -1423,12 +1426,12 @@ app.get('/api/dxcluster/spots', async (req, res) => {
         // Wait for login prompt
         if (!loginSent && (buffer.includes('login:') || buffer.includes('Please enter your call') || buffer.includes('enter your callsign'))) {
           loginSent = true;
-          client.write('GUEST\r\n');
+          client.write(`${loginCallsign}\r\n`);
           return;
         }
         
         // Wait for prompt after login, then send command
-        if (loginSent && !commandSent && (buffer.includes('Hello') || buffer.includes('de ') || buffer.includes('>') || buffer.includes('GUEST'))) {
+        if (loginSent && !commandSent && (buffer.includes('Hello') || buffer.includes('de ') || buffer.includes('>') || buffer.includes('GUEST') || buffer.includes(loginCallsign.split('-')[0]))) {
           commandSent = true;
           setTimeout(() => {
             if (!resolved) {
@@ -1575,8 +1578,17 @@ const DXPATHS_CACHE_TTL = 5000; // 5 seconds cache between fetches
 const DXPATHS_RETENTION = 30 * 60 * 1000; // 30 minute spot retention
 
 app.get('/api/dxcluster/paths', async (req, res) => {
-  // Check cache first
-  if (Date.now() - dxSpotPathsCache.timestamp < DXPATHS_CACHE_TTL && dxSpotPathsCache.paths.length > 0) {
+  // Parse query parameters for custom cluster settings
+  const source = req.query.source || 'auto';
+  const customHost = req.query.host;
+  const customPort = parseInt(req.query.port) || 7300;
+  const userCallsign = req.query.callsign;
+  
+  // Generate cache key based on source (custom sources shouldn't share cache)
+  const cacheKey = source === 'custom' ? `custom-${customHost}-${customPort}` : 'default';
+  
+  // Check cache first (but not for custom sources - they might have different data)
+  if (source !== 'custom' && Date.now() - dxSpotPathsCache.timestamp < DXPATHS_CACHE_TTL && dxSpotPathsCache.paths.length > 0) {
     logDebug('[DX Paths] Returning', dxSpotPathsCache.paths.length, 'cached paths');
     return res.json(dxSpotPathsCache.paths);
   }
@@ -1590,31 +1602,56 @@ app.get('/api/dxcluster/paths', async (req, res) => {
     let newSpots = [];
     let usedSource = 'none';
     
-    try {
-      const proxyResponse = await fetch(`${DXSPIDER_PROXY_URL}/api/spots?limit=100`, {
-        headers: { 'User-Agent': 'OpenHamClock/3.13.1' },
-        signal: controller.signal
-      });
+    // Handle custom telnet source
+    if (source === 'custom' && customHost) {
+      logDebug(`[DX Paths] Trying custom telnet: ${customHost}:${customPort} as ${userCallsign || 'GUEST'}`);
+      const customNode = { host: customHost, port: customPort };
+      const customSpots = await tryDXSpiderNode(customNode, userCallsign);
       
-      if (proxyResponse.ok) {
-        const proxyData = await proxyResponse.json();
-        if (proxyData.spots && proxyData.spots.length > 0) {
-          usedSource = 'proxy';
-          newSpots = proxyData.spots.map(s => ({
-            spotter: s.spotter,
-            spotterGrid: s.spotterGrid || null,
-            dxCall: s.call,
-            dxGrid: s.dxGrid || null,
-            freq: s.freq,
-            comment: s.comment || '',
-            time: s.time || '',
-            id: `${s.call}-${s.freqKhz || s.freq}-${s.spotter}`
-          }));
-          logDebug('[DX Paths] Got', newSpots.length, 'spots from proxy');
-        }
+      if (customSpots && customSpots.length > 0) {
+        usedSource = 'custom';
+        newSpots = customSpots.map(s => ({
+          spotter: s.spotter,
+          spotterGrid: null,
+          dxCall: s.call,
+          dxGrid: null,
+          freq: s.freq,
+          comment: s.comment || '',
+          time: s.time || '',
+          id: `${s.call}-${s.freq}-${s.spotter}`
+        }));
+        logDebug('[DX Paths] Got', newSpots.length, 'spots from custom telnet');
       }
-    } catch (proxyErr) {
-      logDebug('[DX Paths] Proxy failed, trying HamQTH');
+    }
+    
+    // Try proxy if not using custom or custom failed
+    if (newSpots.length === 0 && source !== 'custom') {
+      try {
+        const proxyResponse = await fetch(`${DXSPIDER_PROXY_URL}/api/spots?limit=100`, {
+          headers: { 'User-Agent': 'OpenHamClock/3.14.11' },
+          signal: controller.signal
+        });
+        
+        if (proxyResponse.ok) {
+          const proxyData = await proxyResponse.json();
+          if (proxyData.spots && proxyData.spots.length > 0) {
+            usedSource = 'proxy';
+            newSpots = proxyData.spots.map(s => ({
+              spotter: s.spotter,
+              spotterGrid: s.spotterGrid || null,
+              dxCall: s.call,
+              dxGrid: s.dxGrid || null,
+              freq: s.freq,
+              comment: s.comment || '',
+              time: s.time || '',
+              id: `${s.call}-${s.freqKhz || s.freq}-${s.spotter}`
+            }));
+            logDebug('[DX Paths] Got', newSpots.length, 'spots from proxy');
+          }
+        }
+      } catch (proxyErr) {
+        logDebug('[DX Paths] Proxy failed, trying HamQTH');
+      }
     }
     
     // Fallback to HamQTH if proxy failed

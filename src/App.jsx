@@ -296,7 +296,7 @@ const App = () => {
     } catch (e) {}
   }, [pskFilters]);
   
-  const dxClusterData = useDXClusterData(dxFilters);
+  const dxClusterData = useDXClusterData(dxFilters, config);
   const dxpeditions = useDXpeditions();
   const contests = useContests();
   const propagation = usePropagation(config.location, dxLocation);

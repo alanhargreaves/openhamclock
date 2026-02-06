@@ -17,6 +17,7 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave, onResetLayout, 
   const [layout, setLayout] = useState(config?.layout || 'modern');
   const [timezone, setTimezone] = useState(config?.timezone || '');
   const [dxClusterSource, setDxClusterSource] = useState(config?.dxClusterSource || 'dxspider-proxy');
+  const [customDxCluster, setCustomDxCluster] = useState(config?.customDxCluster || { enabled: false, host: '', port: 7300 });
   const { t, i18n } = useTranslation();
 
   // Layer controls
@@ -33,6 +34,7 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave, onResetLayout, 
       setLayout(config.layout || 'modern');
       setTimezone(config.timezone || '');
       setDxClusterSource(config.dxClusterSource || 'dxspider-proxy');
+      setCustomDxCluster(config.customDxCluster || { enabled: false, host: '', port: 7300 });
       if (config.location?.lat && config.location?.lon) {
         setGridSquare(calculateGridSquare(config.location.lat, config.location.lon));
       }
@@ -154,7 +156,8 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave, onResetLayout, 
       theme,
       layout,
       timezone,
-      dxClusterSource
+      dxClusterSource,
+      customDxCluster
     });
     onClose();
   };
@@ -663,11 +666,82 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave, onResetLayout, 
                 <option value="hamqth">{t('station.settings.dx.option2')}</option>
                 <option value="dxwatch">{t('station.settings.dx.option3')}</option>
                 <option value="auto">{t('station.settings.dx.option4')}</option>
+                <option value="custom">Custom Telnet Server</option>
               </select>
               <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
                 {t('station.settings.dx.describe')}
               </div>
             </div>
+
+            {/* Custom DX Cluster Settings */}
+            {dxClusterSource === 'custom' && (
+              <div style={{ 
+                marginBottom: '20px', 
+                padding: '16px', 
+                background: 'var(--bg-tertiary)', 
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)'
+              }}>
+                <label style={{ display: 'block', marginBottom: '12px', color: 'var(--accent-cyan)', fontSize: '12px', fontWeight: '600' }}>
+                  📡 Custom Telnet Server
+                </label>
+                
+                {/* Host */}
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', marginBottom: '4px', color: 'var(--text-muted)', fontSize: '11px' }}>
+                    Host
+                  </label>
+                  <input
+                    type="text"
+                    value={customDxCluster.host}
+                    onChange={(e) => setCustomDxCluster({ ...customDxCluster, host: e.target.value })}
+                    placeholder="e.g. dxspider.example.com"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      fontSize: '14px',
+                      fontFamily: 'JetBrains Mono, monospace'
+                    }}
+                  />
+                </div>
+
+                {/* Port */}
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', marginBottom: '4px', color: 'var(--text-muted)', fontSize: '11px' }}>
+                    Port
+                  </label>
+                  <input
+                    type="number"
+                    value={customDxCluster.port}
+                    onChange={(e) => setCustomDxCluster({ ...customDxCluster, port: parseInt(e.target.value) || 7300 })}
+                    placeholder="7300"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      fontSize: '14px',
+                      fontFamily: 'JetBrains Mono, monospace'
+                    }}
+                  />
+                </div>
+
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
+                  Your callsign ({callsign || 'N0CALL'}) will be used for login.
+                  Common ports: 7300, 7373, 8000, 23.
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--accent-amber)', marginTop: '8px' }}>
+                  ⚠️ Custom telnet requires self-hosted deployment (Pi/local). 
+                  Cloud hosting (Railway/openhamclock.app) blocks outbound telnet.
+                </div>
+              </div>
+            )}
 
             {/* Language */}
             <div style={{ marginBottom: '20px' }}>

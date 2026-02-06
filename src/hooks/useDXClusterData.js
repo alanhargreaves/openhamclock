@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getBandFromFreq, detectMode, getCallsignInfo } from '../utils/callsign.js';
 
-export const useDXClusterData = (filters = {}) => {
+export const useDXClusterData = (filters = {}, config = {}) => {
   const [allData, setAllData] = useState([]);
   const [spots, setSpots] = useState([]);     // For list display
   const [paths, setPaths] = useState([]);     // For map display
@@ -15,6 +15,32 @@ export const useDXClusterData = (filters = {}) => {
   
   const spotRetentionMs = (filters?.spotRetentionMinutes || 30) * 60 * 1000;
   const pollInterval = 30000;
+
+  // Build query params for custom cluster settings
+  const buildQueryParams = useCallback(() => {
+    const params = new URLSearchParams();
+    
+    // Add source
+    const source = config.dxClusterSource || 'dxspider-proxy';
+    params.append('source', source);
+    
+    // Add custom cluster settings if using custom source
+    if (source === 'custom' && config.customDxCluster) {
+      if (config.customDxCluster.host) {
+        params.append('host', config.customDxCluster.host);
+      }
+      if (config.customDxCluster.port) {
+        params.append('port', config.customDxCluster.port);
+      }
+    }
+    
+    // Always send callsign for login (with SSID)
+    if (config.callsign && config.callsign !== 'N0CALL') {
+      params.append('callsign', config.callsign);
+    }
+    
+    return params.toString();
+  }, [config.dxClusterSource, config.customDxCluster, config.callsign]);
 
   // Apply filters to data
   const applyFilters = useCallback((data, filters) => {
@@ -97,7 +123,8 @@ export const useDXClusterData = (filters = {}) => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch('/api/dxcluster/paths');
+        const queryParams = buildQueryParams();
+        const response = await fetch(`/api/dxcluster/paths?${queryParams}`);
         if (response.ok) {
           const newData = await response.json();
           const now = Date.now();
@@ -136,7 +163,7 @@ export const useDXClusterData = (filters = {}) => {
     fetchData();
     const interval = setInterval(fetchData, pollInterval);
     return () => clearInterval(interval);
-  }, [spotRetentionMs]);
+  }, [spotRetentionMs, buildQueryParams]);
 
   // Clean up data when retention time changes
   useEffect(() => {
