@@ -273,9 +273,33 @@ function logErrorOnce(category, message) {
 // Uses file-based storage - configure STATS_FILE env var for Railway volumes
 // Default: ./data/stats.json (local) or /data/stats.json (Railway volume)
 
-const STATS_FILE = process.env.STATS_FILE || (
-  fs.existsSync('/data') ? '/data/stats.json' : path.join(__dirname, 'data', 'stats.json')
-);
+// Determine best location for stats file with write permission check
+function getStatsFilePath() {
+  // If explicitly set via env var, use that
+  if (process.env.STATS_FILE) {
+    return process.env.STATS_FILE;
+  }
+  
+  // Try /data (Railway volume) first - check if writable
+  if (fs.existsSync('/data')) {
+    try {
+      const testFile = '/data/.write-test-' + Date.now();
+      fs.writeFileSync(testFile, 'test');
+      fs.unlinkSync(testFile);
+      console.log('[Stats] Using Railway volume: /data/stats.json');
+      return '/data/stats.json';
+    } catch (err) {
+      console.log('[Stats] /data exists but not writable:', err.message);
+    }
+  }
+  
+  // Fall back to local data directory
+  const localPath = path.join(__dirname, 'data', 'stats.json');
+  console.log('[Stats] Using local storage:', localPath);
+  return localPath;
+}
+
+const STATS_FILE = getStatsFilePath();
 const STATS_SAVE_INTERVAL = 60000; // Save every 60 seconds
 
 // Load persistent stats from disk
@@ -325,6 +349,7 @@ function loadVisitorStats() {
 }
 
 // Save stats to disk
+let saveErrorCount = 0;
 function saveVisitorStats() {
   try {
     const dir = path.dirname(STATS_FILE);
@@ -338,12 +363,20 @@ function saveVisitorStats() {
     };
     
     fs.writeFileSync(STATS_FILE, JSON.stringify(data, null, 2));
+    saveErrorCount = 0; // Reset on success
     // Only log occasionally to avoid spam
     if (Math.random() < 0.1) {
       console.log(`[Stats] Saved - ${visitorStats.allTimeVisitors} all-time visitors, ${visitorStats.uniqueIPsToday.length} today`);
     }
   } catch (err) {
-    console.error('[Stats] Failed to save:', err.message);
+    saveErrorCount++;
+    // Only log first error and then every 10th to avoid spam
+    if (saveErrorCount === 1 || saveErrorCount % 10 === 0) {
+      console.error(`[Stats] Failed to save (attempt #${saveErrorCount}):`, err.message);
+      if (saveErrorCount === 1) {
+        console.error('[Stats] Stats will be kept in memory but won\'t persist across restarts');
+      }
+    }
   }
 }
 
@@ -5047,7 +5080,15 @@ function generateStatusDashboard() {
         <span class="info-value">${visitorStats.allTimeRequests.toLocaleString()}</span>
       </div>
       <div class="info-row">
-        <span class="info-label">Stats Last Saved</span>
+        <span class="info-label">Persistence</span>
+        <span class="info-value" style="color: ${visitorStats.lastSaved ? '#00ff88' : '#ff4466'}">${visitorStats.lastSaved ? '✓ Working' : '✗ Memory Only'}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Stats Location</span>
+        <span class="info-value" style="font-size: 0.75rem; color: #888">${STATS_FILE}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Last Saved</span>
         <span class="info-value">${visitorStats.lastSaved ? new Date(visitorStats.lastSaved).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Not yet'}</span>
       </div>
     </div>
