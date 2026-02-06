@@ -152,26 +152,90 @@ export const getMoonPhaseEmoji = (phase) => {
 };
 
 /**
- * Calculate sunrise and sunset times
+ * Calculate sunrise and sunset times (UTC)
+ * Uses NOAA solar calculator algorithm for accuracy
  */
 export const calculateSunTimes = (lat, lon, date) => {
-  const dayOfYear = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
-  const declination = -23.45 * Math.cos((360/365) * (dayOfYear + 10) * Math.PI / 180);
-  const latRad = lat * Math.PI / 180;
-  const decRad = declination * Math.PI / 180;
-  const cosHA = -Math.tan(latRad) * Math.tan(decRad);
-  
+  const toRad = d => d * Math.PI / 180;
+  const toDeg = r => r * 180 / Math.PI;
+
+  // Julian date calculation
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
+
+  const a = Math.floor((14 - month) / 12);
+  const y = year + 4800 - a;
+  const m = month + 12 * a - 3;
+  const jd = day + Math.floor((153 * m + 2) / 5) + 365 * y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) - 32045;
+
+  // Julian century from J2000.0
+  const jc = (jd - 2451545) / 36525;
+
+  // Sun's geometric mean longitude (degrees)
+  const L0 = (280.46646 + jc * (36000.76983 + 0.0003032 * jc)) % 360;
+
+  // Sun's mean anomaly (degrees)
+  const M = 357.52911 + jc * (35999.05029 - 0.0001537 * jc);
+
+  // Earth's orbit eccentricity
+  const e = 0.016708634 - jc * (0.000042037 + 0.0000001267 * jc);
+
+  // Sun's equation of center
+  const C = Math.sin(toRad(M)) * (1.914602 - jc * (0.004817 + 0.000014 * jc))
+          + Math.sin(toRad(2 * M)) * (0.019993 - 0.000101 * jc)
+          + Math.sin(toRad(3 * M)) * 0.000289;
+
+  // Sun's true longitude
+  const sunLon = L0 + C;
+
+  // Sun's apparent longitude
+  const omega = 125.04 - 1934.136 * jc;
+  const lambda = sunLon - 0.00569 - 0.00478 * Math.sin(toRad(omega));
+
+  // Mean obliquity of the ecliptic
+  const obliq0 = 23 + (26 + (21.448 - jc * (46.815 + jc * (0.00059 - jc * 0.001813))) / 60) / 60;
+  const obliq = obliq0 + 0.00256 * Math.cos(toRad(omega));
+
+  // Sun's declination
+  const declination = toDeg(Math.asin(Math.sin(toRad(obliq)) * Math.sin(toRad(lambda))));
+
+  // Equation of time (minutes)
+  const y2 = Math.tan(toRad(obliq / 2)) ** 2;
+  const eqTime = 4 * toDeg(
+    y2 * Math.sin(2 * toRad(L0))
+    - 2 * e * Math.sin(toRad(M))
+    + 4 * e * y2 * Math.sin(toRad(M)) * Math.cos(2 * toRad(L0))
+    - 0.5 * y2 * y2 * Math.sin(4 * toRad(L0))
+    - 1.25 * e * e * Math.sin(2 * toRad(M))
+  );
+
+  // Hour angle for sunrise/sunset (accounting for atmospheric refraction and sun's radius)
+  // Standard altitude is -0.833 degrees (refraction + sun radius)
+  const latRad = toRad(lat);
+  const decRad = toRad(declination);
+  const cosHA = (Math.cos(toRad(90.833)) - Math.sin(latRad) * Math.sin(decRad)) / (Math.cos(latRad) * Math.cos(decRad));
+
   if (cosHA > 1) return { sunrise: 'Polar night', sunset: '' };
   if (cosHA < -1) return { sunrise: 'Midnight sun', sunset: '' };
-  
-  const ha = Math.acos(cosHA) * 180 / Math.PI;
-  const noon = 12 - lon / 15;
-  const fmt = (h) => {
-    const hr = Math.floor(((h % 24) + 24) % 24);
-    const mn = Math.round((h - Math.floor(h)) * 60);
-    return `${hr.toString().padStart(2,'0')}:${mn.toString().padStart(2,'0')}`;
+
+  const ha = toDeg(Math.acos(cosHA));
+
+  // Solar noon in UTC (minutes from midnight)
+  const solarNoon = 720 - 4 * lon - eqTime;
+
+  // Sunrise and sunset in UTC (minutes from midnight)
+  const sunriseMin = solarNoon - ha * 4;
+  const sunsetMin = solarNoon + ha * 4;
+
+  const fmt = (minutes) => {
+    const totalMin = ((minutes % 1440) + 1440) % 1440;
+    const hr = Math.floor(totalMin / 60);
+    const mn = Math.round(totalMin % 60);
+    return `${hr.toString().padStart(2, '0')}:${mn.toString().padStart(2, '0')}`;
   };
-  return { sunrise: fmt(noon - ha/15), sunset: fmt(noon + ha/15) };
+
+  return { sunrise: fmt(sunriseMin), sunset: fmt(sunsetMin) };
 };
 
 /**

@@ -18,8 +18,8 @@ import { useState, useEffect, useRef } from 'react';
 
 export const metadata = {
   id: 'grayline',
-  name: 'Gray Line Propagation',
-  description: 'Solar terminator with twilight zones for enhanced DX propagation',
+  name: 'plugins.layers.grayline.name',
+  description: 'plugins.layers.grayline.description',
   icon: '🌅',
   category: 'propagation',
   defaultEnabled: false,
@@ -473,12 +473,13 @@ export function useLayer({ enabled = false, opacity = 0.5, map = null }) {
       onAdd: function() {
         const container = L.DomUtil.create('div', 'grayline-control');
         container.style.cssText = `
-          background: rgba(0, 0, 0, 0.9);
+          background: var(--bg-panel);
           padding: 12px;
           border-radius: 5px;
           font-family: 'JetBrains Mono', monospace;
           font-size: 11px;
-          color: white;
+          color: var(--text-primary);
+          border: 1px solid var(--border-color);
           box-shadow: 0 2px 8px rgba(0,0,0,0.3);
           min-width: 200px;
         `;
@@ -489,7 +490,7 @@ export function useLayer({ enabled = false, opacity = 0.5, map = null }) {
         container.innerHTML = `
           <div style="font-weight: bold; margin-bottom: 8px; font-size: 12px;">🌅 Gray Line</div>
           
-          <div style="margin-bottom: 8px; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 3px;">
+          <div style="margin-bottom: 8px; padding: 8px; background: var(--bg-tertiary); border-radius: 3px;">
             <div style="font-size: 9px; opacity: 0.7; margin-bottom: 2px;">UTC TIME</div>
             <div id="grayline-time" style="font-size: 10px; font-weight: bold;">${timeStr}</div>
           </div>

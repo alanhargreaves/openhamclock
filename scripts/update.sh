@@ -4,6 +4,16 @@
 
 set -e
 
+# Auto-update mode (non-interactive)
+AUTO_MODE=false
+for arg in "$@"; do
+    case "$arg" in
+        --auto|-y|--yes)
+            AUTO_MODE=true
+            ;;
+    esac
+done
+
 echo "╔═══════════════════════════════════════════════════════╗"
 echo "║           OpenHamClock Update Script                  ║"
 echo "╚═══════════════════════════════════════════════════════╝"
@@ -61,11 +71,15 @@ git log --oneline HEAD..origin/main 2>/dev/null || git log --oneline HEAD..origi
 echo ""
 
 # Confirm update
-read -p "🔄 Do you want to update? (y/N) " -n 1 -r
-echo ""
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "❌ Update cancelled"
-    exit 0
+if [ "$AUTO_MODE" = true ]; then
+    echo "🔄 Auto-update enabled — proceeding without prompt"
+else
+    read -p "🔄 Do you want to update? (y/N) " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "❌ Update cancelled"
+        exit 0
+    fi
 fi
 
 echo ""

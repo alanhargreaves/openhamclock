@@ -255,7 +255,7 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave, onResetLayout }
               fontFamily: 'JetBrains Mono, monospace'
             }}
           >
-            ⊞ Map Layers
+            ⊞ {t('station.settings.layers.title')}
           </button>
         </div>
 
@@ -726,7 +726,7 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave, onResetLayout }
                           fontWeight: '600',
                           fontFamily: 'JetBrains Mono, monospace'
                         }}>
-                          {layer.name}
+                          {layer.name.startsWith('plugins.') ? t(layer.name) : layer.name}
                         </div>
                         {layer.description && (
                           <div style={{
@@ -734,7 +734,7 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave, onResetLayout }
                             color: 'var(--text-muted)',
                             marginTop: '2px'
                           }}>
-                            {layer.description}
+                            {layer.description.startsWith('plugins.') ? t(layer.description) : layer.description}
                           </div>
                         )}
                       </div>
@@ -761,7 +761,7 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave, onResetLayout }
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px'
                       }}>
-                        Opacity: {Math.round(layer.opacity * 100)}%
+                        {t('station.settings.layers.opacity')}: {Math.round(layer.opacity * 100)}%
                       </label>
                       <input
                         type="range"
@@ -785,7 +785,7 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave, onResetLayout }
                 color: 'var(--text-muted)',
                 fontSize: '13px'
               }}>
-                No map layers available
+                {t('station.settings.layers.noLayers')}
               </div>
             )}
           </div>

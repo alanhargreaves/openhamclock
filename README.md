@@ -68,6 +68,7 @@ npm run dev
   - [Weather](#weather)
   - [DE / DX Location Panels](#de--dx-location-panels)
   - [Header Bar](#header-bar)
+  - [Analog Clock](#analog-clock)
 - [Themes and Layouts](#themes-and-layouts)
 - [Map Layers and Plugins](#map-layers-and-plugins)
 - [Languages](#languages)
@@ -489,6 +490,24 @@ The persistent bar across the top of the dashboard provides at-a-glance informat
 
 ---
 
+### Analog Clock
+
+A classic analog clock display showing local time with additional station information.
+
+**What it shows:**
+
+- **Clock face** — Round analog clock with hour, minute, and second hands. Major tick marks every 5 minutes, minor ticks every minute, with hour numbers 1-12.
+- **Day of week** — Displayed above the clock on the left (e.g., "Mon", "Tue").
+- **Date** — Displayed above the clock on the right (e.g., "Feb 5").
+- **Sunrise time** — Displayed below the clock on the left with a sun symbol.
+- **Sunset time** — Displayed below the clock on the right with a moon symbol.
+
+**How to use it:** The clock automatically sizes to fit whatever panel size you give it. In the dockable layout, you can add it via the "+" button and resize the panel as desired. A larger panel gives you a bigger, more readable clock face.
+
+**Availability:** Always available in the dockable layout via the "Add Panel" menu. In the classic layout, enable it by setting `CLASSIC_ANALOG_CLOCK=true` in your `.env` file (disabled by default to keep the classic layout compact).
+
+---
+
 ## Themes and Layouts
 
 ### Themes
@@ -589,6 +608,7 @@ All configuration is done through the `.env` file. On first run, this file is au
 | `SHOW_SATELLITES` | `true` | Show satellite tracks on the map. |
 | `SHOW_DX_PATHS` | `true` | Show great-circle DX signal paths on the map. |
 | `SHOW_DX_WEATHER` | `true` | Show weather for the selected DX location. |
+| `CLASSIC_ANALOG_CLOCK` | `false` | Show analog clock panel in the classic layout. Always available in dockable layout. |
 
 ### External Services
 
@@ -816,6 +836,21 @@ sudo systemctl restart openhamclock
 # or
 ./restart.sh
 ```
+
+### Auto-update (Git installations):
+
+Enable automatic updates by setting the following in `.env`:
+
+```
+AUTO_UPDATE_ENABLED=true
+AUTO_UPDATE_INTERVAL_MINUTES=60
+AUTO_UPDATE_ON_START=false
+AUTO_UPDATE_EXIT_AFTER=true
+```
+
+When enabled, OpenHamClock periodically checks GitHub for updates and runs `./scripts/update.sh --auto`. After a successful update it exits so a supervisor (systemd/pm2) can restart it. If you're running in a terminal, you'll need to restart manually.
+
+On local installs, you can also click the **UPDATE** button in the header to start the update process on demand.
 
 ### Zip file installations:
 

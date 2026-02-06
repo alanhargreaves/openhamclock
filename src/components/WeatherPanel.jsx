@@ -3,13 +3,57 @@
  * Displays current weather conditions with expandable forecast details
  * for a given location. Uses Open-Meteo API via the useWeather hook.
  */
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useWeather } from '../hooks';
+import { usePanelResize } from '../contexts';
 
-export const WeatherPanel = ({ location, tempUnit, onTempUnitChange }) => {
+export const WeatherPanel = ({ location, tempUnit, onTempUnitChange, nodeId }) => {
   const [weatherExpanded, setWeatherExpanded] = useState(() => {
     try { return localStorage.getItem('openhamclock_weatherExpanded') === 'true'; } catch { return false; }
   });
+  const contentRef = useRef(null);
+  const prevExpandedRef = useRef(weatherExpanded);
+  const { requestResize, resetSize } = usePanelResize(nodeId);
+
+  // Only resize on expand/collapse transitions, not on every render
+  useEffect(() => {
+    if (!nodeId || !contentRef.current) return;
+
+    const wasExpanded = prevExpandedRef.current;
+    const isExpanded = weatherExpanded;
+    prevExpandedRef.current = isExpanded;
+
+    // Only act on actual state transitions
+    if (isExpanded && !wasExpanded) {
+      // Just expanded - measure and resize after DOM updates
+      const timer = setTimeout(() => {
+        const el = contentRef.current;
+        if (el) {
+          // The panel structure is: flexlayout container > div (padding/overflow) > content > WeatherPanel
+          // We need to measure the div with padding that contains all content
+          // Go up to find the scrollable parent (the one with overflowY: auto)
+          let container = el.parentElement;
+          while (container) {
+            const style = window.getComputedStyle(container);
+            if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+              break;
+            }
+            container = container.parentElement;
+          }
+
+          // Measure the full scrollable height of the entire panel content
+          const height = container ? container.scrollHeight : el.scrollHeight;
+          if (height > 0) {
+            requestResize(height);
+          }
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    } else if (!isExpanded && wasExpanded) {
+      // Just collapsed - reset size
+      resetSize();
+    }
+  }, [weatherExpanded, nodeId, requestResize, resetSize]);
 
   const localWeather = useWeather(location, tempUnit);
 
@@ -21,7 +65,7 @@ export const WeatherPanel = ({ location, tempUnit, onTempUnitChange }) => {
   const vis = w.visUnit || 'mi';
 
   return (
-    <div style={{ marginTop: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
+    <div ref={contentRef} style={{ marginTop: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
       {/* Compact summary row — always visible */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <div

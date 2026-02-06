@@ -24,6 +24,7 @@ const fetch = require('node-fetch');
 const net = require('net');
 const dgram = require('dgram');
 const fs = require('fs');
+const { execFile, spawn } = require('child_process');
 
 // Read version from package.json as single source of truth
 const APP_VERSION = (() => {
@@ -144,6 +145,7 @@ const CONFIG = {
   showPota: process.env.SHOW_POTA !== 'false' && jsonConfig.features?.showPOTA !== false,
   showDxPaths: process.env.SHOW_DX_PATHS !== 'false' && jsonConfig.features?.showDXPaths !== false,
   showDxWeather: process.env.SHOW_DX_WEATHER !== 'false' && jsonConfig.features?.showDXWeather !== false,
+  classicAnalogClock: process.env.CLASSIC_ANALOG_CLOCK === 'true' || jsonConfig.features?.classicAnalogClock === true,
   showContests: jsonConfig.features?.showContests !== false,
   showDXpeditions: jsonConfig.features?.showDXpeditions !== false,
   
@@ -339,6 +341,131 @@ setInterval(() => {
     console.log(`[Visitors] Today so far: ${visitorStats.uniqueIPs.size} unique, ${visitorStats.totalRequests} requests | All-time: ${visitorStats.allTimeVisitors} visitors | Avg: ${avg}/day`);
   }
 }, 60 * 60 * 1000);
+
+// ============================================
+// AUTO UPDATE (GIT)
+// ============================================
+const AUTO_UPDATE_ENABLED = process.env.AUTO_UPDATE_ENABLED === 'true';
+const AUTO_UPDATE_INTERVAL_MINUTES = parseInt(process.env.AUTO_UPDATE_INTERVAL_MINUTES || '60');
+const AUTO_UPDATE_ON_START = process.env.AUTO_UPDATE_ON_START === 'true';
+const AUTO_UPDATE_EXIT_AFTER = process.env.AUTO_UPDATE_EXIT_AFTER !== 'false';
+
+const autoUpdateState = {
+  inProgress: false,
+  lastCheck: 0,
+  lastResult: ''
+};
+
+function execFilePromise(cmd, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, options, (err, stdout, stderr) => {
+      if (err) {
+        err.stdout = stdout;
+        err.stderr = stderr;
+        return reject(err);
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+async function hasGitUpdates() {
+  await execFilePromise('git', ['fetch', 'origin'], { cwd: __dirname });
+  const local = (await execFilePromise('git', ['rev-parse', 'HEAD'], { cwd: __dirname })).stdout.trim();
+  let remote = '';
+  try {
+    remote = (await execFilePromise('git', ['rev-parse', 'origin/main'], { cwd: __dirname })).stdout.trim();
+  } catch {
+    remote = (await execFilePromise('git', ['rev-parse', 'origin/master'], { cwd: __dirname })).stdout.trim();
+  }
+  return { updateAvailable: local !== remote, local, remote };
+}
+
+async function hasDirtyWorkingTree() {
+  const status = await execFilePromise('git', ['status', '--porcelain'], { cwd: __dirname });
+  return status.stdout.trim().length > 0;
+}
+
+function runUpdateScript() {
+  return new Promise((resolve, reject) => {
+    const scriptPath = path.join(__dirname, 'scripts', 'update.sh');
+    const child = spawn('bash', [scriptPath, '--auto'], {
+      cwd: __dirname,
+      stdio: 'inherit'
+    });
+    child.on('exit', (code) => {
+      if (code === 0) return resolve();
+      reject(new Error(`update.sh exited with code ${code}`));
+    });
+  });
+}
+
+async function autoUpdateTick(trigger = 'interval', force = false) {
+  if ((!AUTO_UPDATE_ENABLED && !force) || autoUpdateState.inProgress) return;
+  autoUpdateState.inProgress = true;
+  autoUpdateState.lastCheck = Date.now();
+
+  try {
+    if (!fs.existsSync(path.join(__dirname, '.git'))) {
+      autoUpdateState.lastResult = 'not-git';
+      logWarn('[Auto Update] Skipped - not a git repository');
+      return;
+    }
+
+    try {
+      await execFilePromise('git', ['--version']);
+    } catch {
+      autoUpdateState.lastResult = 'no-git';
+      logWarn('[Auto Update] Skipped - git not installed');
+      return;
+    }
+
+    if (await hasDirtyWorkingTree()) {
+      autoUpdateState.lastResult = 'dirty';
+      logWarn('[Auto Update] Skipped - local changes detected');
+      return;
+    }
+
+    const { updateAvailable } = await hasGitUpdates();
+    if (!updateAvailable) {
+      autoUpdateState.lastResult = 'up-to-date';
+      logInfo(`[Auto Update] Up to date (${trigger})`);
+      return;
+    }
+
+    autoUpdateState.lastResult = 'updating';
+    logInfo('[Auto Update] Updates available - running update script');
+    await runUpdateScript();
+    autoUpdateState.lastResult = 'updated';
+    logInfo('[Auto Update] Update complete');
+
+    if (AUTO_UPDATE_EXIT_AFTER) {
+      logInfo('[Auto Update] Exiting to allow restart');
+      process.exit(0);
+    }
+  } catch (err) {
+    autoUpdateState.lastResult = 'error';
+    logErrorOnce('Auto Update', err.message);
+  } finally {
+    autoUpdateState.inProgress = false;
+  }
+}
+
+function startAutoUpdateScheduler() {
+  if (!AUTO_UPDATE_ENABLED) return;
+  const intervalMinutes = Number.isFinite(AUTO_UPDATE_INTERVAL_MINUTES) && AUTO_UPDATE_INTERVAL_MINUTES > 0
+    ? AUTO_UPDATE_INTERVAL_MINUTES
+    : 60;
+  const intervalMs = Math.max(5, intervalMinutes) * 60 * 1000;
+
+  logInfo(`[Auto Update] Enabled - every ${intervalMinutes} minutes`);
+
+  if (AUTO_UPDATE_ON_START) {
+    setTimeout(() => autoUpdateTick('startup'), 30000);
+  }
+
+  setInterval(() => autoUpdateTick('interval'), intervalMs);
+}
 
 // Serve static files
 // dist/ contains the built React app (from npm run build)
@@ -4192,6 +4319,43 @@ app.get('/api/config', (req, res) => {
 });
 
 // ============================================
+// MANUAL UPDATE ENDPOINT
+// ============================================
+app.post('/api/update', async (req, res) => {
+  if (autoUpdateState.inProgress) {
+    return res.status(409).json({ error: 'Update already in progress' });
+  }
+
+  try {
+    if (!fs.existsSync(path.join(__dirname, '.git'))) {
+      return res.status(503).json({ error: 'Not a git repository' });
+    }
+    await execFilePromise('git', ['--version']);
+    if (await hasDirtyWorkingTree()) {
+      return res.status(409).json({ error: 'Local changes detected' });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: 'Update preflight failed' });
+  }
+
+  // Respond immediately; update runs asynchronously
+  res.json({ ok: true, started: true, timestamp: Date.now() });
+
+  setTimeout(() => {
+    autoUpdateTick('manual', true);
+  }, 100);
+});
+
+app.get('/api/update/status', (req, res) => {
+  res.json({
+    enabled: AUTO_UPDATE_ENABLED,
+    inProgress: autoUpdateState.inProgress,
+    lastCheck: autoUpdateState.lastCheck,
+    lastResult: autoUpdateState.lastResult
+  });
+});
+
+// ============================================
 // WSJT-X UDP LISTENER
 // ============================================
 // Receives decoded messages from WSJT-X, JTDX, etc.
@@ -5371,6 +5535,8 @@ app.listen(PORT, '0.0.0.0', () => {
   }
   if (N1MM_ENABLED) {
     console.log(`  📥 N1MM UDP listener on port ${N1MM_UDP_PORT}`);
+  if (AUTO_UPDATE_ENABLED) {
+    console.log(`  🔄 Auto-update enabled every ${AUTO_UPDATE_INTERVAL_MINUTES || 60} minutes`);
   }
   console.log('  🖥️  Open your browser to start using OpenHamClock');
   console.log('');
@@ -5383,6 +5549,8 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('  In memory of Elwood Downey, WB0OEW');
   console.log('  73 de OpenHamClock contributors');
   console.log('');
+
+  startAutoUpdateScheduler();
 });
 
 // Graceful shutdown

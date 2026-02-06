@@ -239,7 +239,7 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null }) {
             <tr><td><b>Status:</b></td><td>${props.status || 'automatic'}</td></tr>
             ${props.tsunami ? '<tr><td colspan="2" style="color: red; font-weight: bold;">⚠️ TSUNAMI WARNING</td></tr>' : ''}
           </table>
-          ${props.url ? `<a href="${props.url}" target="_blank" style="color: #00aaff; font-size: 11px;">View Details →</a>` : ''}
+          ${props.url ? `<a href="${props.url}" target="_blank" style="color: var(--accent-cyan); font-size: 11px;">View Details →</a>` : ''}
         </div>
       `);
 

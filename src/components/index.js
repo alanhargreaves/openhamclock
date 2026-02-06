@@ -20,3 +20,4 @@ export { DXpeditionPanel } from './DXpeditionPanel.jsx';
 export { PSKReporterPanel } from './PSKReporterPanel.jsx';
 export { DXNewsTicker } from './DXNewsTicker.jsx';
 export { WeatherPanel } from './WeatherPanel.jsx';
+export { AnalogClockPanel } from './AnalogClockPanel.jsx';
