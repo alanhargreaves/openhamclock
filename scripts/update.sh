@@ -124,6 +124,33 @@ if [ -f "config.json.backup" ] && [ ! -f "config.json" ]; then
     echo "   ✓ config.json restored from backup"
 fi
 
+# Patch kiosk.sh if present — fix --incognito flag that wipes localStorage on reboot
+if [ -f "kiosk.sh" ]; then
+    if grep -q "\-\-incognito" kiosk.sh; then
+        echo ""
+        echo "🔧 Patching kiosk.sh..."
+        # Remove --incognito line and add --user-data-dir for persistent localStorage
+        sed -i '/--incognito/d' kiosk.sh
+        # Add user-data-dir if not already present
+        if ! grep -q "user-data-dir" kiosk.sh; then
+            sed -i 's|--disable-pinch \\|--disable-pinch \\\n    --user-data-dir=$HOME/.config/openhamclock-kiosk \\|' kiosk.sh
+        fi
+        # Add crash lock cleanup if not present
+        if ! grep -q "exited_cleanly" kiosk.sh; then
+            sed -i '/# Trap Ctrl+Q/i \
+# Clean up any crash lock files from unclean shutdown\
+KIOSK_PROFILE="$HOME/.config/openhamclock-kiosk"\
+mkdir -p "$KIOSK_PROFILE"\
+sed -i '"'"'s/"exited_cleanly":false/"exited_cleanly":true/'"'"' "$KIOSK_PROFILE/Default/Preferences" 2>/dev/null || true\
+sed -i '"'"'s/"exit_type":"Crashed"/"exit_type":"Normal"/'"'"' "$KIOSK_PROFILE/Default/Preferences" 2>/dev/null || true\
+' kiosk.sh
+        fi
+        echo "   ✓ Removed --incognito flag (was preventing settings from saving)"
+        echo "   ✓ Added dedicated profile directory for persistent localStorage"
+        echo "   ⚠️  Reboot your Pi for this fix to take effect"
+    fi
+fi
+
 echo ""
 echo "📋 New version:"
 grep '"version"' package.json | head -1

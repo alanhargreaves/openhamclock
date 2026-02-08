@@ -281,6 +281,12 @@ export const DockableApp = ({
             onFilterChange={setDxFilters}
             onOpenFilters={() => setShowDXFilters(true)}
             onHoverSpot={setHoveredSpot}
+            onSpotClick={(spot) => {
+              const path = (dxClusterData.paths || []).find(p => p.dxCall === spot.call);
+              if (path && path.dxLat != null && path.dxLon != null) {
+                handleDXChange({ lat: path.dxLat, lon: path.dxLon });
+              }
+            }}
             hoveredSpot={hoveredSpot}
             showOnMap={mapLayers.showDXPaths}
             onToggleMap={toggleDXPaths}
@@ -295,7 +301,11 @@ export const DockableApp = ({
             onToggleMap={togglePSKReporter}
             filters={pskFilters}
             onOpenFilters={() => setShowPSKFilters(true)}
-            onShowOnMap={() => {}}
+            onShowOnMap={(report) => {
+              if (report.lat && report.lon) {
+                handleDXChange({ lat: report.lat, lon: report.lon });
+              }
+            }}
             wsjtxDecodes={wsjtx.decodes}
             wsjtxClients={wsjtx.clients}
             wsjtxQsos={wsjtx.qsos}

@@ -318,6 +318,12 @@ export default function ModernLayout(props) {
                 onFilterChange={setDxFilters}
                 onOpenFilters={() => setShowDXFilters(true)}
                 onHoverSpot={setHoveredSpot}
+                onSpotClick={(spot) => {
+                  const path = (dxClusterData.paths || []).find(p => p.dxCall === spot.call);
+                  if (path && path.dxLat != null && path.dxLon != null) {
+                    handleDXChange({ lat: path.dxLat, lon: path.dxLon });
+                  }
+                }}
                 hoveredSpot={hoveredSpot}
                 showOnMap={mapLayers.showDXPaths}
                 onToggleMap={toggleDXPaths}
@@ -336,7 +342,7 @@ export default function ModernLayout(props) {
                 onOpenFilters={() => setShowPSKFilters(true)}
                 onShowOnMap={(report) => {
                   if (report.lat && report.lon) {
-                    setDxLocation({ lat: report.lat, lon: report.lon, call: report.receiver || report.sender });
+                    handleDXChange({ lat: report.lat, lon: report.lon });
                   }
                 }}
                 wsjtxDecodes={wsjtx.decodes}
