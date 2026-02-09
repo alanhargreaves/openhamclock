@@ -868,15 +868,24 @@ function execFilePromise(cmd, args, options = {}) {
   });
 }
 
+// Detect default branch (main or master) — cached after first call
+let _defaultBranch = null;
+async function getDefaultBranch() {
+  if (_defaultBranch) return _defaultBranch;
+  try {
+    await execFilePromise('git', ['rev-parse', '--verify', 'origin/main'], { cwd: __dirname });
+    _defaultBranch = 'main';
+  } catch {
+    _defaultBranch = 'master';
+  }
+  return _defaultBranch;
+}
+
 async function hasGitUpdates() {
   await execFilePromise('git', ['fetch', 'origin'], { cwd: __dirname });
+  const branch = await getDefaultBranch();
   const local = (await execFilePromise('git', ['rev-parse', 'HEAD'], { cwd: __dirname })).stdout.trim();
-  let remote = '';
-  try {
-    remote = (await execFilePromise('git', ['rev-parse', 'origin/main'], { cwd: __dirname })).stdout.trim();
-  } catch {
-    remote = (await execFilePromise('git', ['rev-parse', 'origin/master'], { cwd: __dirname })).stdout.trim();
-  }
+  const remote = (await execFilePromise('git', ['rev-parse', `origin/${branch}`], { cwd: __dirname })).stdout.trim();
   return { updateAvailable: local !== remote, local, remote };
 }
 

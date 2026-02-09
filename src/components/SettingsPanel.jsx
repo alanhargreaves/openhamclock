@@ -30,7 +30,6 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave, onResetLayout, 
   const [dxClusterSource, setDxClusterSource] = useState(config?.dxClusterSource || 'dxspider-proxy');
   const [customDxCluster, setCustomDxCluster] = useState(config?.customDxCluster || { enabled: false, host: '', port: 7300 });
   const [lowMemoryMode, setLowMemoryMode] = useState(config?.lowMemoryMode || false);
-  const [showDxNews, setShowDxNews] = useState(config?.showDxNews ?? true);
   const { t, i18n } = useTranslation();
 
   // Layer controls
@@ -63,7 +62,6 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave, onResetLayout, 
       setDxClusterSource(config.dxClusterSource || 'dxspider-proxy');
       setCustomDxCluster(config.customDxCluster || { enabled: false, host: '', port: 7300 });
       setLowMemoryMode(config.lowMemoryMode || false);
-      setShowDxNews(config.showDxNews ?? true);
       if (config.location?.lat && config.location?.lon) {
         setGridSquare(calculateGridSquare(config.location.lat, config.location.lon));
       }
@@ -190,8 +188,7 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave, onResetLayout, 
       timezone,
       dxClusterSource,
       customDxCluster,
-      lowMemoryMode,
-      showDxNews
+      lowMemoryMode
     });
     onClose();
   };
@@ -738,51 +735,6 @@ export const SettingsPanel = ({ isOpen, onClose, config, onSave, onResetLayout, 
                   : 'Full Mode: All features enabled. Requires 8GB+ RAM for best performance.'}
               </div>
             </div>
-
-            {/* DX News Toggle */}
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                {t('station.settings.showDxNews')}
-              </label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  onClick={() => setShowDxNews(true)}
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    background: showDxNews ? 'var(--accent-amber)' : 'var(--bg-tertiary)',
-                    border: `1px solid ${showDxNews ? 'var(--accent-amber)' : 'var(--border-color)'}`,
-                    borderRadius: '6px',
-                    color: showDxNews ? '#000' : 'var(--text-secondary)',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    fontWeight: showDxNews ? '600' : '400'
-                  }}
-                >
-                  {t('station.settings.showDxNews.visible')}
-                </button>
-                <button
-                  onClick={() => setShowDxNews(false)}
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    background: !showDxNews ? 'var(--accent-amber)' : 'var(--bg-tertiary)',
-                    border: `1px solid ${!showDxNews ? 'var(--accent-amber)' : 'var(--border-color)'}`,
-                    borderRadius: '6px',
-                    color: !showDxNews ? '#000' : 'var(--text-secondary)',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    fontWeight: !showDxNews ? '600' : '400'
-                  }}
-                >
-                  {t('station.settings.showDxNews.hidden')}
-                </button>
-              </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
-                {t('station.settings.showDxNews.describe')}
-              </div>
-            </div>
-
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px' }}>
                 {t('station.settings.dx.title')}

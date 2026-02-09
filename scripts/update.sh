@@ -57,9 +57,19 @@ echo "🔍 Checking for updates..."
 # Fetch latest changes
 git fetch origin
 
+# Detect the default branch (main or master)
+if git rev-parse --verify origin/main >/dev/null 2>&1; then
+    BRANCH="main"
+elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+    BRANCH="master"
+else
+    echo "❌ Error: Could not find origin/main or origin/master"
+    exit 1
+fi
+
 # Check if there are updates
 LOCAL=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse origin/main 2>/dev/null || git rev-parse origin/master)
+REMOTE=$(git rev-parse origin/$BRANCH)
 
 if [ "$LOCAL" = "$REMOTE" ]; then
     echo "✅ Already up to date!"
@@ -71,7 +81,7 @@ echo ""
 
 # Show what's new
 echo "📝 Changes since your version:"
-git log --oneline HEAD..origin/main 2>/dev/null || git log --oneline HEAD..origin/master
+git log --oneline HEAD..origin/$BRANCH
 echo ""
 
 # Confirm update
@@ -110,7 +120,7 @@ if [ -n "$(git status --porcelain)" ]; then
     git stash --include-untracked 2>/dev/null || git checkout . 2>/dev/null
 fi
 
-git pull origin main 2>/dev/null || git pull origin master
+git pull origin $BRANCH
 
 echo ""
 echo "📦 Installing dependencies..."

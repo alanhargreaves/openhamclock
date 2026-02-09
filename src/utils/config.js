@@ -31,7 +31,6 @@
   showPota: true,
   showDxPaths: true,
   showDxWeather: true,
-  showDxNews: true,
   panels: {
     // Left sidebar panels
     deLocation: { visible: true, size: 1.0 },
@@ -135,7 +134,6 @@ export const loadConfig = () => {
       showSatellites: serverConfig.showSatellites ?? config.showSatellites,
       showPota: serverConfig.showPota ?? config.showPota,
       showDxPaths: serverConfig.showDxPaths ?? config.showDxPaths,
-      showDxNews: serverConfig.showDxNews ?? config.showDxNews,
       panels: { ...config.panels, ...serverConfig.panels }
     };
   }
