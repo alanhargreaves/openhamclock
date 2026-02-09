@@ -39,6 +39,7 @@ export const WorldMap = ({
   showSatellites, 
   showPSKReporter,
   showWSJTX,
+  showDxNews = true,
   onToggleSatellites, 
   hoveredSpot,
   callsign = 'N0CALL',
