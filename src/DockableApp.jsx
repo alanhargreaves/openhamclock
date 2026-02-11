@@ -20,7 +20,8 @@ import {
   PSKReporterPanel,
   WeatherPanel,
   AmbientPanel,
-  AnalogClockPanel
+  AnalogClockPanel,
+  IDTimerPanel
 } from './components';
 
 import { loadLayout, saveLayout, DEFAULT_LAYOUT } from './store/layoutStore.js';
@@ -189,6 +190,7 @@ export const DockableApp = ({
     'sota': { name: 'SOTA', icon: '⛰️' },
     'contests': { name: 'Contests', icon: '🏆' },
     'ambient': { name: 'Ambient Weather', icon: '🌦️' },
+    'id-timer': { name: 'ID Timer', icon: '📢' },
   }), []);
 
   // Add panel
@@ -455,6 +457,11 @@ export const DockableApp = ({
           />
         );
         break;
+
+      case 'id-timer':
+        content = <IDTimerPanel callsign={config.callsign} />;
+        break;
+
       default:
         content = (
           <div style={{ padding: '20px', color: '#ff6b6b', textAlign: 'center' }}>

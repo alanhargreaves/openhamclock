@@ -4474,7 +4474,7 @@ app.get('/api/wspr/heatmap', async (req, res) => {
     
     const response = await fetch(url, {
       headers: { 
-        'User-Agent': 'OpenHamClock/15.2.10 (Amateur Radio Dashboard)',
+        'User-Agent': 'OpenHamClock/15.2.11 (Amateur Radio Dashboard)',
         'Accept': '*/*'
       },
       signal: controller.signal

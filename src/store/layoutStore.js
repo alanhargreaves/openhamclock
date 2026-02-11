@@ -101,6 +101,7 @@ export const PANEL_DEFINITIONS = {
   'pota': { name: 'POTA', icon: '🏕️', description: 'Parks on the Air activators' },
   'sota': { name: 'SOTA', icon: '⛰️', description: 'Summits on the Air activators' },
   'contests': { name: 'Contests', icon: '🏆', description: 'Upcoming and active contests' },
+  'id-timer': { name: 'ID Timer', icon: '📢', description: '10-minute station identification reminder' },
   'world-map': { name: 'World Map', icon: '🗺️', description: 'Interactive world map' },
 };
 
