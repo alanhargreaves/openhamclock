@@ -67,4 +67,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
 
 # Start server with explicit heap limit (fail fast rather than slow OOM at 4GB)
-CMD ["node", "--max-old-space-size=512", "server.js"]
+CMD ["node", "--max-old-space-size=1024", "server.js"]
