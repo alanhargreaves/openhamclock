@@ -1084,6 +1084,22 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000);
 
+// Log memory usage every 15 minutes for leak detection
+setInterval(() => {
+  const mem = process.memoryUsage();
+  const mb = (bytes) => (bytes / 1024 / 1024).toFixed(1);
+  const mqttStats = {
+    subscribers: pskMqtt.subscribers.size,
+    subscribedCalls: pskMqtt.subscribedCalls.size,
+    sseClients: [...pskMqtt.subscribers.values()].reduce((n, s) => n + s.size, 0),
+    recentSpotsEntries: pskMqtt.recentSpots.size,
+    recentSpotsTotal: [...pskMqtt.recentSpots.values()].reduce((n, s) => n + s.length, 0),
+    spotBufferEntries: pskMqtt.spotBuffer.size,
+    spotBufferTotal: [...pskMqtt.spotBuffer.values()].reduce((n, b) => n + b.length, 0),
+  };
+  console.log(`[Memory] RSS=${mb(mem.rss)}MB Heap=${mb(mem.heapUsed)}/${mb(mem.heapTotal)}MB External=${mb(mem.external)}MB | MQTT: ${mqttStats.sseClients} SSE clients, ${mqttStats.subscribedCalls} calls, ${mqttStats.recentSpotsTotal} recent spots (${mqttStats.recentSpotsEntries} entries), ${mqttStats.spotBufferTotal} buffered | GeoIP=${geoIPCache.size} MySpots=${mySpotsCache.size} AllTimeIPs=${allTimeIPSet.size}`);
+}, 15 * 60 * 1000);
+
 // ============================================
 // AUTO UPDATE (GIT)
 // ============================================
@@ -3434,6 +3450,16 @@ function getCountryFromPrefix(prefix) {
 let mySpotsCache = new Map(); // key = callsign, value = { data, timestamp }
 const MYSPOTS_CACHE_TTL = 45000; // 45 seconds (just under 60s frontend poll to maximize cache hits)
 
+// Clean expired mySpots entries every 2 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [call, entry] of mySpotsCache) {
+    if (now - entry.timestamp > MYSPOTS_CACHE_TTL * 2) {
+      mySpotsCache.delete(call);
+    }
+  }
+}, 2 * 60 * 1000);
+
 app.get('/api/myspots/:callsign', async (req, res) => {
   const callsign = req.params.callsign.toUpperCase();
   const now = Date.now();
@@ -3542,33 +3568,8 @@ app.get('/api/myspots/:callsign', async (req, res) => {
 // WebSocket endpoints: 1885 (ws), 1886 (wss)
 // Topic format: pskr/filter/v2/{band}/{mode}/{sendercall}/{receivercall}/{senderlocator}/{receiverlocator}/{sendercountry}/{receivercountry}
 
-// Cache for PSKReporter data - stores recent spots from MQTT
-const pskReporterSpots = {
-  tx: new Map(), // Map of callsign -> spots where they're being heard
-  rx: new Map(), // Map of callsign -> spots they're receiving
-  maxAge: 60 * 60 * 1000 // Keep spots for 1 hour max
-};
-
-// Clean up old spots periodically
-setInterval(() => {
-  const cutoff = Date.now() - pskReporterSpots.maxAge;
-  for (const [call, spots] of pskReporterSpots.tx) {
-    const filtered = spots.filter(s => s.timestamp > cutoff);
-    if (filtered.length === 0) {
-      pskReporterSpots.tx.delete(call);
-    } else {
-      pskReporterSpots.tx.set(call, filtered);
-    }
-  }
-  for (const [call, spots] of pskReporterSpots.rx) {
-    const filtered = spots.filter(s => s.timestamp > cutoff);
-    if (filtered.length === 0) {
-      pskReporterSpots.rx.delete(call);
-    } else {
-      pskReporterSpots.rx.set(call, filtered);
-    }
-  }
-}, 5 * 60 * 1000); // Clean every 5 minutes
+// NOTE: PSKReporter spots are now handled entirely through the MQTT proxy system
+// (pskMqtt.recentSpots and pskMqtt.spotBuffer), not this legacy cache.
 
 // Convert grid square to lat/lon
 function gridToLatLonSimple(grid) {
@@ -3620,7 +3621,7 @@ app.get('/api/pskreporter/config', (req, res) => {
     stream: {
       endpoint: '/api/pskreporter/stream/{callsign}',
       type: 'text/event-stream',
-      batchInterval: '10s',
+      batchInterval: '15s',
       note: 'Server maintains single MQTT connection to PSKReporter, relays via SSE'
     },
     mqtt: {
@@ -3656,7 +3657,7 @@ app.get('/api/pskreporter/:callsign', async (req, res) => {
 // ============================================
 // Single MQTT connection to mqtt.pskreporter.info, shared across all users.
 // Dynamically subscribes per-callsign topics based on active SSE clients.
-// Buffers incoming spots and pushes to clients every 10 seconds.
+// Buffers incoming spots and pushes to clients every 15 seconds.
 
 const pskMqtt = {
   client: null,
@@ -3765,9 +3766,11 @@ function pskMqttConnect() {
         const txSpot = { ...spot, lat: receiverLoc?.lat, lon: receiverLoc?.lon, direction: 'tx' };
         if (!pskMqtt.spotBuffer.has(scUpper)) pskMqtt.spotBuffer.set(scUpper, []);
         pskMqtt.spotBuffer.get(scUpper).push(txSpot);
-        // Also add to recent spots
+        // Also add to recent spots (capped at insert time to prevent unbounded growth)
         if (!pskMqtt.recentSpots.has(scUpper)) pskMqtt.recentSpots.set(scUpper, []);
-        pskMqtt.recentSpots.get(scUpper).push(txSpot);
+        const scRecent = pskMqtt.recentSpots.get(scUpper);
+        scRecent.push(txSpot);
+        if (scRecent.length > 250) pskMqtt.recentSpots.set(scUpper, scRecent.slice(-200));
       }
 
       // Buffer for RX subscribers (rc is the callsign being tracked)
@@ -3777,7 +3780,9 @@ function pskMqttConnect() {
         if (!pskMqtt.spotBuffer.has(rcUpper)) pskMqtt.spotBuffer.set(rcUpper, []);
         pskMqtt.spotBuffer.get(rcUpper).push(rxSpot);
         if (!pskMqtt.recentSpots.has(rcUpper)) pskMqtt.recentSpots.set(rcUpper, []);
-        pskMqtt.recentSpots.get(rcUpper).push(rxSpot);
+        const rcRecent = pskMqtt.recentSpots.get(rcUpper);
+        rcRecent.push(rxSpot);
+        if (rcRecent.length > 250) pskMqtt.recentSpots.set(rcUpper, rcRecent.slice(-200));
       }
     } catch {
       pskMqtt.stats.messagesDropped++;
@@ -3858,7 +3863,7 @@ function unsubscribeCallsign(call) {
   });
 }
 
-// Flush buffered spots to SSE clients every 10 seconds
+// Flush buffered spots to SSE clients every 15 seconds
 pskMqtt.flushInterval = setInterval(() => {
   for (const [call, clients] of pskMqtt.subscribers) {
     const buffer = pskMqtt.spotBuffer.get(call);
@@ -3882,18 +3887,30 @@ pskMqtt.flushInterval = setInterval(() => {
     // Clear the buffer after flushing
     pskMqtt.spotBuffer.set(call, []);
   }
-}, 10000); // 10-second batch interval
+}, 15000); // 15-second batch interval
 
 // Clean old recent spots every 5 minutes
 pskMqtt.cleanupInterval = setInterval(() => {
   const cutoff = Date.now() - 60 * 60 * 1000; // 1 hour
   for (const [call, spots] of pskMqtt.recentSpots) {
+    // Delete entries for unsubscribed callsigns immediately
+    if (!pskMqtt.subscribedCalls.has(call)) {
+      pskMqtt.recentSpots.delete(call);
+      continue;
+    }
     const filtered = spots.filter(s => s.timestamp > cutoff);
     if (filtered.length === 0) {
       pskMqtt.recentSpots.delete(call);
     } else {
-      // Keep max 500 per callsign
-      pskMqtt.recentSpots.set(call, filtered.slice(-500));
+      // Keep max 200 per callsign (matches what clients receive on connect)
+      pskMqtt.recentSpots.set(call, filtered.slice(-200));
+    }
+  }
+
+  // Clean spotBuffer entries for unsubscribed callsigns
+  for (const call of pskMqtt.spotBuffer.keys()) {
+    if (!pskMqtt.subscribedCalls.has(call)) {
+      pskMqtt.spotBuffer.delete(call);
     }
   }
 
@@ -3980,6 +3997,9 @@ app.get('/api/pskreporter/stream/:callsign', (req, res) => {
           if (stillEmpty && stillEmpty.size === 0) {
             pskMqtt.subscribers.delete(callsign);
             pskMqtt.subscribedCalls.delete(callsign);
+            // Clean up spot data for this callsign
+            pskMqtt.recentSpots.delete(callsign);
+            pskMqtt.spotBuffer.delete(callsign);
             unsubscribeCallsign(callsign);
             console.log(`[PSK-MQTT] Unsubscribed ${callsign} (no more clients after grace period)`);
 
@@ -4501,7 +4521,7 @@ app.get('/api/wspr/heatmap', async (req, res) => {
     
     const response = await fetch(url, {
       headers: { 
-        'User-Agent': 'OpenHamClock/15.2.11 (Amateur Radio Dashboard)',
+        'User-Agent': 'OpenHamClock/15.2.12 (Amateur Radio Dashboard)',
         'Accept': '*/*'
       },
       signal: controller.signal
