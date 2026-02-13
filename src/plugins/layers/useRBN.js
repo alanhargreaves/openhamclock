@@ -632,21 +632,17 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null, callsign,
       // spot contains: { callsign (skimmer), dx (you), freq, band, mode, snr, grid, skimmerLat, skimmerLon }
       const skimmerGrid = spot.grid;
       
-      // ALWAYS prefer lat/lon from HAMQTH over grid conversion
-      // Check for existence (not falsy) to handle 0 values correctly
-      let skimmerLoc;
-      if (spot.skimmerLat !== undefined && spot.skimmerLat !== null && 
-          spot.skimmerLon !== undefined && spot.skimmerLon !== null) {
-        // Use lat/lon from HAMQTH directly
-        skimmerLoc = { lat: spot.skimmerLat, lon: spot.skimmerLon };
-        console.log(`[RBN] Using HAMQTH lat/lon for ${spot.callsign}: ${spot.skimmerLat}, ${spot.skimmerLon}`);
-      } else if (skimmerGrid) {
-        // Fallback to grid conversion only if no lat/lon available
-        skimmerLoc = gridToLatLon(skimmerGrid);
-        console.log(`[RBN] Using grid conversion for ${spot.callsign}: ${skimmerGrid} -> ${skimmerLoc?.lat}, ${skimmerLoc?.lon}`);
-      } else {
-        console.warn(`[RBN] No location data (lat/lon or grid) for skimmer ${spot.callsign}`);
+      if (!skimmerGrid) {
+        console.warn(`[RBN] No grid square for skimmer ${spot.callsign}`);
         return;
+      }
+
+      // Use provided lat/lon if available, otherwise convert grid
+      let skimmerLoc;
+      if (spot.skimmerLat && spot.skimmerLon) {
+        skimmerLoc = { lat: spot.skimmerLat, lon: spot.skimmerLon };
+      } else {
+        skimmerLoc = gridToLatLon(skimmerGrid);
       }
       
       if (!skimmerLoc) return;
