@@ -2,11 +2,13 @@
  * useWWFFSpots Hook
  * Fetches Parks on the Air activations via server proxy (for caching)
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useVisibilityRefresh } from './useVisibilityRefresh';
 
 export const useWWFFSpots = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const fetchRef = useRef(null);
 
   useEffect(() => {
     const fetchWWFF = async () => {
@@ -62,9 +64,12 @@ export const useWWFFSpots = () => {
     };
     
     fetchWWFF();
+    fetchRef.current = fetchWWFF;
     const interval = setInterval(fetchWWFF, 120 * 1000); // 2 minutes - reduced from 1 to save bandwidth
     return () => clearInterval(interval);
   }, []);
+
+  useVisibilityRefresh(() => fetchRef.current?.(), 10000);
 
   return { data, loading };
 };
