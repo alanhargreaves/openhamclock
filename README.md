@@ -102,7 +102,7 @@ OpenHamClock is built from independent modules, each focused on a specific data 
 
 ### World Map
 
-The central interactive map is the heart of the dashboard. It ties every other module together visually — DX spots, POTA activators, satellite orbits, signal paths, and your own station location all appear here.
+The central interactive map is the heart of the dashboard. It ties every other module together visually — DX spots, POTA/WWFF activators, satellite orbits, signal paths, and your own station location all appear here.
 
 **What it shows:**
 
