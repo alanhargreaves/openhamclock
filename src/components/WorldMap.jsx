@@ -22,6 +22,19 @@ import PluginLayer from './PluginLayer.jsx';
 import { DXNewsTicker } from './DXNewsTicker.jsx';
 import {filterDXPaths} from "../utils";
 
+// SECURITY: Escape HTML to prevent XSS in Leaflet popups/tooltips
+// DX cluster data, POTA/SOTA spots, and WSJT-X decodes come from external sources
+// and could contain malicious HTML/script tags in callsigns, comments, or park names.
+function esc(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 
 export const WorldMap = ({ 
   deLocation, 
@@ -54,8 +67,8 @@ export const WorldMap = ({
   const mapInstanceRef = useRef(null);
   const tileLayerRef = useRef(null);
   const terminatorRef = useRef(null);
-  const deMarkerRef = useRef(null);
-  const dxMarkerRef = useRef(null);
+  const deMarkerRef = useRef([]);
+  const dxMarkerRef = useRef([]);
   const sunMarkerRef = useRef(null);
   const moonMarkerRef = useRef(null);
   const potaMarkersRef = useRef([]);
@@ -437,30 +450,38 @@ export const WorldMap = ({
     const map = mapInstanceRef.current;
 
     // Remove old markers
-    if (deMarkerRef.current) map.removeLayer(deMarkerRef.current);
-    if (dxMarkerRef.current) map.removeLayer(dxMarkerRef.current);
+    deMarkerRef.current.forEach(m => map.removeLayer(m));
+    deMarkerRef.current = [];
+    dxMarkerRef.current.forEach(m => map.removeLayer(m));
+    dxMarkerRef.current = [];
 
-    // DE Marker
-    const deIcon = L.divIcon({
-      className: 'custom-marker de-marker',
-      html: 'DE',
-      iconSize: [32, 32],
-      iconAnchor: [16, 16]
+    // DE Marker — replicate across world copies
+    replicatePoint(deLocation.lat, deLocation.lon).forEach(([lat, lon]) => {
+      const deIcon = L.divIcon({
+        className: 'custom-marker de-marker',
+        html: 'DE',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+      const m = L.marker([lat, lon], { icon: deIcon })
+        .bindPopup(`<b>DE - Your Location</b><br>${calculateGridSquare(deLocation.lat, deLocation.lon)}<br>${deLocation.lat.toFixed(4)}°, ${deLocation.lon.toFixed(4)}°`)
+        .addTo(map);
+      deMarkerRef.current.push(m);
     });
-    deMarkerRef.current = L.marker([deLocation.lat, deLocation.lon], { icon: deIcon })
-      .bindPopup(`<b>DE - Your Location</b><br>${calculateGridSquare(deLocation.lat, deLocation.lon)}<br>${deLocation.lat.toFixed(4)}°, ${deLocation.lon.toFixed(4)}°`)
-      .addTo(map);
 
-    // DX Marker
-    const dxIcon = L.divIcon({
-      className: 'custom-marker dx-marker',
-      html: 'DX',
-      iconSize: [32, 32],
-      iconAnchor: [16, 16]
+    // DX Marker — replicate across world copies
+    replicatePoint(dxLocation.lat, dxLocation.lon).forEach(([lat, lon]) => {
+      const dxIcon = L.divIcon({
+        className: 'custom-marker dx-marker',
+        html: 'DX',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+      const m = L.marker([lat, lon], { icon: dxIcon })
+        .bindPopup(`<b>DX - Target</b><br>${calculateGridSquare(dxLocation.lat, dxLocation.lon)}<br>${dxLocation.lat.toFixed(4)}°, ${dxLocation.lon.toFixed(4)}°`)
+        .addTo(map);
+      dxMarkerRef.current.push(m);
     });
-    dxMarkerRef.current = L.marker([dxLocation.lat, dxLocation.lon], { icon: dxIcon })
-      .bindPopup(`<b>DX - Target</b><br>${calculateGridSquare(dxLocation.lat, dxLocation.lon)}<br>${dxLocation.lat.toFixed(4)}°, ${dxLocation.lon.toFixed(4)}°`)
-      .addTo(map);
   }, [deLocation, dxLocation]);
 
   // Update sun/moon markers every 60 seconds (matches terminator refresh)
@@ -565,27 +586,28 @@ export const WorldMap = ({
               opacity: 1,
               fillOpacity: isHovered ? 1 : 0.9
             })
-              .bindPopup(`<b style="color: ${color}">${path.dxCall}</b><br>${path.freq} MHz<br>by ${path.spotter}`)
+              .bindPopup(`<b data-qrz-call="${esc(path.dxCall)}" style="color: ${color}; cursor:pointer">${esc(path.dxCall)}</b><br>${esc(path.freq)} MHz<br>by <span data-qrz-call="${esc(path.spotter)}" style="cursor:pointer">${esc(path.spotter)}</span>`)
               .addTo(map);
             if (isHovered) dxCircle.bringToFront();
             dxPathsMarkersRef.current.push(dxCircle);
           });
           
-          // Add label if enabled (L.marker with divIcon auto-duplicates across world copies)
+          // Add label if enabled — replicate across world copies
           if (showDXLabels || isHovered) {
-            const dxLonNorm = normalizeLon(path.dxLon);
             const labelIcon = L.divIcon({
               className: '',
               html: `<span style="display:inline-block;background:${isHovered ? '#fff' : color};color:${isHovered ? color : '#000'};padding:${isHovered ? '5px 10px' : '4px 8px'};border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:${isHovered ? '14px' : '12px'};font-weight:700;white-space:nowrap;border:2px solid ${isHovered ? color : 'rgba(0,0,0,0.5)'};box-shadow:0 2px ${isHovered ? '8px' : '4px'} rgba(0,0,0,${isHovered ? '0.6' : '0.4'});">${path.dxCall}</span>`,
               iconSize: null,
               iconAnchor: [0, 0]
             });
-            const label = L.marker([path.dxLat, dxLonNorm], { 
-              icon: labelIcon, 
-              interactive: false,
-              zIndexOffset: isHovered ? 10000 : 0
-            }).addTo(map);
-            dxPathsMarkersRef.current.push(label);
+            replicatePoint(path.dxLat, path.dxLon).forEach(([lat, lon]) => {
+              const label = L.marker([lat, lon], { 
+                icon: labelIcon, 
+                interactive: false,
+                zIndexOffset: isHovered ? 10000 : 0
+              }).addTo(map);
+              dxPathsMarkersRef.current.push(label);
+            });
           }
         } catch (err) {
           console.error('Error rendering DX path:', err);
@@ -605,19 +627,21 @@ export const WorldMap = ({
     if (showPOTA && potaSpots) {
       potaSpots.forEach(spot => {
         if (spot.lat && spot.lon) {
-          // Green triangle marker for POTA activators
-          const triangleIcon = L.divIcon({
-            className: '',
-            html: `<span style="display:inline-block;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:14px solid #44cc44;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));"></span>`,
-            iconSize: [14, 14],
-            iconAnchor: [7, 14]
+          // Green triangle marker for POTA activators — replicate across world copies
+          replicatePoint(spot.lat, spot.lon).forEach(([lat, lon]) => {
+            const triangleIcon = L.divIcon({
+              className: '',
+              html: `<span style="display:inline-block;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:14px solid #44cc44;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));"></span>`,
+              iconSize: [14, 14],
+              iconAnchor: [7, 14]
+            });
+            const marker = L.marker([lat, lon], { icon: triangleIcon })
+              .bindPopup(`<b data-qrz-call="${esc(spot.call)}" style="color:#44cc44; cursor:pointer">${esc(spot.call)}</b><br><span style="color:#888">${esc(spot.ref)}</span> ${esc(spot.locationDesc || '')}<br>${spot.name ? `<i>${esc(spot.name)}</i><br>` : ''}${esc(spot.freq)} ${esc(spot.mode || '')} <span style="color:#888">${esc(spot.time || '')}</span>`)
+              .addTo(map);
+            potaMarkersRef.current.push(marker);
           });
-          const marker = L.marker([spot.lat, spot.lon], { icon: triangleIcon })
-            .bindPopup(`<b style="color:#44cc44">${spot.call}</b><br><span style="color:#888">${spot.ref}</span> ${spot.locationDesc || ''}<br>${spot.name ? `<i>${spot.name}</i><br>` : ''}${spot.freq} ${spot.mode || ''} <span style="color:#888">${spot.time || ''}</span>`)
-            .addTo(map);
-          potaMarkersRef.current.push(marker);
 
-          // Only show callsign label when labels are enabled
+          // Only show callsign label when labels are enabled — replicate
           if (showDXLabels) {
             const labelIcon = L.divIcon({
               className: '',
@@ -625,8 +649,10 @@ export const WorldMap = ({
               iconSize: null,
               iconAnchor: [0, -2]
             });
-            const label = L.marker([spot.lat, spot.lon], { icon: labelIcon, interactive: false }).addTo(map);
-            potaMarkersRef.current.push(label);
+            replicatePoint(spot.lat, spot.lon).forEach(([lat, lon]) => {
+              const label = L.marker([lat, lon], { icon: labelIcon, interactive: false }).addTo(map);
+              potaMarkersRef.current.push(label);
+            });
           }
         }
       });
@@ -644,19 +670,21 @@ export const WorldMap = ({
     if (showSOTA && sotaSpots) {
       sotaSpots.forEach(spot => {
         if (spot.lat && spot.lon) {
-          // Orange diamond marker for SOTA activators
-          const diamondIcon = L.divIcon({
-            className: '',
-            html: `<span style="display:inline-block;width:12px;height:12px;background:#ff9632;transform:rotate(45deg);border:1px solid rgba(0,0,0,0.4);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));"></span>`,
-            iconSize: [12, 12],
-            iconAnchor: [6, 6]
+          // Orange diamond marker for SOTA activators — replicate across world copies
+          replicatePoint(spot.lat, spot.lon).forEach(([lat, lon]) => {
+            const diamondIcon = L.divIcon({
+              className: '',
+              html: `<span style="display:inline-block;width:12px;height:12px;background:#ff9632;transform:rotate(45deg);border:1px solid rgba(0,0,0,0.4);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));"></span>`,
+              iconSize: [12, 12],
+              iconAnchor: [6, 6]
+            });
+            const marker = L.marker([lat, lon], { icon: diamondIcon })
+              .bindPopup(`<b data-qrz-call="${esc(spot.call)}" style="color:#ff9632; cursor:pointer">${esc(spot.call)}</b><br><span style="color:#888">${esc(spot.ref)}</span>${spot.summit ? ` — ${esc(spot.summit)}` : ''}${spot.points ? ` <span style="color:#ff9632">(${esc(spot.points)}pt)</span>` : ''}<br>${esc(spot.freq)} ${esc(spot.mode || '')} <span style="color:#888">${esc(spot.time || '')}</span>`)
+              .addTo(map);
+            sotaMarkersRef.current.push(marker);
           });
-          const marker = L.marker([spot.lat, spot.lon], { icon: diamondIcon })
-            .bindPopup(`<b style="color:#ff9632">${spot.call}</b><br><span style="color:#888">${spot.ref}</span>${spot.summit ? ` — ${spot.summit}` : ''}${spot.points ? ` <span style="color:#ff9632">(${spot.points}pt)</span>` : ''}<br>${spot.freq} ${spot.mode || ''} <span style="color:#888">${spot.time || ''}</span>`)
-            .addTo(map);
-          sotaMarkersRef.current.push(marker);
 
-          // Only show callsign label when labels are enabled
+          // Only show callsign label when labels are enabled — replicate
           if (showDXLabels) {
             const labelIcon = L.divIcon({
               className: '',
@@ -664,8 +692,10 @@ export const WorldMap = ({
               iconSize: null,
               iconAnchor: [0, -2]
             });
-            const label = L.marker([spot.lat, spot.lon], { icon: labelIcon, interactive: false }).addTo(map);
-            sotaMarkersRef.current.push(label);
+            replicatePoint(spot.lat, spot.lon).forEach(([lat, lon]) => {
+              const label = L.marker([lat, lon], { icon: labelIcon, interactive: false }).addTo(map);
+              sotaMarkersRef.current.push(label);
+            });
           }
         }
       });
@@ -811,8 +841,8 @@ export const WorldMap = ({
                 opacity: 0.9,
                 fillOpacity: 0.8
               }).bindPopup(`
-                <b>${displayCall}</b><br>
-                ${spot.mode} @ ${freqMHz} MHz<br>
+                <b data-qrz-call="${esc(displayCall)}" style="cursor:pointer">${esc(displayCall)}</b><br>
+                ${esc(spot.mode)} @ ${esc(freqMHz)} MHz<br>
                 ${spot.snr !== null ? `SNR: ${spot.snr > 0 ? '+' : ''}${spot.snr} dB` : ''}
               `).addTo(map);
               pskMarkersRef.current.push(circle);
@@ -880,26 +910,28 @@ export const WorldMap = ({
               });
             }
 
-            // Diamond-shaped marker (L.marker with divIcon auto-duplicates across world copies)
-            const diamond = L.marker([spotLat, normalizeLon(spotLon)], {
-              icon: L.divIcon({
-                className: '',
-                html: `<div style="
-                  width: 8px; height: 8px;
-                  background: ${bandColor};
-                  border: 1px solid ${isEstimated ? '#888' : '#fff'};
-                  transform: rotate(45deg);
-                  opacity: ${isEstimated ? 0.5 : 0.9};
-                "></div>`,
-                iconSize: [8, 8],
-                iconAnchor: [4, 4]
-              })
-            }).bindPopup(`
-              <b>${call}</b> ${spot.type === 'CQ' ? 'CQ' : ''}<br>
-              ${spot.grid || ''} ${spot.band || ''}${spot.gridSource === 'prefix' ? ' <i>(est)</i>' : spot.gridSource === 'cache' ? ' <i>(prev)</i>' : ''}<br>
-              ${spot.mode || ''} SNR: ${spot.snr != null ? (spot.snr >= 0 ? '+' : '') + spot.snr : '?'} dB
-            `).addTo(map);
-            wsjtxMarkersRef.current.push(diamond);
+            // Diamond-shaped marker — replicate across world copies
+            replicatePoint(spotLat, spotLon).forEach(([rLat, rLon]) => {
+              const diamond = L.marker([rLat, rLon], {
+                icon: L.divIcon({
+                  className: '',
+                  html: `<div style="
+                    width: 8px; height: 8px;
+                    background: ${bandColor};
+                    border: 1px solid ${isEstimated ? '#888' : '#fff'};
+                    transform: rotate(45deg);
+                    opacity: ${isEstimated ? 0.5 : 0.9};
+                  "></div>`,
+                  iconSize: [8, 8],
+                  iconAnchor: [4, 4]
+                })
+              }).bindPopup(`
+                <b data-qrz-call="${esc(call)}" style="cursor:pointer">${esc(call)}</b> ${spot.type === 'CQ' ? 'CQ' : ''}<br>
+                ${esc(spot.grid || '')} ${esc(spot.band || '')}${spot.gridSource === 'prefix' ? ' <i>(est)</i>' : spot.gridSource === 'cache' ? ' <i>(prev)</i>' : ''}<br>
+                ${esc(spot.mode || '')} SNR: ${spot.snr != null ? (spot.snr >= 0 ? '+' : '') + spot.snr : '?'} dB
+              `).addTo(map);
+              wsjtxMarkersRef.current.push(diamond);
+            });
           } catch (err) {
             // skip bad spots
           }
