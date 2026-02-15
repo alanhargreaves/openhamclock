@@ -2,7 +2,7 @@
  * Classic HamClock-style layout
  */
 import { DXNewsTicker, WorldMap } from '../components';
-import { getBandColor } from '../utils';
+import { getBandColor, getBandColorForBand } from '../utils';
 import CallsignLink from '../components/CallsignLink.jsx';
 
 export default function ClassicLayout(props) {
@@ -50,6 +50,9 @@ export default function ClassicLayout(props) {
     toggleDXLabels,
     toggleSatellites,
   } = props;
+
+  const liveSpotBands = ['160m', '80m', '60m', '40m', '30m', '20m', '17m', '15m', '12m', '10m'];
+  const mapLegendBands = ['160', '80', '40', '30', '20', '17', '15', '12', '10', '6'];
 
   return config.layout === 'classic' ? (
     <div style={{
@@ -170,20 +173,9 @@ export default function ClassicLayout(props) {
               {t('app.liveSpots.ofGridLastMinutes', { grid: deGrid, minutes: 15 })}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px', fontSize: '10px' }}>
-              {[
-                { band: '160m', color: '#ff6666' },
-                { band: '80m', color: '#ff9966' },
-                { band: '60m', color: '#ffcc66' },
-                { band: '40m', color: '#ccff66' },
-                { band: '30m', color: '#66ff99' },
-                { band: '20m', color: '#66ffcc' },
-                { band: '17m', color: '#66ccff' },
-                { band: '15m', color: '#6699ff' },
-                { band: '12m', color: '#9966ff' },
-                { band: '10m', color: '#cc66ff' },
-              ].map(b => (
-                <div key={b.band} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: b.color }}>{b.band}</span>
+              {liveSpotBands.map((band) => (
+                <div key={band} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: getBandColorForBand(band) }}>{band}</span>
                   <span style={{ color: '#fff' }}>
                     {dxClusterData.spots?.filter(s => {
                       const freq = parseFloat(s.freq);
@@ -192,7 +184,7 @@ export default function ClassicLayout(props) {
                         '30m': [10.1, 10.15], '20m': [14, 14.35], '17m': [18.068, 18.168],
                         '15m': [21, 21.45], '12m': [24.89, 24.99], '10m': [28, 29.7]
                       };
-                      const r = bands[b.band];
+                      const r = bands[band];
                       return r && freq >= r[0] && freq <= r[1];
                     }).length || 0}
                   </span>
@@ -573,20 +565,14 @@ export default function ClassicLayout(props) {
             fontFamily: 'JetBrains Mono, monospace',
             fontWeight: '700'
           }}>
-            {[
-              { band: '160', color: '#ff6666' }, { band: '80', color: '#ff9966' },
-              { band: '40', color: '#ffcc66' }, { band: '30', color: '#99ff66' },
-              { band: '20', color: '#66ff99' }, { band: '17', color: '#66ffcc' },
-              { band: '15', color: '#66ccff' }, { band: '12', color: '#6699ff' },
-              { band: '10', color: '#9966ff' }, { band: '6', color: '#ff66ff' }
-            ].map(b => (
-              <span key={b.band} style={{
-                background: b.color,
+            {mapLegendBands.map((band) => (
+              <span key={band} style={{
+                background: getBandColorForBand(`${band}m`),
                 color: '#000',
                 padding: '1px 3px',
                 borderRadius: '2px',
                 lineHeight: 1.2
-              }}>{b.band}</span>
+              }}>{band}</span>
             ))}
           </div>
         </div>
@@ -961,20 +947,14 @@ export default function ClassicLayout(props) {
             fontFamily: 'JetBrains Mono, monospace',
             fontWeight: '700'
           }}>
-            {[
-              { band: '160', color: '#ff6666' }, { band: '80', color: '#ff9966' },
-              { band: '40', color: '#ffcc66' }, { band: '30', color: '#99ff66' },
-              { band: '20', color: '#66ff99' }, { band: '17', color: '#66ffcc' },
-              { band: '15', color: '#66ccff' }, { band: '12', color: '#6699ff' },
-              { band: '10', color: '#9966ff' }, { band: '6', color: '#ff66ff' }
-            ].map(b => (
-              <span key={b.band} style={{
-                background: b.color,
+            {mapLegendBands.map((band) => (
+              <span key={band} style={{
+                background: getBandColorForBand(`${band}m`),
                 color: '#000',
                 padding: '1px 3px',
                 borderRadius: '2px',
                 lineHeight: 1.2
-              }}>{b.band}</span>
+              }}>{band}</span>
             ))}
           </div>
         </div>

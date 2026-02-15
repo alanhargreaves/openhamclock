@@ -201,5 +201,7 @@
   "station.settings.satellites.showAll": "Alle Satelliten werden angezeigt (kein Filter)",
   "station.settings.satellites.selectedCount": "{{count}} Satellit(en) ausgewählt",
   "station.settings.satellites.visible": "✓ Sichtbar",
-  "station.settings.satellites.belowHorizon": "✗ Unter dem Horizont"
+  "station.settings.satellites.belowHorizon": "✗ Unter dem Horizont",
+  "app.legend.sun": "Sonne",
+  "app.legend.moon": "Mond"
 }

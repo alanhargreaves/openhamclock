@@ -2,6 +2,7 @@
  * Callsign and Band Utilities
  * Band detection, mode detection, callsign parsing
  */
+import { getBandColorForFreq } from './bandColors.js';
 
 /**
  * HF Amateur Bands
@@ -54,19 +55,7 @@ export const getBandFromFreq = (freq) => {
  * Get band color for map visualization
  */
 export const getBandColor = (freq) => {
-  const f = parseFloat(freq);
-  if (f >= 1.8 && f < 2) return '#ff6666';      // 160m - red
-  if (f >= 3.5 && f < 4) return '#ff9966';      // 80m - orange
-  if (f >= 7 && f < 7.5) return '#ffcc66';      // 40m - yellow
-  if (f >= 10 && f < 10.5) return '#99ff66';    // 30m - lime
-  if (f >= 14 && f < 14.5) return '#66ff99';    // 20m - green
-  if (f >= 18 && f < 18.5) return '#66ffcc';    // 17m - teal
-  if (f >= 21 && f < 21.5) return '#66ccff';    // 15m - cyan
-  if (f >= 24 && f < 25) return '#6699ff';      // 12m - blue
-  if (f >= 26 && f < 28) return '#8866ff';      // 11m - violet (CB band)
-  if (f >= 28 && f < 30) return '#9966ff';      // 10m - purple
-  if (f >= 50 && f < 54) return '#ff66ff';      // 6m - magenta
-  return '#4488ff';                              // default blue
+  return getBandColorForFreq(freq);
 };
 
 /**
