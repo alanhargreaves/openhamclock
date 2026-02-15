@@ -10,7 +10,7 @@ import { useState, useEffect } from 'react';
 // Each entry: { version, date, heading, features: [...] }
 const CHANGELOG = [
   {
-    version: '15.4.0',
+    version: '15.4.1',
     date: '2026-02-15',
     heading: "Tonight's a big one — here's what's new:",
     features: [
