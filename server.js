@@ -960,7 +960,7 @@ function getStatsFilePath() {
 }
 
 const STATS_FILE = getStatsFilePath();
-const STATS_SAVE_INTERVAL = 60000; // Save every 60 seconds
+const STATS_SAVE_INTERVAL = 5 * 60 * 1000; // Save every 5 minutes (was 60s — too frequent with large geoIPCache)
 
 // Load persistent stats from disk
 function loadVisitorStats() {
@@ -1010,7 +1010,13 @@ function loadVisitorStats() {
             : 0,
         allTimeVisitors: data.allTimeVisitors || 0,
         allTimeRequests: data.allTimeRequests || 0,
-        allTimeUniqueIPs: data.allTimeUniqueIPs || [],
+        // Reconstruct from geoIPCache keys (covers ~99% of IPs) + any legacy array
+        allTimeUniqueIPs: [
+          ...new Set([
+            ...(data.allTimeUniqueIPs || []),
+            ...Object.keys(data.geoIPCache || {}),
+          ]),
+        ],
         serverFirstStarted:
           data.serverFirstStarted || defaults.serverFirstStarted,
         lastDeployment: new Date().toISOString(),
@@ -1041,12 +1047,18 @@ function saveVisitorStats() {
       fs.mkdirSync(dir, { recursive: true });
     }
 
+    // Don't persist allTimeUniqueIPs array — it grows forever and can be
+    // reconstructed from geoIPCache keys on restart. Save memory.
+    // Reconstruct geoIPCache from Map only at save time (not kept in memory as duplicate).
     const data = {
       ...visitorStats,
+      allTimeUniqueIPs: undefined, // Exclude from JSON — reconstructed on load
+      geoIPCache: Object.fromEntries(geoIPCache), // Rebuild from Map for persistence only
       lastSaved: new Date().toISOString(),
     };
 
-    fs.writeFileSync(STATS_FILE, JSON.stringify(data, null, 2));
+    // Use compact JSON (no pretty-print) to avoid multi-MB temporary strings
+    fs.writeFileSync(STATS_FILE, JSON.stringify(data));
     visitorStats.lastSaved = data.lastSaved; // Update in-memory too
     saveErrorCount = 0; // Reset on success
     // Only log occasionally to avoid spam
@@ -1078,6 +1090,10 @@ const visitorStats = loadVisitorStats();
 // Convert today's IPs to a Set for fast lookup
 const todayIPSet = new Set(visitorStats.uniqueIPsToday);
 const allTimeIPSet = new Set(visitorStats.allTimeUniqueIPs);
+const MAX_TRACKED_IPS = 100000; // Stop tracking individual IPs after this (just count)
+
+// Free the array — Set is the authoritative source now, array is no longer persisted
+visitorStats.allTimeUniqueIPs = [];
 
 // ============================================
 // GEO-IP COUNTRY RESOLUTION
@@ -1092,6 +1108,10 @@ if (!visitorStats.countryStatsToday) visitorStats.countryStatsToday = {}; // Res
 if (!visitorStats.geoIPCache) visitorStats.geoIPCache = {}; // { "1.2.3.4": "US", ... }
 
 const geoIPCache = new Map(Object.entries(visitorStats.geoIPCache)); // ip -> countryCode
+
+// Free the plain object — Map is the authoritative runtime source.
+// Reconstructed from Map only at save time to avoid double memory.
+delete visitorStats.geoIPCache;
 const geoIPQueue = new Set(); // IPs pending lookup
 let geoIPLastBatch = 0;
 const GEOIP_BATCH_INTERVAL = 30 * 1000; // Resolve every 30 seconds
@@ -1135,8 +1155,10 @@ function queueGeoIPLookup(ip) {
  */
 function recordCountry(ip, countryCode) {
   if (!countryCode || countryCode === 'Unknown') return;
-  geoIPCache.set(ip, countryCode);
-  visitorStats.geoIPCache[ip] = countryCode;
+  // Only cache individual IP→country mappings up to the cap
+  if (geoIPCache.size < MAX_TRACKED_IPS || geoIPCache.has(ip)) {
+    geoIPCache.set(ip, countryCode);
+  }
 
   // All-time stats
   visitorStats.countryStats[countryCode] =
@@ -1525,8 +1547,10 @@ app.use((req, res, next) => {
     // Track all-time unique visitors
     const isNewAllTime = !allTimeIPSet.has(ip);
     if (isNewAllTime) {
-      allTimeIPSet.add(ip);
-      visitorStats.allTimeUniqueIPs.push(ip);
+      // Only track individual IPs up to the cap (prevents unbounded memory growth)
+      if (allTimeIPSet.size < MAX_TRACKED_IPS) {
+        allTimeIPSet.add(ip);
+      }
       visitorStats.allTimeVisitors++;
       queueGeoIPLookup(ip);
       logInfo(
@@ -1590,11 +1614,30 @@ setInterval(
       ),
     };
     console.log(
-      `[Memory] RSS=${mb(mem.rss)}MB Heap=${mb(mem.heapUsed)}/${mb(mem.heapTotal)}MB External=${mb(mem.external)}MB | MQTT: ${mqttStats.sseClients} SSE clients, ${mqttStats.subscribedCalls} calls, ${mqttStats.recentSpotsTotal} recent spots (${mqttStats.recentSpotsEntries} entries), ${mqttStats.spotBufferTotal} buffered | GeoIP=${geoIPCache.size} MySpots=${mySpotsCache.size} AllTimeIPs=${allTimeIPSet.size}`,
+      `[Memory] RSS=${mb(mem.rss)}MB Heap=${mb(mem.heapUsed)}/${mb(mem.heapTotal)}MB External=${mb(mem.external)}MB | MQTT: ${mqttStats.sseClients} SSE clients, ${mqttStats.subscribedCalls} calls, ${mqttStats.recentSpotsTotal} recent spots (${mqttStats.recentSpotsEntries} entries), ${mqttStats.spotBufferTotal} buffered | GeoIP=${geoIPCache.size} CallLookup=${callsignLookupCache?.size || 0} LocCache=${callsignLocationCache?.size || 0} MySpots=${mySpotsCache.size} AllTimeIPs=${allTimeIPSet.size} RBN=${rbnSpotsByDX?.size || 0}`,
     );
   },
   15 * 60 * 1000,
 );
+
+// Periodic GC compaction — helps V8 release fragmented old-space memory
+// Without this, long-running processes slowly accumulate unreclaimable heap
+setInterval(
+  () => {
+    if (typeof global.gc === 'function') {
+      const before = process.memoryUsage().heapUsed;
+      global.gc();
+      const after = process.memoryUsage().heapUsed;
+      const freed = ((before - after) / 1024 / 1024).toFixed(1);
+      if (freed > 5) {
+        console.log(
+          `[GC] Compaction freed ${freed}MB (${(before / 1024 / 1024).toFixed(0)}MB → ${(after / 1024 / 1024).toFixed(0)}MB)`,
+        );
+      }
+    }
+  },
+  30 * 60 * 1000,
+); // Every 30 minutes
 
 // ============================================
 // AUTO UPDATE (GIT)
@@ -6576,7 +6619,19 @@ const rbnSpotsByDX = new Map(); // Map<dxCallsign, spot[]>
 const MAX_SPOTS_PER_DX = 50; // Keep up to 50 spots per DX station
 const MAX_DX_CALLSIGNS = 5000; // Track up to 5000 unique DX stations
 const RBN_SPOT_TTL = 30 * 60 * 1000; // 30 minutes
-const callsignLocationCache = new Map(); // Permanent cache for skimmer locations
+const callsignLocationCache = new Map(); // Cache for skimmer/station locations
+const LOCATION_CACHE_MAX = 2000; // ~1000 active RBN skimmers worldwide, 2x headroom
+
+function cacheCallsignLocation(call, data) {
+  if (
+    callsignLocationCache.size >= LOCATION_CACHE_MAX &&
+    !callsignLocationCache.has(call)
+  ) {
+    const oldest = callsignLocationCache.keys().next().value;
+    if (oldest) callsignLocationCache.delete(oldest);
+  }
+  callsignLocationCache.set(call, data);
+}
 let rbnSpotCount = 0; // Total spots received (for stats)
 
 // Helper function to convert frequency to band
@@ -6726,90 +6781,128 @@ function maintainRBNConnection(port = 7000) {
 // Start persistent connection on server startup
 maintainRBNConnection(7000);
 
-// Cache for RBN API responses
-let rbnApiCache = { data: null, timestamp: 0, key: '' };
-const RBN_API_CACHE_TTL = 30000; // 30 seconds - spots change constantly but not every request
+// Periodic cleanup of expired spots from the DX-indexed map
+setInterval(() => {
+  const cutoff = Date.now() - RBN_SPOT_TTL;
+  let cleaned = 0;
+  for (const [dxCall, spots] of rbnSpotsByDX) {
+    const before = spots.length;
+    const filtered = spots.filter((s) => s.timestampMs > cutoff);
+    if (filtered.length === 0) {
+      rbnSpotsByDX.delete(dxCall);
+      cleaned += before;
+    } else if (filtered.length < before) {
+      rbnSpotsByDX.set(dxCall, filtered);
+      cleaned += before - filtered.length;
+    }
+  }
+  if (cleaned > 0) {
+    console.log(
+      `[RBN] Cleanup: removed ${cleaned} expired spots, tracking ${rbnSpotsByDX.size} DX stations`,
+    );
+  }
+}, 60000); // Run every 60 seconds
 
-// Endpoint to get recent RBN spots (no filtering, just return all recent spots)
+// Helper: enrich a spot with skimmer location data
+async function enrichSpotWithLocation(spot) {
+  const skimmerCall = spot.callsign;
+
+  // Check cache first
+  if (callsignLocationCache.has(skimmerCall)) {
+    const location = callsignLocationCache.get(skimmerCall);
+    return {
+      ...spot,
+      grid: location.grid,
+      skimmerLat: location.lat,
+      skimmerLon: location.lon,
+      skimmerCountry: location.country,
+    };
+  }
+
+  // Lookup location (don't block on failures)
+  try {
+    const response = await fetch(
+      `http://localhost:${PORT}/api/callsign/${skimmerCall}`,
+    );
+    if (response.ok) {
+      const locationData = await response.json();
+      // Validate coordinates are reasonable
+      if (
+        typeof locationData.lat === 'number' &&
+        typeof locationData.lon === 'number' &&
+        Math.abs(locationData.lat) <= 90 &&
+        Math.abs(locationData.lon) <= 180
+      ) {
+        const grid = latLonToGrid(locationData.lat, locationData.lon);
+
+        const location = {
+          callsign: skimmerCall,
+          grid: grid,
+          lat: locationData.lat,
+          lon: locationData.lon,
+          country: locationData.country,
+        };
+
+        // Cache permanently
+        cacheCallsignLocation(skimmerCall, location);
+
+        return {
+          ...spot,
+          grid: grid,
+          skimmerLat: locationData.lat,
+          skimmerLon: locationData.lon,
+          skimmerCountry: locationData.country,
+        };
+      }
+    }
+  } catch (err) {
+    // Silent fail
+  }
+
+  return spot;
+}
+
+// Cache for RBN API responses (per-callsign)
+const rbnApiCaches = new Map(); // Map<callsign, {data, timestamp}>
+const RBN_API_CACHE_TTL = 10000; // 10 seconds — short so new spots appear quickly
+
+// Primary endpoint: get RBN spots for a specific DX callsign
+// GET /api/rbn/spots?callsign=WB3IZU&minutes=5
 app.get('/api/rbn/spots', async (req, res) => {
-  const minutes = parseInt(req.query.minutes) || 30;
-  const limit = parseInt(req.query.limit) || 200; // Reduced from 500 to save bandwidth
+  const callsign = (req.query.callsign || '').toUpperCase().trim();
+  const minutes = Math.min(parseInt(req.query.minutes) || 15, 30);
 
-  const cacheKey = `${minutes}:${limit}`;
+  if (!callsign || callsign === 'N0CALL') {
+    return res.json({
+      count: 0,
+      spots: [],
+      minutes,
+      timestamp: new Date().toISOString(),
+      source: 'rbn-telnet-stream',
+    });
+  }
+
   const now = Date.now();
 
-  // Return cached response if fresh
-  if (
-    rbnApiCache.data &&
-    rbnApiCache.key === cacheKey &&
-    now - rbnApiCache.timestamp < RBN_API_CACHE_TTL
-  ) {
-    return res.json(rbnApiCache.data);
+  // Check per-callsign cache
+  const cached = rbnApiCaches.get(callsign);
+  if (cached && now - cached.timestamp < RBN_API_CACHE_TTL) {
+    return res.json(cached.data);
   }
 
   const cutoff = now - minutes * 60 * 1000;
 
-  // Filter by time window
-  const recentSpots = rbnSpots
-    .filter((spot) => spot.timestampMs > cutoff)
-    .slice(-limit); // Get most recent
+  // Direct O(1) lookup by DX callsign — no scanning the full firehose
+  const dxSpots = rbnSpotsByDX.get(callsign) || [];
+  const recentSpots = dxSpots.filter((spot) => spot.timestampMs > cutoff);
 
-  // Enrich spots with skimmer location data
+  // Enrich with skimmer locations
   const enrichedSpots = await Promise.all(
-    recentSpots.map(async (spot) => {
-      const skimmerCall = spot.callsign;
-
-      // Check cache first
-      if (callsignLocationCache.has(skimmerCall)) {
-        const location = callsignLocationCache.get(skimmerCall);
-        return {
-          ...spot,
-          grid: location.grid,
-          skimmerLat: location.lat,
-          skimmerLon: location.lon,
-          skimmerCountry: location.country,
-        };
-      }
-
-      // Lookup location (don't block on failures)
-      try {
-        const response = await fetch(
-          `http://localhost:${PORT}/api/callsign/${skimmerCall}`,
-        );
-        if (response.ok) {
-          const locationData = await response.json();
-          const grid = latLonToGrid(locationData.lat, locationData.lon);
-
-          const location = {
-            callsign: skimmerCall,
-            grid: grid,
-            lat: locationData.lat,
-            lon: locationData.lon,
-            country: locationData.country,
-          };
-
-          // Cache permanently
-          callsignLocationCache.set(skimmerCall, location);
-
-          return {
-            ...spot,
-            grid: grid,
-            skimmerLat: locationData.lat,
-            skimmerLon: locationData.lon,
-            skimmerCountry: locationData.country,
-          };
-        }
-      } catch (err) {
-        // Silent fail - return spot without location
-      }
-
-      // Return spot as-is if lookup failed
-      return spot;
-    }),
+    recentSpots.map(enrichSpotWithLocation),
   );
 
   console.log(
-    `[RBN] Returning ${enrichedSpots.length} enriched spots (last ${minutes} min)`,
+    `[RBN] Returning ${enrichedSpots.length} spots for ${callsign} (last ${minutes} min, ${rbnSpotsByDX.size} DX stations tracked)`,
   );
 
   const response = {
@@ -6853,7 +6946,7 @@ app.get('/api/rbn/location/:callsign', async (req, res) => {
       };
 
       // Cache permanently (skimmers don't move!)
-      callsignLocationCache.set(callsign, result);
+      cacheCallsignLocation(callsign, result);
 
       return res.json(result);
     }
