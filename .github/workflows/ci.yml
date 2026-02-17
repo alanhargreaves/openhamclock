@@ -30,10 +30,9 @@ jobs:
     
     - name: Start server and test health endpoint
       run: |
-        node server.js &
+        PORT=3000 node server.js &
         SERVER_PID=$!
-        
-        # Wait for server to be ready (up to 30 seconds)
+
         for i in $(seq 1 30); do
           if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
             echo "✓ Health check passed on attempt $i"
@@ -42,7 +41,7 @@ jobs:
           fi
           sleep 1
         done
-        
+
         echo "✗ Health check failed after 30 attempts"
         kill $SERVER_PID 2>/dev/null || true
         exit 1
@@ -58,7 +57,7 @@ jobs:
     
     - name: Build Docker image
       run: docker build -t openhamclock:test .
-    
+    # Force server port to 3000 for CI health check consistency
     - name: Test Docker container
       run: |
         docker run -d -p 3000:3000 --name ohc-test openhamclock:test
