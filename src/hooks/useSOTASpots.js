@@ -43,9 +43,12 @@ export const useSOTASpots = () => {
                 comments: s.comments || '',
                 lat,
                 lon,
-                time: s.timeStamp
-                  ? new Date(s.timeStamp).toISOString().substr(11, 5) + 'z'
-                  : ''
+                // SOTA API returns UTC timestamps without 'Z' suffix, violating ISO 8601
+                // Defensively append 'Z' if not present to force UTC interpretation
+                time: s.timeStamp ? (() => {
+                  const ts = s.timeStamp.endsWith('Z') || s.timeStamp.endsWith('z') ? s.timeStamp : s.timeStamp + 'Z';
+                  return new Date(ts).toISOString().substr(11, 5) + 'z';
+                })() : ''
               };
             });
 
