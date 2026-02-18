@@ -5,6 +5,8 @@
 import React from 'react';
 import { IconGear, IconExpand, IconShrink } from './Icons.jsx';
 import { QRZToggle } from './CallsignLink.jsx';
+import { ctyLookup, isCtyLoaded } from '../utils/ctyLookup';
+import { getFlagForEntity } from '../utils/countryFlags';
 export const Header = ({
   config,
   utcTime,
@@ -57,6 +59,14 @@ export const Header = ({
           const touch = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
           const narrow = typeof window !== 'undefined' && window.innerWidth <= 1024;
           if (touch && narrow) return <span className="ohc-mobile-badge">{window.innerWidth <= 768 ? '📱' : '📱 Tablet'}</span>;
+          return null;
+        })()}
+        {(() => {
+          const info = isCtyLoaded() ? ctyLookup(config.callsign) : null;
+          const flag = info ? getFlagForEntity(info.entity) : null;
+          if (flag) {
+            return <span style={{ fontSize: '22px', marginLeft: '5px' }} title={info.entity}>{flag}</span>;
+          }
           return null;
         })()}
         <QRZToggle />
