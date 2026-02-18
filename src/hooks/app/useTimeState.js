@@ -23,15 +23,27 @@ export default function useTimeState(configLocation, dxLocation, timezone) {
   const handleTimeFormatToggle = useCallback(() => setUse12Hour(prev => !prev), []);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
+    let timeout;
+
+    const tick = () => {
+      const now = new Date();
+      setCurrentTime(now);
       const elapsed = Date.now() - startTime;
       const d = Math.floor(elapsed / 86400000);
       const h = Math.floor((elapsed % 86400000) / 3600000);
       const m = Math.floor((elapsed % 3600000) / 60000);
       setUptime(`${d}d ${h}h ${m}m`);
-    }, 1000);
-    return () => clearInterval(timer);
+
+      // Re-align to the next wall-clock second boundary to prevent drift
+      const msUntilNextSecond = 1000 - (Date.now() % 1000);
+      timeout = setTimeout(tick, msUntilNextSecond);
+    };
+
+    // Initial fire aligned to the next whole second
+    const msUntilNextSecond = 1000 - (Date.now() % 1000);
+    timeout = setTimeout(tick, msUntilNextSecond);
+
+    return () => clearTimeout(timeout);
   }, [startTime]);
 
   const deGrid = useMemo(() => calculateGridSquare(configLocation.lat, configLocation.lon), [configLocation]);
