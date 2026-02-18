@@ -54,19 +54,32 @@ export const Header = ({
         >
           {config.callsign}
         </span>
+        {(() => {
+          const info = isCtyLoaded() ? ctyLookup(config.callsign) : null;
+          const flag = info ? getFlagForEntity(info.entity) : null;
+          if (flag) {
+            return (
+              <span
+                style={{
+                  fontSize: config.headerSize > 0.1 && config.headerSize <= 2
+                    ? `${22 * config.headerSize}px`
+                    : "22px",
+                  marginLeft: '5px',
+                  marginRight: '5px'
+                }}
+                title={info.entity}
+              >
+                {flag}
+              </span>
+            );
+          }
+          return null;
+        })()}
         {config.version && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>v{config.version}</span>}
         {(() => {
           const touch = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
           const narrow = typeof window !== 'undefined' && window.innerWidth <= 1024;
           if (touch && narrow) return <span className="ohc-mobile-badge">{window.innerWidth <= 768 ? '📱' : '📱 Tablet'}</span>;
-          return null;
-        })()}
-        {(() => {
-          const info = isCtyLoaded() ? ctyLookup(config.callsign) : null;
-          const flag = info ? getFlagForEntity(info.entity) : null;
-          if (flag) {
-            return <span style={{ fontSize: '22px', marginLeft: '5px' }} title={info.entity}>{flag}</span>;
-          }
           return null;
         })()}
         <QRZToggle />
