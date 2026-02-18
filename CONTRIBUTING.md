@@ -161,6 +161,50 @@ export const useMyData = () => {
 
 All external APIs are proxied through `server.js` with caching:
 
+```jsx
+// Good utility
+export const calculateSomething = (input1, input2) => {
+  // Pure calculation, no API calls or DOM access
+  return result;
+};
+```
+
+## 🧰 Code Style & Dependency Consistency
+
+This repository uses shared formatting and dependency lock conventions so contributions remain consistent across editors, operating systems, and CI.
+
+### `.editorconfig`
+
+- Defines editor-level basics (for example indentation, line endings, and final newline).
+- Helps avoid "editor drift" where different IDE defaults create noisy formatting diffs.
+- Most editors apply it automatically.
+
+### `.prettierrc`
+
+- Defines one shared Prettier style for the project.
+- Reduces style discussions in PRs and keeps reviews focused on behavior and correctness.
+- If your editor has Prettier integration, format-on-save will follow the repo rules.
+
+### `package-lock.json` is tracked
+
+- The lockfile is intentionally committed and must stay in Git.
+- This ensures everyone (local dev, CI, and production) resolves the exact same dependency graph.
+- Avoids "works on my machine" issues caused by floating transitive dependency updates.
+
+### Use `npm ci` for installs
+
+- Preferred install command is `npm ci` (not `npm install`) when working from a clean checkout.
+- `npm ci` installs exactly what is in `package-lock.json`, which makes builds deterministic.
+- Typical workflow:
+
+```bash
+npm ci
+npm run dev
+```
+
+## 🎨 CSS & Theming
+
+Use CSS variables for all colors:
 ```js
 let myCache = { data: null, timestamp: 0 };
 const MY_TTL = 5 * 60 * 1000;
