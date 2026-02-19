@@ -17,7 +17,7 @@
 import { apiFetch } from './apiFetch';
 
 let prefixes = null; // { PREFIX: { entity, dxcc, cq, itu, cont, lat, lon } }
-let exact = null;    // { CALLSIGN: { ... } }
+let exact = null; // { CALLSIGN: { ... } }
 let loaded = false;
 let loading = false;
 
@@ -89,11 +89,11 @@ export function ctyLookup(call) {
         const rightFull = isFullCall(right);
 
         if (rightFull && !leftFull) {
-          lookupBase = left;  // PJ2/W9WI → PJ2, DL/W1ABC → DL
+          lookupBase = left; // PJ2/W9WI → PJ2, DL/W1ABC → DL
         } else if (leftFull && !rightFull) {
           lookupBase = right; // W1ABC/DL → DL
         } else {
-          lookupBase = left;  // default: use left part
+          lookupBase = left; // default: use left part
         }
       }
     }

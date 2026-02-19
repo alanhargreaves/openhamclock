@@ -1,13 +1,13 @@
 {
   "name": "openhamclock",
-  "version": "15.5.5",
+  "version": "15.5.7",
   "description": "Amateur Radio Dashboard - A modern web-based HamClock alternative",
   "main": "electron/main.js",
   "scripts": {
     "dev": "npx vite",
     "electron": "electron .",
     "electron-builder": "electron-builder",
-    "build": "npx vite build",    
+    "build": "npx vite build",
     "preview": "npx vite preview",
     "prestart": "npm run build",
     "server": "node server.js",

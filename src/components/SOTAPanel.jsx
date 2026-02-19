@@ -4,7 +4,8 @@
  */
 import ActivatePanel from './ActivatePanel.jsx';
 
-export const SOTAPanel = ({ data,
+export const SOTAPanel = ({
+  data,
   loading,
   lastUpdated,
   lastChecked,
@@ -12,7 +13,7 @@ export const SOTAPanel = ({ data,
   onToggleMap,
   showLabelsOnMap,
   onToggleLabelsOnMap = true,
-  onSpotClick
+  onSpotClick,
 }) => {
   return (
     <ActivatePanel

@@ -225,5 +225,6 @@
   "station.settings.satellites.belowHorizon": "? Sotto l'orizzonte",
   "app.legend.sun": "Sun",
   "app.legend.moon": "Moon",
-  "station.settings.satellites.belowHorizon": "? Sotto l'orizzonte"
+  "station.settings.rigControl.autoMode": "Auto-set mode",
+  "station.settings.rigControl.autoMode.hint": "Switch to CW/SSB/Data based on band plan when tuning"
 }

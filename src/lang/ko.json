@@ -166,5 +166,6 @@
   "dxClusterPanel.relativeTime": "{{minutes}}m ago ({{time}})",
   "app.legend.sun": "Sun",
   "app.legend.moon": "Moon",
-  "station.settings.layers.opacity": "불투명도"
+  "station.settings.rigControl.autoMode": "Auto-set mode",
+  "station.settings.rigControl.autoMode.hint": "Switch to CW/SSB/Data based on band plan when tuning"
 }

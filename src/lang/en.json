@@ -292,6 +292,8 @@
   "station.settings.rigControl.port": "Rig Daemon Port",
   "station.settings.rigControl.tuneEnabled": "Click-to-tune",
   "station.settings.rigControl.tuneEnabled.hint": "Allow clicking spots to retune rig",
+  "station.settings.rigControl.autoMode": "Auto-set mode",
+  "station.settings.rigControl.autoMode.hint": "Switch to CW/SSB/Data based on band plan when tuning",
   "app.rigControl.disconnected": "Rig Disconnected",
   "app.rigControl.disabled": "Rig Control Disabled",
   "app.rigControl.connected": "Rig Connected",

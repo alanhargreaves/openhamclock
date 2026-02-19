@@ -214,5 +214,7 @@
   "dxClusterPanel.noSpotsFiltered": "条件に一致するスポットはありません",
   "dxClusterPanel.noSpots": "スポットがありません",
   "app.legend.sun": "Sun",
-  "app.legend.moon": "Moon"
+  "app.legend.moon": "Moon",
+  "station.settings.rigControl.autoMode": "Auto-set mode",
+  "station.settings.rigControl.autoMode.hint": "Switch to CW/SSB/Data based on band plan when tuning"
 }

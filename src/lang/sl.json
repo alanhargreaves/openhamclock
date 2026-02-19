@@ -226,5 +226,6 @@
   "station.settings.satellites.belowHorizon": "✔ Pod obzorjem",
   "app.legend.sun": "Sun",
   "app.legend.moon": "Moon",
-  "station.settings.satellites.belowHorizon": "✔ Pod obzorjem"
+  "station.settings.rigControl.autoMode": "Auto-set mode",
+  "station.settings.rigControl.autoMode.hint": "Switch to CW/SSB/Data based on band plan when tuning"
 }

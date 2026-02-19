@@ -369,5 +369,6 @@
   "propagation.heatmap.tooltip.stoplight": "Cambiar a colores de semáforo (verde=bueno)",
   "app.legend.sun": "Sun",
   "app.legend.moon": "Moon",
-  "propagation.heatmap.tooltip.stoplight": "Cambiar a colores de semáforo (verde=bueno)"
+  "station.settings.rigControl.autoMode": "Auto-set mode",
+  "station.settings.rigControl.autoMode.hint": "Switch to CW/SSB/Data based on band plan when tuning"
 }
