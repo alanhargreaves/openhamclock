@@ -395,10 +395,6 @@ export const SolarPanel = ({ solarIndices, forcedMode }) => {
     // SVG moon — uses a crescent/gibbous mask technique
     // phase 0=new(dark), 0.25=first quarter(right lit), 0.5=full(all lit), 0.75=last quarter(left lit)
     const R = 60; // moon radius
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
->>>>>>> Stashed changes
     const CX = 70,
       CY = 70;
 
@@ -441,54 +437,6 @@ export const SolarPanel = ({ solarIndices, forcedMode }) => {
     };
 
     const litPath = buildMoonPath();
-<<<<<<< Updated upstream
-    const R = 60;
-=======
->>>>>>> Stashed changes
-    const CX = 70,
-      CY = 70;
-
-    // The terminator curve is an ellipse whose x-radius varies with phase
-    // At new moon (0): fully dark. At full (0.5): fully lit.
-    // phase 0-0.5: right side lit (waxing), 0.5-1: left side lit (waning)
-    const angle = phase * 2 * Math.PI;
-    const terminatorX = R * Math.cos(angle); // ranges from R (new) through 0 (quarter) to -R (full) and back
-
-    // Build the lit area path
-    // Right half arc (from top to bottom) is always an arc of radius R
-    // Left boundary (terminator) is an ellipse with rx = |terminatorX|
-    const buildMoonPath = () => {
-      // Lit portion: we draw two arcs — the outer limb and the terminator
-      // For waxing (0 < phase < 0.5): right side is lit
-      // For waning (0.5 < phase < 1): left side is lit
-
-      if (phase < 0.01 || phase > 0.99) {
-        // New moon — no lit area
-        return null;
-      }
-      if (phase > 0.49 && phase < 0.51) {
-        // Full moon — entire circle lit
-        return `M${CX},${CY - R} A${R},${R} 0 1,1 ${CX},${CY + R} A${R},${R} 0 1,1 ${CX},${CY - R}`;
-      }
-
-      const absTermX = Math.abs(terminatorX);
-
-      if (phase < 0.5) {
-        // Waxing — right side lit, terminator concave (sweep=0)
-        // At phase≈0: absTermX≈0, ellipse collapses to a line → nearly no lit area (dark)
-        // At phase=0.25: absTermX=R, concave arc gives exactly right half lit
-        return `M${CX},${CY - R} A${R},${R} 0 0,1 ${CX},${CY + R} A${absTermX},${R} 0 0,0 ${CX},${CY - R}`;
-      } else {
-        // Waning — left side lit, terminator convex (sweep=1)
-        // At phase=0.75: absTermX=R, convex arc gives exactly left half lit
-        // At phase≈1: absTermX≈0, collapses to line → nearly no lit area (dark)
-        return `M${CX},${CY - R} A${R},${R} 0 0,0 ${CX},${CY + R} A${absTermX},${R} 0 0,1 ${CX},${CY - R}`;
-      }
-    };
-
-    const litPath = buildMoonPath();
-=======
->>>>>>> Stashed changes
 
     return (
       <div>
