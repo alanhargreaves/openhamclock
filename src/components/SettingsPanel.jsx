@@ -2215,9 +2215,33 @@ export const SettingsPanel = ({
             </div>
 
             {layers.length > 0 ? (
-              layers
-                .filter((layer) => layer.category !== 'satellites') // Correctly filter out satellites
-                .map((layer) => (
+              (() => {
+                const categoryOrder = [
+                  { key: 'propagation', label: '📡 Propagation' },
+                  { key: 'amateur', label: '📻 Amateur Radio' },
+                  { key: 'weather', label: '🌤️ Weather' },
+                  { key: 'space-weather', label: '☀️ Space Weather' },
+                  { key: 'hazards', label: '⚠️ Natural Hazards' },
+                  { key: 'geology', label: '🌍 Geology' },
+                  { key: 'overlay', label: '🗺️ Map Overlays' },
+                ];
+
+                const nonSatLayers = layers.filter((l) => l.category !== 'satellites');
+                const grouped = {};
+                nonSatLayers.forEach((l) => {
+                  const cat = l.category || 'overlay';
+                  if (!grouped[cat]) grouped[cat] = [];
+                  grouped[cat].push(l);
+                });
+                Object.values(grouped).forEach((arr) =>
+                  arr.sort((a, b) => {
+                    const nameA = (a.name.startsWith('plugins.') ? t(a.name) : a.name).toLowerCase();
+                    const nameB = (b.name.startsWith('plugins.') ? t(b.name) : b.name).toLowerCase();
+                    return nameA.localeCompare(nameB);
+                  }),
+                );
+
+                const renderLayerCard = (layer) => (
                   <div
                     key={layer.id}
                     style={{
@@ -2228,84 +2252,31 @@ export const SettingsPanel = ({
                       marginBottom: '12px',
                     }}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        marginBottom: '8px',
-                      }}
-                    >
-                      <label
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px',
-                          cursor: 'pointer',
-                          flex: 1,
-                        }}
-                      >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', flex: 1 }}>
                         <input
                           type="checkbox"
                           checked={layer.enabled}
                           onChange={() => handleToggleLayer(layer.id)}
-                          style={{
-                            width: '18px',
-                            height: '18px',
-                            cursor: 'pointer',
-                          }}
+                          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                         />
                         <span style={{ fontSize: '18px' }}>{layer.icon}</span>
                         <div>
-                          <div
-                            style={{
-                              color: layer.enabled ? 'var(--accent-amber)' : 'var(--text-primary)',
-                              fontSize: '14px',
-                              fontWeight: '600',
-                              fontFamily: 'JetBrains Mono, monospace',
-                            }}
-                          >
+                          <div style={{ color: layer.enabled ? 'var(--accent-amber)' : 'var(--text-primary)', fontSize: '14px', fontWeight: '600', fontFamily: 'JetBrains Mono, monospace' }}>
                             {layer.name.startsWith('plugins.') ? t(layer.name) : layer.name}
                           </div>
                           {layer.description && (
-                            <div
-                              style={{
-                                fontSize: '11px',
-                                color: 'var(--text-muted)',
-                                marginTop: '2px',
-                              }}
-                            >
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
                               {layer.description.startsWith('plugins.') ? t(layer.description) : layer.description}
                             </div>
                           )}
                         </div>
                       </label>
-                      <span
-                        style={{
-                          fontSize: '11px',
-                          textTransform: 'uppercase',
-                          color: 'var(--text-secondary)',
-                          background: 'var(--bg-hover)',
-                          padding: '2px 8px',
-                          borderRadius: '3px',
-                        }}
-                      >
-                        {layer.category}
-                      </span>
                     </div>
 
                     {layer.enabled && (
                       <div style={{ paddingLeft: '38px', marginTop: '12px' }}>
-                        <label
-                          style={{
-                            display: 'block',
-                            fontSize: '11px',
-                            color: 'var(--text-muted)',
-                            marginBottom: '6px',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px',
-                          }}
-                        >
+                        <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                           {t('station.settings.layers.opacity')}: {Math.round(layer.opacity * 100)}%
                         </label>
                         <input
@@ -2314,32 +2285,13 @@ export const SettingsPanel = ({
                           max="100"
                           value={layer.opacity * 100}
                           onChange={(e) => handleOpacityChange(layer.id, parseFloat(e.target.value) / 100)}
-                          style={{
-                            width: '100%',
-                            cursor: 'pointer',
-                          }}
+                          style={{ width: '100%', cursor: 'pointer' }}
                         />
-
-                        {/* CTRL+Click Reset Button - Hidden unless CTRL is pressed */}
                         {ctrlPressed &&
-                          ['lightning', 'wspr', 'rbn', 'grayline', 'n3fjp_logged_qsos', 'voacap-heatmap'].includes(
-                            layer.id,
-                          ) && (
+                          ['lightning', 'wspr', 'rbn', 'grayline', 'n3fjp_logged_qsos', 'voacap-heatmap'].includes(layer.id) && (
                             <button
                               onClick={() => resetPopupPositions(layer.id)}
-                              style={{
-                                marginTop: '12px',
-                                padding: '8px 12px',
-                                background: 'var(--accent-red)',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                fontSize: '11px',
-                                fontWeight: '600',
-                                textTransform: 'uppercase',
-                                width: '100%',
-                              }}
+                              style={{ marginTop: '12px', padding: '8px 12px', background: 'var(--accent-red)', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', width: '100%' }}
                             >
                               🔄 RESET POPUPS
                             </button>
@@ -2347,7 +2299,40 @@ export const SettingsPanel = ({
                       </div>
                     )}
                   </div>
-                ))
+                );
+
+                const result = [];
+                const rendered = new Set();
+                categoryOrder.forEach(({ key, label }) => {
+                  if (!grouped[key] || grouped[key].length === 0) return;
+                  result.push(
+                    <div
+                      key={`cat-${key}`}
+                      style={{
+                        fontSize: '11px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                        color: 'var(--text-muted)',
+                        marginBottom: '8px',
+                        marginTop: result.length > 0 ? '16px' : '0',
+                        paddingBottom: '4px',
+                        borderBottom: '1px solid var(--border-color)',
+                      }}
+                    >
+                      {label}
+                    </div>,
+                  );
+                  grouped[key].forEach((layer) => {
+                    result.push(renderLayerCard(layer));
+                    rendered.add(layer.id);
+                  });
+                });
+                // Any uncategorized leftovers
+                nonSatLayers.filter((l) => !rendered.has(l.id)).forEach((layer) => {
+                  result.push(renderLayerCard(layer));
+                });
+                return result;
+              })()
             ) : (
               <div
                 style={{
