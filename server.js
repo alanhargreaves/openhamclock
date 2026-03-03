@@ -7737,6 +7737,46 @@ app.get('/api/satellites/tle', async (req, res) => {
 
     clearTimeout(timeout);
 
+    // Fill missing satellites — CelesTrak group files don't include every ham sat.
+    // Fetch individual TLEs by NORAD catalog number for any HAM_SATELLITES not yet resolved.
+    const foundNorads = new Set(Object.values(tleData).map((s) => s.norad));
+    const missingSats = Object.entries(HAM_SATELLITES).filter(([, s]) => !foundNorads.has(s.norad));
+    if (missingSats.length > 0 && missingSats.length <= 30) {
+      logDebug(`[Satellites] ${missingSats.length} sats missing from group files, fetching individually...`);
+      // Fetch in batches of 5 to avoid hammering CelesTrak
+      for (let i = 0; i < missingSats.length; i += 5) {
+        const batch = missingSats.slice(i, i + 5);
+        const results = await Promise.allSettled(
+          batch.map(async ([key, sat]) => {
+            try {
+              const catRes = await fetch(
+                `https://celestrak.org/NORAD/elements/gp.php?CATNR=${sat.norad}&FORMAT=tle`,
+                { headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` }, signal: AbortSignal.timeout(5000) },
+              );
+              if (catRes.ok) {
+                const catLines = (await catRes.text()).trim().split('\n');
+                if (catLines.length >= 3 && catLines[1].trim().startsWith('1 ')) {
+                  tleData[key.replace(/[^A-Z0-9\-]/g, '_').toUpperCase()] = {
+                    ...sat,
+                    tle1: catLines[1].trim(),
+                    tle2: catLines[2].trim(),
+                  };
+                  return key;
+                }
+              }
+            } catch (e) {
+              // Silently skip — sat may not exist in CelesTrak yet
+            }
+            return null;
+          }),
+        );
+        const filled = results.filter((r) => r.status === 'fulfilled' && r.value).map((r) => r.value);
+        if (filled.length > 0) logDebug(`[Satellites] Filled: ${filled.join(', ')}`);
+        // Small delay between batches to be polite to CelesTrak
+        if (i + 5 < missingSats.length) await new Promise((r) => setTimeout(r, 200));
+      }
+    }
+
     // ISS fallback — try CelesTrak direct if ISS not found
     const issExists = Object.values(tleData).some((sat) => sat.norad === 25544);
     if (!issExists) {
