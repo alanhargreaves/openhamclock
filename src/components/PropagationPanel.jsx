@@ -2,10 +2,11 @@
  * PropagationPanel Component (VOACAP)
  * Toggleable between heatmap chart, bar chart, and band conditions view
  */
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatDistance } from '../utils/geo.js';
 import BandHealthPanel from './BandHealthPanel.jsx';
+import useAutoRotate from '../hooks/app/useAutoRotate.js';
 
 export const PropagationPanel = ({
   propagation,
@@ -53,15 +54,20 @@ export const PropagationPanel = ({
   };
 
   // Cycle through view modes
-  const cycleViewMode = () => {
-    const modes = ['chart', 'bars', 'bands', 'health'];
-    const currentIdx = modes.indexOf(viewMode);
-    const newMode = modes[(currentIdx + 1) % modes.length];
-    setViewMode(newMode);
-    try {
-      localStorage.setItem('openhamclock_voacapViewMode', newMode);
-    } catch (e) {}
-  };
+  const modes = ['chart', 'bars', 'bands', 'health'];
+  const cycleViewMode = useCallback(() => {
+    setViewMode((prev) => {
+      const currentIdx = modes.indexOf(prev);
+      const newMode = modes[(currentIdx + 1) % modes.length];
+      try {
+        localStorage.setItem('openhamclock_voacapViewMode', newMode);
+      } catch (e) {}
+      return newMode;
+    });
+  }, []);
+
+  // Auto-rotate through views on a timer
+  const rotate = useAutoRotate('propPanel', { onTick: cycleViewMode, itemCount: modes.length });
 
   const getBandStyle = (condition) =>
     ({
@@ -173,11 +179,59 @@ export const PropagationPanel = ({
             <span style={{ color: '#00ff88', fontSize: '10px', marginLeft: '4px' }}>●</span>
           )}
         </span>
-        {!forcedMode && (
-          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-            {viewModeLabels[viewMode]} • {t('propagation.view.toggle')}
-          </span>
-        )}
+        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {!forcedMode && (
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+              {viewModeLabels[viewMode]} • {t('propagation.view.toggle')}
+            </span>
+          )}
+          {/* Auto-rotate controls */}
+          {!forcedMode && (
+            <span
+              onClick={(e) => e.stopPropagation()}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'default' }}
+            >
+              {rotate.enabled && (
+                <select
+                  value={rotate.interval}
+                  onChange={(e) => rotate.setInterval(e.target.value)}
+                  style={{
+                    fontSize: '9px',
+                    padding: '1px 2px',
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--accent-amber)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '3px',
+                    outline: 'none',
+                    cursor: 'pointer',
+                    width: '42px',
+                  }}
+                >
+                  {rotate.INTERVAL_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}s
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                onClick={rotate.toggle}
+                title={rotate.enabled ? 'Stop auto-rotate' : 'Auto-rotate views'}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  padding: '0 2px',
+                  color: rotate.enabled ? 'var(--accent-amber)' : 'var(--text-muted)',
+                  lineHeight: 1,
+                }}
+              >
+                {rotate.enabled ? '⏸' : '▶'}
+              </button>
+            </span>
+          )}
+        </span>
       </div>
 
       {/* Mode & Power indicator */}

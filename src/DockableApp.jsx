@@ -176,6 +176,65 @@ export const DockableApp = ({
   }, []);
   const [showDXLocalTime, setShowDXLocalTime] = useState(false);
 
+  // ── Tabset auto-rotation (persistent per tabset) ──
+  const [tabsetRotation, setTabsetRotation] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('openhamclock_tabsetRotation') || '{}');
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('openhamclock_tabsetRotation', JSON.stringify(tabsetRotation));
+    } catch {}
+  }, [tabsetRotation]);
+
+  const rotationTimers = useRef({});
+  useEffect(() => {
+    Object.values(rotationTimers.current).forEach(clearInterval);
+    rotationTimers.current = {};
+
+    Object.entries(tabsetRotation).forEach(([tabsetId, cfg]) => {
+      if (!cfg?.enabled || !cfg?.interval || !model) return;
+      rotationTimers.current[tabsetId] = setInterval(() => {
+        try {
+          const tabset = model.getNodeById(tabsetId);
+          if (!tabset) return;
+          const children = tabset.getChildren?.() || [];
+          if (children.length < 2) return;
+          const selected = tabset.getSelectedNode?.();
+          const currentIdx = children.findIndex((c) => c === selected);
+          const nextIdx = (currentIdx + 1) % children.length;
+          model.doAction(Actions.selectTab(children[nextIdx].getId()));
+        } catch {}
+      }, cfg.interval * 1000);
+    });
+
+    return () => {
+      Object.values(rotationTimers.current).forEach(clearInterval);
+      rotationTimers.current = {};
+    };
+  }, [tabsetRotation, model]);
+
+  const toggleTabsetRotation = useCallback((tabsetId) => {
+    setTabsetRotation((prev) => ({
+      ...prev,
+      [tabsetId]: {
+        enabled: !prev[tabsetId]?.enabled,
+        interval: prev[tabsetId]?.interval || 15,
+      },
+    }));
+  }, []);
+
+  const setTabsetInterval = useCallback((tabsetId, secs) => {
+    setTabsetRotation((prev) => ({
+      ...prev,
+      [tabsetId]: { ...prev[tabsetId], interval: parseInt(secs, 10) },
+    }));
+  }, []);
+
   // Fallback: if parent did not provide map-layer toggles (seen with rotator),
   // use the internal hook so the map buttons still work.
   const internalMap = useMapLayers();
@@ -999,6 +1058,65 @@ export const DockableApp = ({
         );
       }
 
+      // Auto-rotation controls for tabsets with 2+ tabs
+      const tabsetId = node.getId();
+      const children = node.getChildren?.() || [];
+      if (children.length >= 2) {
+        const rotCfg = tabsetRotation[tabsetId];
+        const isRotating = rotCfg?.enabled;
+
+        if (isRotating) {
+          renderValues.stickyButtons.push(
+            <select
+              key="rotate-interval"
+              value={rotCfg?.interval || 15}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                e.stopPropagation();
+                setTabsetInterval(tabsetId, e.target.value);
+              }}
+              style={{
+                fontSize: '9px',
+                padding: '1px 2px',
+                background: 'var(--bg-secondary)',
+                color: 'var(--accent-amber)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '3px',
+                outline: 'none',
+                cursor: 'pointer',
+                width: '40px',
+                height: '18px',
+              }}
+            >
+              {[5, 10, 15, 20, 30, 45, 60].map((s) => (
+                <option key={s} value={s}>
+                  {s}s
+                </option>
+              ))}
+            </select>,
+          );
+        }
+
+        renderValues.stickyButtons.push(
+          <button
+            key="rotate"
+            title={isRotating ? 'Stop auto-rotate' : 'Auto-rotate tabs'}
+            className="flexlayout__tab_toolbar_button"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleTabsetRotation(tabsetId);
+            }}
+            style={{
+              fontSize: '11px',
+              padding: '0 3px',
+              color: isRotating ? 'var(--accent-amber)' : undefined,
+            }}
+          >
+            {isRotating ? '⏸' : '▶'}
+          </button>,
+        );
+      }
+
       renderValues.stickyButtons.push(
         <button
           key="add"
@@ -1017,7 +1135,7 @@ export const DockableApp = ({
         </button>,
       );
     },
-    [panelZoom, adjustZoom, resetZoom, layoutLocked],
+    [panelZoom, adjustZoom, resetZoom, layoutLocked, tabsetRotation, toggleTabsetRotation, setTabsetInterval],
   );
 
   // Get unused panels
