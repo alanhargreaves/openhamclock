@@ -11880,7 +11880,7 @@ app.get('/api/n3fjp/qsos', (req, res) => {
 let wsjtxSocket = null;
 if (WSJTX_ENABLED) {
   try {
-    wsjtxSocket = dgram.createSocket('udp4');
+    wsjtxSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
 
     wsjtxSocket.on('message', (buf, rinfo) => {
       const msg = parseWSJTXMessage(buf);
@@ -11896,7 +11896,7 @@ if (WSJTX_ENABLED) {
       console.log(`[WSJT-X] UDP listener on ${addr.address}:${addr.port}`);
     });
 
-    wsjtxSocket.bind(WSJTX_UDP_PORT, '0.0.0.0');
+    wsjtxSocket.bind({ port: WSJTX_UDP_PORT, exclusive: false, address: '0.0.0.0' });
   } catch (e) {
     console.error(`[WSJT-X] Failed to start UDP listener: ${e.message}`);
   }
