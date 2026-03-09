@@ -1,5 +1,7 @@
 {
   "port": 5555,
+  "bindAddress": "127.0.0.1",
+  "corsOrigins": "",
   "logging": true,
   "radio": {
     "type": "none",

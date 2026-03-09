@@ -244,6 +244,8 @@ function buildSetupHtml(version) {
     }
     .icom-addr { display: none; }
     .icom-addr.show { display: block; }
+    .tci-opts { display: none; }
+    .tci-opts.show { display: block; }
     .ohc-instructions {
       background: #0f1923;
       border: 1px dashed #2a3040;
@@ -389,6 +391,9 @@ function buildSetupHtml(version) {
             <option value="kenwood">Kenwood (TS-890, TS-590, TS-2000, etc.)</option>
             <option value="icom">Icom (IC-7300, IC-7610, IC-9700, IC-705, etc.)</option>
           </optgroup>
+          <optgroup label="SDR Radios (TCI)">
+            <option value="tci">TCI/SDR (Thetis, ExpertSDR, SunSDR2, etc.)</option>
+          </optgroup>
           <optgroup label="Via Control Software (Legacy)">
             <option value="flrig">flrig (XML-RPC)</option>
             <option value="rigctld">rigctld / Hamlib (TCP)</option>
@@ -455,6 +460,31 @@ function buildSetupHtml(version) {
               <input type="number" id="legacyPort" value="12345">
             </div>
           </div>
+        </div>
+
+        <!-- TCI/SDR options -->
+        <div class="tci-opts" id="tciOpts">
+          <div class="row">
+            <div>
+              <label>TCI Host</label>
+              <input type="text" id="tciHost" value="localhost" placeholder="localhost">
+            </div>
+            <div>
+              <label>TCI Port</label>
+              <input type="number" id="tciPort" value="40001" placeholder="40001" min="1" max="65535">
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Transceiver (TRX)</label>
+              <input type="number" id="tciTrx" value="0" min="0" max="7" placeholder="0">
+            </div>
+            <div>
+              <label>VFO (0 = A, 1 = B)</label>
+              <input type="number" id="tciVfo" value="0" min="0" max="1" placeholder="0">
+            </div>
+          </div>
+          <div class="help-text">Enable TCI in your SDR app: Thetis → Setup → CAT Control → Enable TCI Server (port 40001)</div>
         </div>
 
         <div class="section-divider"></div>
@@ -684,6 +714,11 @@ function buildSetupHtml(version) {
         r.type === 'rigctld' ? (r.rigctldHost || '127.0.0.1') : (r.flrigHost || '127.0.0.1');
       document.getElementById('legacyPort').value =
         r.type === 'rigctld' ? (r.rigctldPort || 4532) : (r.flrigPort || 12345);
+      const tci = cfg.tci || {};
+      document.getElementById('tciHost').value = tci.host || 'localhost';
+      document.getElementById('tciPort').value = tci.port || 40001;
+      document.getElementById('tciTrx').value = tci.trx ?? 0;
+      document.getElementById('tciVfo').value = tci.vfo ?? 0;
       onTypeChange(true); // Don't overwrite loaded values with model defaults
     }
 
@@ -691,10 +726,12 @@ function buildSetupHtml(version) {
       const type = document.getElementById('radioType').value;
       const isDirect = ['yaesu', 'kenwood', 'icom'].includes(type);
       const isLegacy = ['flrig', 'rigctld'].includes(type);
+      const isTci = type === 'tci';
 
       document.getElementById('serialOpts').className = 'serial-opts' + (isDirect ? ' show' : '');
       document.getElementById('legacyOpts').className = 'legacy-opts' + (isLegacy ? ' show' : '');
       document.getElementById('icomAddr').className = 'icom-addr' + (type === 'icom' ? ' show' : '');
+      document.getElementById('tciOpts').className = 'tci-opts' + (isTci ? ' show' : '');
 
       if (!skipDefaults) {
         if (type === 'yaesu') {
@@ -787,11 +824,23 @@ function buildSetupHtml(version) {
         radio.flrigPort = parseInt(document.getElementById('legacyPort').value);
       }
 
+      const tci = {
+        host: document.getElementById('tciHost').value.trim() || 'localhost',
+        port: parseInt(document.getElementById('tciPort').value) || 40001,
+        trx: Math.max(0, parseInt(document.getElementById('tciTrx').value) || 0),
+        vfo: Math.max(0, parseInt(document.getElementById('tciVfo').value) || 0),
+      };
+
+      if (type === 'tci') {
+        if (!tci.host) return showToast('TCI host cannot be empty', 'error');
+        if (tci.port < 1 || tci.port > 65535) return showToast('TCI port must be 1–65535', 'error');
+      }
+
       try {
         const res = await fetch('/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ radio }),
+          body: JSON.stringify({ radio, tci }),
         });
         const data = await res.json();
         if (data.success) {
@@ -989,7 +1038,37 @@ function buildSetupHtml(version) {
 
 function createServer(registry, version) {
   const app = express();
-  app.use(cors());
+
+  // SECURITY: Restrict CORS to OpenHamClock origins instead of wildcard.
+  // Wildcard CORS allows any website the user visits to silently call localhost:5555
+  // endpoints (including PTT) via the browser's fetch API.
+  const allowedOrigins = (config.corsOrigins || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  // Always allow the local setup UI and common OHC origins
+  const defaultOrigins = [
+    `http://localhost:${config.port}`,
+    `http://127.0.0.1:${config.port}`,
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'https://openhamclock.com',
+    'https://www.openhamclock.com',
+  ];
+  const origins = [...new Set([...defaultOrigins, ...allowedOrigins])];
+
+  app.use(
+    cors({
+      origin: (requestOrigin, callback) => {
+        // Allow requests with no origin (curl, Postman, server-to-server)
+        if (!requestOrigin) return callback(null, true);
+        if (origins.includes(requestOrigin)) return callback(null, true);
+        callback(new Error('CORS: origin not allowed'));
+      },
+      methods: ['GET', 'POST'],
+    }),
+  );
   app.use(express.json());
 
   // Allow plugins to register their own routes
@@ -1044,6 +1123,19 @@ function createServer(registry, version) {
   });
 
   // ─── API: Get/Set config ───
+
+  // Validate serial port paths to prevent arbitrary file access
+  const isValidSerialPort = (p) => {
+    if (!p || typeof p !== 'string') return false;
+    // Windows: COM1-COM256
+    if (/^COM\d{1,3}$/i.test(p)) return true;
+    // Linux: /dev/ttyUSB*, /dev/ttyACM*, /dev/ttyS*, /dev/ttyAMA*
+    if (/^\/dev\/tty(USB|ACM|S|AMA)\d+$/.test(p)) return true;
+    // macOS: /dev/cu.* or /dev/tty.*
+    if (/^\/dev\/(cu|tty)\.[A-Za-z0-9._-]+$/.test(p)) return true;
+    return false;
+  };
+
   app.get('/api/config', (req, res) => {
     res.json(config);
   });
@@ -1052,6 +1144,10 @@ function createServer(registry, version) {
     const newConfig = req.body;
     if (newConfig.port) config.port = newConfig.port;
     if (newConfig.radio) {
+      // Validate serial port path if provided
+      if (newConfig.radio.serialPort && !isValidSerialPort(newConfig.radio.serialPort)) {
+        return res.status(400).json({ success: false, error: 'Invalid serial port path' });
+      }
       config.radio = { ...config.radio, ...newConfig.radio };
     }
     if (typeof newConfig.logging === 'boolean') {
@@ -1059,6 +1155,9 @@ function createServer(registry, version) {
     }
     if (newConfig.wsjtxRelay) {
       config.wsjtxRelay = { ...config.wsjtxRelay, ...newConfig.wsjtxRelay };
+    }
+    if (newConfig.tci) {
+      config.tci = { ...config.tci, ...newConfig.tci };
     }
     // macOS: tty.* (dial-in) blocks open() — silently upgrade to cu.* (call-out)
     if (process.platform === 'darwin' && config.radio.serialPort?.startsWith('/dev/tty.')) {
@@ -1082,6 +1181,9 @@ function createServer(registry, version) {
   // ─── API: Test serial port connection ───
   app.post('/api/test', async (req, res) => {
     const testPort = req.body.serialPort || config.radio.serialPort;
+    if (!isValidSerialPort(testPort)) {
+      return res.json({ success: false, error: 'Invalid serial port path' });
+    }
     const testBaud = req.body.baudRate || config.radio.baudRate;
     const testStopBits = req.body.stopBits || config.radio.stopBits || 1;
     const testRtscts = req.body.rtscts !== undefined ? !!req.body.rtscts : !!config.radio.rtscts;
@@ -1183,7 +1285,13 @@ function createServer(registry, version) {
 
 function startServer(port, registry, version) {
   const app = createServer(registry, version);
-  const server = app.listen(port, '0.0.0.0', () => {
+
+  // SECURITY: Bind to localhost by default. Set bindAddress to '0.0.0.0' in
+  // rig-bridge-config.json only if you need LAN access (e.g. bridge on a Pi,
+  // browser on a desktop).
+  const bindAddress = config.bindAddress || '127.0.0.1';
+
+  const server = app.listen(port, bindAddress, () => {
     const versionLabel = `v${version}`.padEnd(8);
     console.log('');
     console.log('  ╔══════════════════════════════════════════════╗');
@@ -1191,6 +1299,9 @@ function startServer(port, registry, version) {
     console.log('  ╠══════════════════════════════════════════════╣');
     console.log(`  ║   Setup UI:  http://localhost:${port}          ║`);
     console.log(`  ║   Radio:     ${(config.radio.type || 'none').padEnd(30)}║`);
+    if (bindAddress !== '127.0.0.1') {
+      console.log(`  ║   ⚠ Bound to ${bindAddress.padEnd(33)}║`);
+    }
     console.log('  ╚══════════════════════════════════════════════╝');
     console.log('');
   });

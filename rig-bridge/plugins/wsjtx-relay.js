@@ -394,6 +394,26 @@ const descriptor = {
         return;
       }
 
+      // SECURITY: Validate relay URL to prevent SSRF via config API.
+      // The relay should only POST to legitimate OpenHamClock servers, not internal services.
+      try {
+        const parsed = new URL(cfg.url);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          console.error(`[WsjtxRelay] Blocked: only http/https URLs allowed (got ${parsed.protocol})`);
+          return;
+        }
+        const host = parsed.hostname.toLowerCase();
+        const blockedHosts =
+          /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.|::1|fe80:|fc00:|fd00:)/;
+        if (blockedHosts.test(host)) {
+          console.error(`[WsjtxRelay] Blocked: relay URL must not point to a private/internal address (${host})`);
+          return;
+        }
+      } catch (e) {
+        console.error(`[WsjtxRelay] Invalid relay URL: ${e.message}`);
+        return;
+      }
+
       const udpPort = cfg.udpPort || 2237;
       socket = dgram.createSocket('udp4');
 

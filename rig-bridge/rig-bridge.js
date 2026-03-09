@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * OpenHamClock Rig Bridge v1.1.0
+ * OpenHamClock Rig Bridge v1.2.0
  *
  * Universal bridge connecting radios and other ham radio services to OpenHamClock.
  * Uses a plugin architecture — each integration is a standalone module.
@@ -19,7 +19,7 @@
 
 'use strict';
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 
 const { config, loadConfig, applyCliArgs } = require('./core/config');
 const { updateState, state } = require('./core/state');
@@ -46,6 +46,7 @@ Usage:
 
 Options:
   --port <number>    HTTP port for setup UI (default: 5555)
+  --bind <address>   Bind address (default: 127.0.0.1, use 0.0.0.0 for LAN)
   --debug            Enable verbose CAT protocol logging
   --version, -v      Print version and exit
   --help, -h         Show this help message
@@ -53,6 +54,7 @@ Options:
 Examples:
   node rig-bridge.js
   node rig-bridge.js --port 8080 --debug
+  node rig-bridge.js --bind 0.0.0.0   # Allow LAN access
   `);
   process.exit(0);
 }
