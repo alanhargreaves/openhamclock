@@ -27,6 +27,7 @@ const net = require('net');
 const dgram = require('dgram');
 const fs = require('fs');
 const { execFile, spawn } = require('child_process');
+const dns = require('dns');
 const mqttLib = require('mqtt');
 const { initCtyData, getCtyData, lookupCall } = require('./src/server/ctydat.js');
 
@@ -865,7 +866,7 @@ app.get('/api/rotator/status', (req, res) => {
   });
 });
 
-app.post('/api/rotator/turn', async (req, res) => {
+app.post('/api/rotator/turn', writeLimiter, requireWriteAuth, async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   try {
     const { azimuth } = req.body || {};
@@ -886,7 +887,7 @@ app.post('/api/rotator/turn', async (req, res) => {
   }
 });
 
-app.post('/api/rotator/stop', async (req, res) => {
+app.post('/api/rotator/stop', writeLimiter, requireWriteAuth, async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   try {
     const result = await stopRotator();
@@ -3613,6 +3614,57 @@ function parseSpotHHMMzToTimestamp(timeStr, fallbackTs = Date.now()) {
   return ts;
 }
 
+/**
+ * SSRF protection: resolve hostname to IP and reject private/reserved addresses.
+ * String-based hostname checks are insufficient — domains like localtest.me resolve
+ * to 127.0.0.1 but pass regex filters. We must resolve first, then validate the IP.
+ */
+function isPrivateIP(ip) {
+  // IPv4 private/reserved ranges
+  const parts = ip.split('.').map(Number);
+  if (parts.length === 4 && parts.every((n) => n >= 0 && n <= 255)) {
+    if (parts[0] === 127) return true;                                          // loopback
+    if (parts[0] === 10) return true;                                           // 10.0.0.0/8
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;     // 172.16.0.0/12
+    if (parts[0] === 192 && parts[1] === 168) return true;                     // 192.168.0.0/16
+    if (parts[0] === 169 && parts[1] === 254) return true;                     // link-local
+    if (parts[0] === 0) return true;                                            // 0.0.0.0/8
+    if (parts[0] >= 224) return true;                                           // multicast + reserved
+  }
+  // IPv6 private/reserved
+  const lower = ip.toLowerCase();
+  if (lower === '::1' || lower.startsWith('fe80:') || lower.startsWith('fc00:') ||
+      lower.startsWith('fd00:') || lower.startsWith('ff00:') || lower === '::') {
+    return true;
+  }
+  return false;
+}
+
+async function validateCustomHost(host) {
+  // Reject obvious localhost strings before DNS
+  if (/^localhost$/i.test(host)) return { ok: false, reason: 'localhost not allowed' };
+
+  // Resolve hostname to IP addresses
+  let addresses;
+  try {
+    addresses = await dns.promises.resolve4(host);
+  } catch {
+    try {
+      addresses = await dns.promises.resolve6(host);
+    } catch {
+      return { ok: false, reason: 'Host could not be resolved' };
+    }
+  }
+
+  // Check every resolved address — block if any resolve to private/reserved
+  for (const addr of addresses) {
+    if (isPrivateIP(addr)) {
+      return { ok: false, reason: 'Host resolves to a private/reserved address' };
+    }
+  }
+  return { ok: true };
+}
+
 app.get('/api/dxcluster/paths', async (req, res) => {
   // Parse query parameters for custom cluster settings
   const source = req.query.source || 'auto';
@@ -3622,27 +3674,11 @@ app.get('/api/dxcluster/paths', async (req, res) => {
   const userCallsign = (req.query.callsign || CONFIG.dxClusterCallsign || '').trim();
 
   // SECURITY: Validate custom host to prevent SSRF (internal network scanning)
+  // Resolves DNS first to catch rebinding attacks (e.g. localtest.me → 127.0.0.1)
   if (source === 'custom' && customHost) {
-    // Block private/reserved IP ranges and localhost
-    const blockedPatterns =
-      /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.|0:|\[::1\]|::1|fe80:|fc00:|fd00:|ff00:)/i;
-    if (blockedPatterns.test(customHost)) {
-      return res.status(400).json({ error: 'Custom host cannot be a private/reserved address' });
-    }
-    // Block numeric-only hosts (raw IPs) that could be encoded to bypass above
-    // Only allow hostnames that look like legitimate DX Spider nodes
-    if (/^\d+\.\d+\.\d+\.\d+$/.test(customHost)) {
-      const octets = customHost.split('.').map(Number);
-      if (
-        octets[0] === 10 ||
-        octets[0] === 127 ||
-        octets[0] === 0 ||
-        (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
-        (octets[0] === 192 && octets[1] === 168) ||
-        (octets[0] === 169 && octets[1] === 254)
-      ) {
-        return res.status(400).json({ error: 'Custom host cannot be a private/reserved address' });
-      }
+    const hostCheck = await validateCustomHost(customHost);
+    if (!hostCheck.ok) {
+      return res.status(400).json({ error: `Custom host rejected: ${hostCheck.reason}` });
     }
     // Restrict port range to common DX Spider/telnet ports
     if (customPort < 1024 || customPort > 49151) {
@@ -4467,7 +4503,7 @@ app.get('/api/qrz/status', (req, res) => {
 });
 
 // POST /api/qrz/configure — save QRZ credentials (from Settings UI)
-app.post('/api/qrz/configure', writeLimiter, async (req, res) => {
+app.post('/api/qrz/configure', writeLimiter, requireWriteAuth, async (req, res) => {
   const { username, password } = req.body || {};
 
   if (!username || !password) {
@@ -4531,7 +4567,7 @@ app.post('/api/qrz/configure', writeLimiter, async (req, res) => {
 });
 
 // POST /api/qrz/remove — remove saved QRZ credentials
-app.post('/api/qrz/remove', writeLimiter, (req, res) => {
+app.post('/api/qrz/remove', writeLimiter, requireWriteAuth, (req, res) => {
   qrzSession.username = CONFIG._qrzUsername || '';
   qrzSession.password = CONFIG._qrzPassword || '';
   qrzSession.key = null;
