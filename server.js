@@ -3617,12 +3617,15 @@ function parseSpotHHMMzToTimestamp(timeStr, fallbackTs = Date.now()) {
 
 /**
  * SSRF protection: resolve hostname to IP and reject private/reserved addresses.
- * String-based hostname checks are insufficient — domains like localtest.me resolve
- * to 127.0.0.1 but pass regex filters. We must resolve first, then validate the IP.
+ * Returns the resolved IP so callers can connect to the IP directly, preventing
+ * DNS rebinding (TOCTOU) attacks where the record changes between validation and connect.
  */
 function isPrivateIP(ip) {
+  // Normalize IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1 → 127.0.0.1)
+  const normalized = ip.replace(/^::ffff:/i, '');
+
   // IPv4 private/reserved ranges
-  const parts = ip.split('.').map(Number);
+  const parts = normalized.split('.').map(Number);
   if (parts.length === 4 && parts.every((n) => n >= 0 && n <= 255)) {
     if (parts[0] === 127) return true;                                          // loopback
     if (parts[0] === 10) return true;                                           // 10.0.0.0/8
@@ -3633,9 +3636,12 @@ function isPrivateIP(ip) {
     if (parts[0] >= 224) return true;                                           // multicast + reserved
   }
   // IPv6 private/reserved
-  const lower = ip.toLowerCase();
-  if (lower === '::1' || lower.startsWith('fe80:') || lower.startsWith('fc00:') ||
-      lower.startsWith('fd00:') || lower.startsWith('ff00:') || lower === '::') {
+  const lower = normalized.toLowerCase();
+  if (lower === '::1' || lower === '::' ||
+      lower.startsWith('fe80:') || lower.startsWith('fc00:') ||
+      lower.startsWith('fd00:') || lower.startsWith('ff00:') ||
+      lower.startsWith('::ffff:')) {
+    // Catch any remaining IPv4-mapped forms that weren't normalized above
     return true;
   }
   return false;
@@ -3663,7 +3669,9 @@ async function validateCustomHost(host) {
       return { ok: false, reason: 'Host resolves to a private/reserved address' };
     }
   }
-  return { ok: true };
+  // Return the first resolved IP so callers connect to the validated IP, not the hostname.
+  // This prevents DNS rebinding (TOCTOU) where the record changes between validation and connect.
+  return { ok: true, resolvedIP: addresses[0] };
 }
 
 app.get('/api/dxcluster/paths', async (req, res) => {
@@ -3675,12 +3683,15 @@ app.get('/api/dxcluster/paths', async (req, res) => {
   const userCallsign = (req.query.callsign || CONFIG.dxClusterCallsign || '').trim();
 
   // SECURITY: Validate custom host to prevent SSRF (internal network scanning)
-  // Resolves DNS first to catch rebinding attacks (e.g. localtest.me → 127.0.0.1)
+  // Resolves DNS and returns the validated IP. We connect to the IP, not the hostname,
+  // to prevent DNS rebinding (TOCTOU) where the record changes between validation and connect.
+  let resolvedHost = customHost;
   if (source === 'custom' && customHost) {
     const hostCheck = await validateCustomHost(customHost);
     if (!hostCheck.ok) {
       return res.status(400).json({ error: `Custom host rejected: ${hostCheck.reason}` });
     }
+    resolvedHost = hostCheck.resolvedIP; // Connect to the validated IP, not the hostname
     // Restrict port range to common DX Spider/telnet ports
     if (customPort < 1024 || customPort > 49151) {
       return res.status(400).json({ error: 'Port must be between 1024 and 49151' });
@@ -3690,7 +3701,7 @@ app.get('/api/dxcluster/paths', async (req, res) => {
   // Generate cache key based on source profile so custom/proxy/auto don't mix.
   const cacheKey =
     source === 'custom'
-      ? `custom-${customHost}-${customPort}-${getDxClusterLoginCallsign(userCallsign)}`
+      ? `custom-${resolvedHost}-${customPort}-${getDxClusterLoginCallsign(userCallsign)}`
       : `source-${source}`;
   const pathsCache = getDxPathsCache(cacheKey);
 
@@ -3710,11 +3721,11 @@ app.get('/api/dxcluster/paths', async (req, res) => {
     let usedSource = 'none';
 
     // Handle custom telnet source (persistent connection, no reconnect-per-poll)
-    if (source === 'custom' && customHost) {
+    if (source === 'custom' && resolvedHost) {
       logDebug(
-        `[DX Paths] Using custom telnet session: ${customHost}:${customPort} as ${getDxClusterLoginCallsign(userCallsign)}`,
+        `[DX Paths] Using custom telnet session: ${resolvedHost}:${customPort} as ${getDxClusterLoginCallsign(userCallsign)}`,
       );
-      const customNode = { host: customHost, port: customPort };
+      const customNode = { host: resolvedHost, port: customPort };
       const session = getOrCreateCustomSession(customNode, userCallsign);
       // Take the most recent spots from persistent session buffer.
       const customSpots = (session.spots || []).slice(0, 100).map((s) => ({
@@ -11082,7 +11093,6 @@ app.get('/api/aprs/stations', (req, res) => {
 
 const WSJTX_UDP_PORT = parseInt(process.env.WSJTX_UDP_PORT || '2237');
 const WSJTX_ENABLED = process.env.WSJTX_ENABLED !== 'false'; // enabled by default
-const WSJTX_MULTICAST_ADDRESS = process.env.WSJTX_MULTICAST_ADDRESS;
 const WSJTX_RELAY_KEY = process.env.WSJTX_RELAY_KEY || ''; // auth key for remote relay agent
 const WSJTX_MAX_DECODES = 500; // max decodes to keep in memory
 const WSJTX_MAX_AGE = 60 * 60 * 1000; // 60 minutes (configurable via client)
@@ -11940,7 +11950,7 @@ app.get('/api/n3fjp/qsos', (req, res) => {
 let wsjtxSocket = null;
 if (WSJTX_ENABLED) {
   try {
-    wsjtxSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+    wsjtxSocket = dgram.createSocket('udp4');
 
     wsjtxSocket.on('message', (buf, rinfo) => {
       const msg = parseWSJTXMessage(buf);
@@ -11954,33 +11964,9 @@ if (WSJTX_ENABLED) {
     wsjtxSocket.on('listening', () => {
       const addr = wsjtxSocket.address();
       console.log(`[WSJT-X] UDP listener on ${addr.address}:${addr.port}`);
-
-      if (WSJTX_MULTICAST_ADDRESS) {
-        try {
-          wsjtxSocket.addMembership(WSJTX_MULTICAST_ADDRESS);
-          console.log(`[WSJT-X] Joined multicast group ${WSJTX_MULTICAST_ADDRESS}`);
-        } catch (e) {
-          console.error(`Failed to join multicast group ${WSJTX_MULTICAST_ADDRESS}`);
-        }
-      }
     });
 
-    if (WSJTX_MULTICAST_ADDRESS) {
-      wsjtxSocket.bind(
-        {
-          port: WSJTX_UDP_PORT,
-          exclusive: false,
-        },
-        () => {
-          wsjtxSocket.setMulticastLoopback(true);
-        },
-      );
-    } else {
-      wsjtxSocket.bind({
-        port: WSJTX_UDP_PORT,
-        address: '0.0.0.0',
-      });
-    }
+    wsjtxSocket.bind(WSJTX_UDP_PORT, '0.0.0.0');
   } catch (e) {
     console.error(`[WSJT-X] Failed to start UDP listener: ${e.message}`);
   }
@@ -12972,6 +12958,11 @@ app.listen(PORT, '0.0.0.0', () => {
   }
   if (AUTO_UPDATE_ENABLED) {
     console.log(`  🔄 Auto-update enabled every ${AUTO_UPDATE_INTERVAL_MINUTES || 60} minutes`);
+  }
+  if (!API_WRITE_KEY) {
+    console.log('');
+    console.log('  ⚠️  API_WRITE_KEY is not set — write endpoints (settings, update, rotator, QRZ) are unprotected.');
+    console.log('     Set API_WRITE_KEY in .env to secure POST endpoints.');
   }
   console.log('  🖥️  Open your browser to start using OpenHamClock');
   console.log('');
