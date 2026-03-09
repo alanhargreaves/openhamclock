@@ -20,6 +20,9 @@ const POLL_MS = 2000;
 const STORAGE_MINUTES_KEY = 'n3fjp_display_minutes';
 const STORAGE_COLOR_KEY = 'n3fjp_line_color';
 
+// Sanitize CSS color values from localStorage to prevent innerHTML injection
+const sanitizeColor = (c) => /^(#[0-9a-f]{3,8}|[a-z]{3,20})$/i.test(c) ? c : '#3388ff';
+
 export function useLayer({ enabled = false, opacity = 0.9, map = null }) {
   const [layersRef, setLayersRef] = useState([]);
   const [qsos, setQsos] = useState([]);
@@ -35,7 +38,7 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null }) {
   });
 
   const [lineColor, setLineColor] = useState(() => {
-    return localStorage.getItem(STORAGE_COLOR_KEY) || '#3388ff'; // Leaflet default blue-ish
+    return sanitizeColor(localStorage.getItem(STORAGE_COLOR_KEY) || '#3388ff');
   });
 
   // Poll the server for QSOs
@@ -160,7 +163,7 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null }) {
         if (Number.isFinite(m)) setDisplayMinutes(m);
       } catch {}
       try {
-        const c = localStorage.getItem(STORAGE_COLOR_KEY) || '#3388ff';
+        const c = sanitizeColor(localStorage.getItem(STORAGE_COLOR_KEY) || '#3388ff');
         setLineColor(c);
       } catch {}
     };
