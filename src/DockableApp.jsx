@@ -954,7 +954,7 @@ export const DockableApp = ({
 
         case 'layout':
           content = (
-            <>
+            <div className="panel" style={{ height: '100%' }}>
               <button
                 onClick={toggleLayoutLock}
                 title={
@@ -979,7 +979,7 @@ export const DockableApp = ({
                 </svg>
                 {t('station.settings.layout.reset.button')}
               </button>
-            </>
+            </div>
           );
           break;
 

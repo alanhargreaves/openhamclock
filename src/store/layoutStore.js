@@ -135,6 +135,20 @@ export const loadLayout = () => {
         if (parsed.borders.length === 0) {
           parsed.borders = DEFAULT_LAYOUT.borders;
           saveLayout(parsed);
+        } else {
+          // Migrate lock-layout → layout rename
+          let migrated = false;
+          for (const border of parsed.borders) {
+            for (const child of border.children || []) {
+              if (child.component === 'lock-layout') {
+                child.component = 'layout';
+                child.id = 'layout-tab';
+                child.name = 'Layout';
+                migrated = true;
+              }
+            }
+          }
+          if (migrated) saveLayout(parsed);
         }
         return parsed;
       }
