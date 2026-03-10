@@ -45,15 +45,17 @@ function lzwDecode(compressed) {
 }
 
 // Haversine formula for distance calculation
-function calculateDistance(lat1, lon1, lat2, lon2, unit = 'km') {
-  const R = unit === 'km' ? 6371.14 : 3963.1; // Earth radius in km or miles
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  // Calculate the distance in both km and miles, returning both
+  const Rkm = 6371.14; // Earth radius in km
+  const Rmiles = 3963.1; // Earth radius in miles
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  return { km: Rkm * c, miles: Rmiles * c };
 }
 
 // Strike age colors (fading over time)
@@ -65,7 +67,7 @@ function getStrikeColor(ageMinutes) {
   return '#8B4513'; // Brown (very old, >30 min)
 }
 
-export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemoryMode = false }) {
+export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemoryMode = false, allUnits }) {
   const [strikeMarkers, setStrikeMarkers] = useState([]);
   const [lightningData, setLightningData] = useState([]);
   const [statsControl, setStatsControl] = useState(null);
@@ -82,6 +84,8 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
   // Low memory mode limits
   const MAX_STRIKES = lowMemoryMode ? 100 : 500;
   const STRIKE_RETENTION_MS = 1800000; // 30 min
+
+  const unitsStr = allUnits.dist === 'metric' ? 'km' : 'miles';
 
   // Fetch WebSocket key from Blitzortung (fallback to 111)
   useEffect(() => {
@@ -595,8 +599,8 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
     const nearbyNewStrikes = lightningData.filter((strike) => {
       if (strike.timestamp < ONE_MINUTE_AGO) return false;
 
-      const distance = calculateDistance(stationLat, stationLon, strike.lat, strike.lon, 'km');
-      return distance <= ALERT_RADIUS_KM;
+      const distance = calculateDistance(stationLat, stationLon, strike.lat, strike.lon);
+      return distance.km <= ALERT_RADIUS_KM;
     });
 
     // Flash the stats panel red if there are nearby strikes
@@ -688,8 +692,8 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
         const panelWrapper = L.DomUtil.create('div', 'panel-wrapper');
         const div = L.DomUtil.create('div', 'lightning-proximity', panelWrapper);
 
-        div.innerHTML =
-          '<div class="floating-panel-header">📍 Nearby Strikes (30km)</div><div style="opacity: 0.7; font-size: 10px; text-align: center;">No recent strikes</div>';
+        // Unfortunately, to fit both km and miles in the header we need to override the font size
+        div.innerHTML = `<div class="floating-panel-header" style="font-size: 11px">📍 Nearby Strikes(30km/18.6miles)</div><div style="opacity: 0.7; font-size: 10px; text-align: center;">No recent strikes</div>`;
 
         // Prevent map interaction
         L.DomEvent.disableClickPropagation(div);
@@ -832,15 +836,15 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
         const distance = calculateDistance(stationLat, stationLon, strike.lat, strike.lon, 'km');
         return { ...strike, distance };
       })
-      .filter((strike) => strike.distance <= PROXIMITY_RADIUS_KM)
-      .sort((a, b) => a.distance - b.distance); // Sort by distance (closest first)
+      .filter((strike) => strike.distance.km <= PROXIMITY_RADIUS_KM)
+      .sort((a, b) => a.distance.km - b.distance.km); // Sort by distance (closest first)
 
     let contentHTML = '';
 
     if (nearbyStrikes.length === 0) {
       contentHTML = `
         <div style="font-size: 10px; text-align: center;">
-          ✅ No strikes within 30km<br/>
+          ✅ No strikes within 30km (18.6 miles)<br/>
           <span style="font-size: 9px; color: var(--text-muted);">All clear</span>
         </div>
       `;
@@ -849,6 +853,8 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
       const ageMinutes = Math.floor((now - closestStrike.timestamp) / 60000);
       const ageSeconds = Math.floor((now - closestStrike.timestamp) / 1000);
       const ageStr = ageMinutes > 0 ? `${ageMinutes}m ago` : `${ageSeconds}s ago`;
+      const closestStrikeDistance =
+        allUnits.dist === 'metric' ? closestStrike.distance.km : closestStrike.distance.miles;
 
       contentHTML = `
         <div style="margin-bottom: 8px; padding: 8px; background: rgba(255,0,0,0.1); border-left: 3px solid var(--accent-red); border-radius: 4px;">
@@ -856,7 +862,7 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
             ⚡ ${nearbyStrikes.length} strike${nearbyStrikes.length > 1 ? 's' : ''} detected
           </div>
           <div style="font-size: 10px;">
-            <strong>Closest:</strong> ${closestStrike.distance.toFixed(1)} km<br>
+            <strong>Closest:</strong> ${closestStrikeDistance.toFixed(1)} ${unitsStr}<br>
             <strong>Time:</strong> ${ageStr}<br>
             <strong>Polarity:</strong> ${closestStrike.polarity === 'positive' ? '+' : '-'} ${Math.round(closestStrike.intensity)} kA
           </div>
@@ -869,9 +875,10 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
               .map((strike, idx) => {
                 const age = Math.floor((now - strike.timestamp) / 1000);
                 const timeStr = age < 60 ? `${age}s` : `${Math.floor(age / 60)}m`;
+                const dist = (allUnits.dist === 'metric' ? strike.distance.km : strike.distance.miles).toFixed(1);
                 return `
                 <div style="padding: 2px 0; border-bottom: 1px dotted var(--border-color);">
-                  ${idx + 1}. ${strike.distance.toFixed(1)} km • ${timeStr} • ${strike.polarity === 'positive' ? '+' : '-'}${Math.round(strike.intensity)} kA
+                  ${idx + 1}. ${dist} ${unitsStr} • ${timeStr} • ${strike.polarity === 'positive' ? '+' : '-'}${Math.round(strike.intensity)} kA
                 </div>
               `;
               })
