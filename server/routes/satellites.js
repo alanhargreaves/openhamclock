@@ -3,12 +3,41 @@
  * Lines ~7624-8178 of original server.js
  */
 
+const fs = require('fs');
+const path = require('path');
+
 module.exports = function (app, ctx) {
-  const { fetch, logDebug, logInfo, logWarn, logErrorOnce } = ctx;
+  const { fetch, logDebug, logInfo, logWarn, logErrorOnce, APP_VERSION, ROOT_DIR } = ctx;
 
   // ============================================
   // SATELLITE TRACKING API
   // ============================================
+
+  // Load satellite database from satellites.json (editable by contributors)
+  // Falls back to hardcoded list if file not found
+  function loadSatellitesJson() {
+    const jsonPaths = [
+      path.join(ROOT_DIR, 'public', 'data', 'satellites.json'),
+      path.join(ROOT_DIR, 'data', 'satellites.json'),
+    ];
+    for (const p of jsonPaths) {
+      try {
+        if (fs.existsSync(p)) {
+          const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+          if (data.satellites && Object.keys(data.satellites).length > 0) {
+            logInfo(`[Satellites] Loaded ${Object.keys(data.satellites).length} satellites from ${path.basename(p)}`);
+            return data.satellites;
+          }
+        }
+      } catch (e) {
+        logWarn(`[Satellites] Failed to load ${p}: ${e.message}`);
+      }
+    }
+    return null;
+  }
+
+  // Try JSON file first, fall back to hardcoded
+  const jsonSatellites = loadSatellitesJson();
 
   // Curated list of active ham radio and amateur-accessible satellites
   // Last audited: March 2026
@@ -98,6 +127,20 @@ module.exports = function (app, ctx) {
       color: '#33cc33',
       priority: 1,
       mode: 'GRB/HRIT/LRIT',
+    },
+    'METOP-B': {
+      norad: 38771,
+      name: 'MetOp-B',
+      color: '#FF6600',
+      priority: 1,
+      mode: 'HRPT/AHRPT',
+    },
+    'METOP-C': {
+      norad: 43689,
+      name: 'MetOp-C',
+      color: '#FF8800',
+      priority: 1,
+      mode: 'HRPT/AHRPT',
     },
     'METEOR-M2-3': {
       norad: 57166,
@@ -286,6 +329,34 @@ module.exports = function (app, ctx) {
       mode: 'FM',
     },
   };
+
+  // Use satellites.json data if available, merging radio metadata into hardcoded entries
+  // JSON file is the source of truth for radio data (downlink, uplink, tone, notes)
+  // Hardcoded entries are the fallback for NORAD IDs and basic info
+  if (jsonSatellites) {
+    for (const [key, jsonSat] of Object.entries(jsonSatellites)) {
+      if (HAM_SATELLITES[key]) {
+        // Merge: JSON radio metadata into existing entry
+        Object.assign(HAM_SATELLITES[key], {
+          downlink: jsonSat.downlink || HAM_SATELLITES[key].downlink || '',
+          uplink: jsonSat.uplink || HAM_SATELLITES[key].uplink || '',
+          tone: jsonSat.tone || HAM_SATELLITES[key].tone || '',
+          beacon: jsonSat.beacon || HAM_SATELLITES[key].beacon || '',
+          notes: jsonSat.notes || HAM_SATELLITES[key].notes || '',
+          // Allow JSON to override these too
+          name: jsonSat.name || HAM_SATELLITES[key].name,
+          mode: jsonSat.mode || HAM_SATELLITES[key].mode,
+          color: jsonSat.color || HAM_SATELLITES[key].color,
+          priority: jsonSat.priority ?? HAM_SATELLITES[key].priority,
+          norad: jsonSat.norad || HAM_SATELLITES[key].norad,
+        });
+      } else {
+        // New satellite only in JSON — add it
+        HAM_SATELLITES[key] = jsonSat;
+      }
+    }
+    logInfo(`[Satellites] Merged radio metadata — ${Object.keys(HAM_SATELLITES).length} satellites in registry`);
+  }
 
   let tleCache = { data: null, timestamp: 0 };
   const TLE_CACHE_DURATION = 12 * 60 * 60 * 1000; // 12 hours — TLEs don't change that fast
