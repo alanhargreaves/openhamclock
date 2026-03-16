@@ -125,7 +125,7 @@ export function useLayer({ enabled = false, opacity = 0.7, map = null, lowMemory
       try {
         const params = new URLSearchParams();
         TORNADO_EVENTS.forEach((e) => params.append('event', e));
-        params.append('limit', MAX_ALERTS);
+        params.append('status', 'actual');
         const response = await fetch(`https://api.weather.gov/alerts/active?${params.toString()}`, {
           headers: {
             'User-Agent': 'OpenHamClock (https://github.com/accius/openhamclock)',
