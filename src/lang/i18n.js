@@ -17,7 +17,6 @@ import translationPT from "./pt.json";
 import translationRU from "./ru.json";
 import translationSL from "./sl.json";
 import translationTH from "./th.json";
-import translationZH from "./zh.json";
 
 export const LANGUAGES = [
   { code: "en", name: "English", flag: "🇬🇧" },
@@ -53,7 +52,6 @@ export const resources = {
   ru: { translation: translationRU },
   sl: { translation: translationSL },
   th: { translation: translationTH },
-  zh: { translation: translationZH },
 };
 
 i18n
