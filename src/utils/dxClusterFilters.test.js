@@ -512,7 +512,7 @@ describe('dxClusterFilters', () => {
       expect(applyDXFilters(spot, emptyFilters)).toBe(true);
     });
 
-    it('should handle missing comment', () => {
+    it('should infer mode from frequency when comment is missing', () => {
       const spot = {
         dxCall: 'W1AW',
         spotter: 'K2ABC',
@@ -521,7 +521,7 @@ describe('dxClusterFilters', () => {
       const filters = {
         modes: ['FT8'],
       };
-      expect(applyDXFilters(spot, filters)).toBe(false);
+      expect(applyDXFilters(spot, filters)).toBe(true);
     });
 
     it('should handle missing frequency', () => {
