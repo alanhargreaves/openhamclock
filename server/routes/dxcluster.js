@@ -825,6 +825,22 @@ module.exports = function (app, ctx) {
     const hhmm = str.match(/^(\d{2})(\d{2})z?$/i);
     if (hhmm) return parseSpotHHMMzToTimestamp(`${hhmm[1]}:${hhmm[2]}z`, fallbackTs);
 
+    // Some spot feeds emit ISO timestamps without timezone (e.g. 2026-03-17T11:53:00).
+    // Treat these as UTC to avoid local-time offset skew in Zulu display and age math.
+    const isoNoZone = str.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/);
+    if (isoNoZone) {
+      const year = parseInt(isoNoZone[1], 10);
+      const month = parseInt(isoNoZone[2], 10);
+      const day = parseInt(isoNoZone[3], 10);
+      const hour = parseInt(isoNoZone[4], 10);
+      const minute = parseInt(isoNoZone[5], 10);
+      const second = parseInt(isoNoZone[6] || '0', 10);
+      const ms = parseInt((isoNoZone[7] || '0').padEnd(3, '0'), 10);
+
+      const parsedUtc = Date.UTC(year, month - 1, day, hour, minute, second, ms);
+      return Number.isFinite(parsedUtc) ? parsedUtc : fallbackTs;
+    }
+
     const parsed = Date.parse(str);
     return Number.isFinite(parsed) ? parsed : fallbackTs;
   }
