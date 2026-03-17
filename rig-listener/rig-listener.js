@@ -652,8 +652,10 @@ async function initTci(cfg) {
   // Resolve WebSocket implementation: prefer 'ws' npm package (works
   // inside pkg snapshots), fall back to Node 21+ built-in WebSocket.
   let WS;
+  let usingWsNpm = false;
   try {
     WS = require('ws');
+    usingWsNpm = true;
   } catch {
     if (typeof globalThis.WebSocket !== 'undefined') {
       WS = globalThis.WebSocket;
@@ -669,7 +671,9 @@ async function initTci(cfg) {
     console.log(`[TCI] Connecting to ${url}...`);
 
     try {
-      tciSocket = new WS(url);
+      // perMessageDeflate disabled for compatibility with non-standard TCI servers
+      // (e.g. Thetis) that may not handle WebSocket extension negotiation correctly.
+      tciSocket = new WS(url, usingWsNpm ? { perMessageDeflate: false } : undefined);
     } catch (e) {
       console.error(`[TCI] Connection failed: ${e.message}`);
       scheduleReconnect();

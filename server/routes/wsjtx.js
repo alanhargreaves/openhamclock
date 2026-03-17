@@ -935,9 +935,13 @@ module.exports = function (app, ctx) {
       });
 
       if (WSJTX_MULTICAST_ADDRESS) {
+        // Bind to 0.0.0.0 explicitly — on some Linux systems (especially Pi) omitting
+        // the address can cause the socket to bind to the wrong interface, preventing
+        // multicast group membership from working.
         wsjtxSocket.bind(
           {
             port: WSJTX_UDP_PORT,
+            address: '0.0.0.0',
             exclusive: false,
           },
           () => {

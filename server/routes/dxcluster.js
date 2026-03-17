@@ -4,6 +4,7 @@
  */
 
 const net = require('net');
+const dns = require('dns');
 const { gridToLatLon, getBandFromKHz } = require('../utils/grid');
 
 module.exports = function (app, ctx) {
@@ -821,13 +822,18 @@ module.exports = function (app, ctx) {
   }
 
   async function validateCustomHost(host) {
-    // Reject obvious localhost strings before DNS
-    if (/^localhost$/i.test(host)) return { ok: false, reason: 'localhost not allowed' };
+    // Allow localhost and IP-literal private addresses directly — OpenHamClock is
+    // self-hosted software and users commonly run local DX cluster servers (CC Cluster,
+    // DXSpider on a Pi, etc.).  SSRF is only a concern for multi-user cloud deployments.
+    if (/^localhost$/i.test(host)) return { ok: true, resolvedIP: '127.0.0.1' };
 
-    // Resolve hostname to IPv4 addresses ONLY.
-    // We intentionally do not fall back to resolve6 because IPv6 has many equivalent
-    // representations for private addresses (e.g. ::ffff:7f00:1 = 127.0.0.1 in hex form)
-    // that bypass string-based checks. DX cluster telnet servers are IPv4.
+    // If the host is already an IP address, allow it directly (including private ranges)
+    const ipParts = host.split('.').map(Number);
+    if (ipParts.length === 4 && ipParts.every((n) => n >= 0 && n <= 255)) {
+      return { ok: true, resolvedIP: host };
+    }
+
+    // Resolve hostname to IPv4 addresses.
     let addresses;
     try {
       addresses = await dns.promises.resolve4(host);
@@ -835,12 +841,10 @@ module.exports = function (app, ctx) {
       return { ok: false, reason: 'Host could not be resolved (IPv4 required for custom DX clusters)' };
     }
 
-    // Check every resolved address — block if any resolve to private/reserved
-    for (const addr of addresses) {
-      if (isPrivateIP(addr)) {
-        return { ok: false, reason: 'Host resolves to a private/reserved address' };
-      }
+    if (!addresses || addresses.length === 0) {
+      return { ok: false, reason: 'Host did not resolve to any IPv4 address' };
     }
+
     // Return the first resolved IP so callers connect to the validated IP, not the hostname.
     // This prevents DNS rebinding (TOCTOU) where the record changes between validation and connect.
     return { ok: true, resolvedIP: addresses[0] };
@@ -864,9 +868,9 @@ module.exports = function (app, ctx) {
         return res.status(400).json({ error: `Custom host rejected: ${hostCheck.reason}` });
       }
       resolvedHost = hostCheck.resolvedIP; // Connect to the validated IP, not the hostname
-      // Restrict port range to common DX Spider/telnet ports
-      if (customPort < 1024 || customPort > 49151) {
-        return res.status(400).json({ error: 'Port must be between 1024 and 49151' });
+      // Basic port range sanity check
+      if (customPort < 1 || customPort > 65535) {
+        return res.status(400).json({ error: 'Port must be between 1 and 65535' });
       }
     }
 

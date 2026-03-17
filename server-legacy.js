@@ -12055,6 +12055,7 @@ if (WSJTX_ENABLED) {
       wsjtxSocket.bind(
         {
           port: WSJTX_UDP_PORT,
+          address: '0.0.0.0',
           exclusive: false,
         },
         () => {
