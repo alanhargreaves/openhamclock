@@ -90,10 +90,12 @@ function computeNightPolygon(time, resolution) {
   baseRing.push([nightPole, 180]);
   baseRing.push([nightPole, -180]);
 
-  // Create 3 world copies so terminator is visible past the dateline
+  // Create 3 world copies so terminator is visible past the dateline.
+  // Each ring is wrapped in its own array to form a multi-polygon.
+  // Without wrapping, L.polygon treats rings[1+] as holes instead of separate fills.
   const rings = [];
   for (const offset of [-360, 0, 360]) {
-    rings.push(baseRing.map(([lat, lon]) => [lat, lon + offset]));
+    rings.push([baseRing.map(([lat, lon]) => [lat, lon + offset])]);
   }
 
   return rings;

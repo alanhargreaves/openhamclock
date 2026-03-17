@@ -20,20 +20,30 @@ const ANNOUNCEMENT = {
 // Each entry: { version, date, heading, features: [...] }
 const CHANGELOG = [
   {
-    version: '15.7.2',
-    date: '2026-03-16',
+    version: '15.7.3',
+    date: '2026-03-17',
     heading:
-      'Bug fix release — resolves a crash when using WSJT-X and broken DX Cluster path lookups introduced in v15.7.1. Also makes Meshtastic MQTT connections per-user instead of shared globally.',
+      'Bug fix release — resolves black screen on startup, WSJT-X crash, broken DX Cluster paths, and a complete rewrite of the gray line overlay that was rendering incorrectly near equinoxes.',
     features: [
       {
         icon: '🐛',
+        title: 'Bug Fix — Black Screen on Startup',
+        desc: 'Fixed a missing module import (path) in config-routes and a crypto.randomUUID call that failed over plain HTTP connections. Both caused the server or frontend to crash on load, resulting in a black screen.',
+      },
+      {
+        icon: '🐛',
         title: 'Bug Fix — WSJT-X Crash & DX Cluster Paths',
-        desc: 'Fixed a missing variable (CALLSIGN_CACHE_TTL) that caused a fatal server crash when WSJT-X sent decoded spots, and broke DX Cluster great circle path lookups. Both are now resolved.',
+        desc: 'Fixed a missing variable (CALLSIGN_CACHE_TTL) that caused a fatal server crash when WSJT-X sent decoded spots, and broke DX Cluster great circle path lookups.',
+      },
+      {
+        icon: '🌅',
+        title: 'Gray Line Overlay — Complete Rewrite',
+        desc: 'The gray line layer has been rewritten from scratch. Fixed the night polygon filling the wrong side of the map, the terminator line disappearing near equinoxes (85° latitude cap was discarding most points), and the enhanced DX zone polygon stretching across the globe instead of forming a band around the terminator.',
       },
       {
         icon: '📡',
         title: 'Meshtastic MQTT — Per-User Sessions',
-        desc: 'MQTT broker connections are now per-user instead of shared globally. Each browser gets its own independent MQTT session with separate broker settings, topic filters, and credentials. Proxy and direct modes remain shared.',
+        desc: 'MQTT broker connections are now per-user instead of shared globally. Each browser gets its own independent MQTT session with separate broker settings, topic filters, and credentials.',
       },
     ],
   },
