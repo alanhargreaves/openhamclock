@@ -24,6 +24,22 @@ export const PropagationPanel = ({
 }) => {
   const { t } = useTranslation();
 
+  // Local state for inline controls — initialized from prop, synced back on change
+  const [localMode, setLocalMode] = useState(propConfig.mode || 'SSB');
+  const [localPower, setLocalPower] = useState(propConfig.power || 100);
+  const [localAntenna, setLocalAntenna] = useState(propConfig.antenna || 'isotropic');
+
+  // Keep local state in sync if parent config changes (e.g. settings panel update)
+  useEffect(() => {
+    if (propConfig.mode && propConfig.mode !== localMode) setLocalMode(propConfig.mode);
+  }, [propConfig.mode]);
+  useEffect(() => {
+    if (propConfig.power && propConfig.power !== localPower) setLocalPower(propConfig.power);
+  }, [propConfig.power]);
+  useEffect(() => {
+    if (propConfig.antenna && propConfig.antenna !== localAntenna) setLocalAntenna(propConfig.antenna);
+  }, [propConfig.antenna]);
+
   // Antenna profiles fetched from server
   const [antennaProfiles, setAntennaProfiles] = useState(null);
   useEffect(() => {
@@ -35,8 +51,11 @@ export const PropagationPanel = ({
       .catch(() => {});
   }, []);
 
-  // Update propagation config (mode, power, antenna) and persist
+  // Update propagation config (mode, power, antenna) — update local state + persist
   const updatePropConfig = useCallback((updates) => {
+    if (updates.mode != null) setLocalMode(updates.mode);
+    if (updates.power != null) setLocalPower(updates.power);
+    if (updates.antenna != null) setLocalAntenna(updates.antenna);
     const cfg = loadConfig();
     cfg.propagation = { ...cfg.propagation, ...updates };
     saveConfig(cfg);
@@ -497,7 +516,7 @@ export const PropagationPanel = ({
           >
             {/* Mode */}
             <select
-              value={propConfig.mode || 'SSB'}
+              value={localMode}
               onChange={(e) => updatePropConfig({ mode: e.target.value })}
               style={{
                 background: 'var(--bg-tertiary)',
@@ -518,7 +537,7 @@ export const PropagationPanel = ({
 
             {/* Power */}
             <select
-              value={propConfig.power || 100}
+              value={localPower}
               onChange={(e) => updatePropConfig({ power: parseInt(e.target.value) })}
               style={{
                 background: 'var(--bg-tertiary)',
@@ -540,7 +559,7 @@ export const PropagationPanel = ({
             {/* Antenna */}
             {antennaProfiles && (
               <select
-                value={propConfig.antenna || 'isotropic'}
+                value={localAntenna}
                 onChange={(e) => updatePropConfig({ antenna: e.target.value })}
                 style={{
                   background: 'var(--bg-tertiary)',
