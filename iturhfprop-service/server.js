@@ -43,7 +43,9 @@ const LOG_INTERVAL = 5 * 60 * 1000; // Only log every 5 minutes
 
 function getCacheKey(params) {
   // Round coordinates to 1 decimal place for better cache hits
-  const key = `${params.txLat.toFixed(1)},${params.txLon.toFixed(1)}-${params.rxLat.toFixed(1)},${params.rxLon.toFixed(1)}-${params.month}-${params.hour}-${params.ssn}`;
+  const pw = Math.round(params.txPower || 100);
+  const gn = Math.round((params.txGain || 0) * 10);
+  const key = `${params.txLat.toFixed(1)},${params.txLon.toFixed(1)}-${params.rxLat.toFixed(1)},${params.rxLon.toFixed(1)}-${params.month}-${params.hour}-${params.ssn}-${pw}-${gn}`;
   return key;
 }
 
