@@ -478,7 +478,8 @@ export const PropagationPanel = ({
                     >
                       {band.replace('m', '')}
                     </div>
-                    {Array.from({ length: 24 }, (_, hour) => {
+                    {Array.from({ length: 24 }, (_, i) => {
+                      const hour = (currentHour - 12 + i + 24) % 24;
                       let rel = 0;
                       if (hour === currentHour && currentBands?.length > 0) {
                         const currentBandData = currentBands.find((b) => b.band === band);
@@ -517,13 +518,21 @@ export const PropagationPanel = ({
                 }}
               >
                 <div>UTC</div>
-                {[0, '', '', 3, '', '', 6, '', '', 9, '', '', 12, '', '', 15, '', '', 18, '', '', 21, '', ''].map(
-                  (h, i) => (
-                    <div key={i} style={{ textAlign: 'center' }}>
-                      {h}
+                {Array.from({ length: 24 }, (_, i) => {
+                  const hour = (currentHour - 12 + i + 24) % 24;
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        textAlign: 'center',
+                        fontWeight: hour === currentHour ? '700' : 'normal',
+                        color: hour === currentHour ? 'var(--text-primary)' : undefined,
+                      }}
+                    >
+                      {hour % 3 === 0 ? hour : ''}
                     </div>
-                  ),
-                )}
+                  );
+                })}
               </div>
 
               {/* Legend */}
