@@ -1295,7 +1295,7 @@ export const WorldMap = ({
   };
 
   function placeSpots(mapDefaults, spots, show, showLabels, markersRef) {
-    // common code to place spots for activatorPanel type spots
+    // common code to place spots for ActivatePanel type spots
     if (!mapInstanceRef.current) return;
 
     const map = mapInstanceRef.current; // we've already tested it exists in the caller
