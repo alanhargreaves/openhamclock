@@ -366,7 +366,7 @@ export const SettingsPanel = ({
     }
   };
 
-  const handleSave = () => {
+  const persistCurrentSettings = () => {
     const rigPortValue = String(rigPort ?? '').trim();
     let nextRigPort = 5555;
     if (rigPortValue === '0') {
@@ -404,6 +404,10 @@ export const SettingsPanel = ({
         autoMode,
       },
     });
+  };
+
+  const handleSave = () => {
+    persistCurrentSettings();
     onClose();
   };
 
@@ -2998,6 +3002,7 @@ export const SettingsPanel = ({
                       const exists = profiles[newProfileName.trim()];
                       if (exists && !window.confirm(`Profile "${newProfileName.trim()}" already exists. Overwrite?`))
                         return;
+                      persistCurrentSettings();
                       saveProfile(newProfileName.trim());
                       setNewProfileName('');
                       refreshProfiles();
@@ -3023,6 +3028,7 @@ export const SettingsPanel = ({
                     const exists = profiles[newProfileName.trim()];
                     if (exists && !window.confirm(`Profile "${newProfileName.trim()}" already exists. Overwrite?`))
                       return;
+                    persistCurrentSettings();
                     saveProfile(newProfileName.trim());
                     setNewProfileName('');
                     refreshProfiles();
@@ -3242,6 +3248,7 @@ export const SettingsPanel = ({
                               {/* Update (overwrite with current state) */}
                               <button
                                 onClick={() => {
+                                  persistCurrentSettings();
                                   saveProfile(name);
                                   refreshProfiles();
                                   setProfileMessage({ type: 'success', text: `"${name}" updated with current state` });
@@ -3395,6 +3402,9 @@ export const SettingsPanel = ({
                 </a>{' '}
                 user profiles (user-supplied coordinates, geocoded addresses, grid squares). Without this, locations
                 fall back to HamQTH (country-level only). Requires a QRZ Logbook Data subscription.
+                <br />
+                <strong>Note</strong> this is a server setting and is not related to clicking a callsign to go to
+                qrz.com. If you are not running a server, you will likely not have the permissions to change this.
               </div>
               {qrzStatus?.source === 'env' ? (
                 <div
