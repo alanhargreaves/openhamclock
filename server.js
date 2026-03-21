@@ -82,6 +82,7 @@ installRateLimiter();
 // ── Upstream request manager ──
 const UpstreamManager = require('./server/utils/upstream-manager');
 const upstream = new UpstreamManager();
+upstream.setMaxBackoff('wspr', 5 * 60 * 1000); // WSPR: 5 min max (PSKReporter rate limits are transient)
 
 // ── Express app ──
 const app = express();
@@ -253,6 +254,7 @@ require('./server/routes/aprs')(app, ctx);
 require('./server/routes/wsjtx')(app, ctx);
 require('./server/routes/n1mm')(app, ctx);
 require('./server/routes/meshtastic')(app, ctx);
+require('./server/routes/presence')(app, ctx);
 require('./server/routes/config-routes')(app, ctx);
 require('./server/routes/admin')(app, ctx);
 

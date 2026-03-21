@@ -20,6 +20,32 @@ export const useEmcommData = (options = {}) => {
 
   const locationRef = useRef(location);
   locationRef.current = location;
+  const resolvedStateRef = useRef(null);
+
+  // Reverse geocode lat/lon to state code via Nominatim
+  const resolveState = useCallback(async (loc) => {
+    if (loc.state || !loc.lat || !loc.lon) return loc;
+    // Use cached result if location hasn't changed
+    if (resolvedStateRef.current?.lat === loc.lat && resolvedStateRef.current?.lon === loc.lon) {
+      return { ...loc, state: resolvedStateRef.current.state };
+    }
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lon}&format=json&zoom=5`,
+        { headers: { 'User-Agent': 'OpenHamClock' } },
+      );
+      const data = await res.json();
+      const iso = data?.address?.['ISO3166-2-lvl4']; // e.g., "US-CO"
+      if (iso) {
+        const state = iso.split('-')[1];
+        resolvedStateRef.current = { lat: loc.lat, lon: loc.lon, state };
+        return { ...loc, state };
+      }
+    } catch {
+      // Silently fail — disasters panel just stays empty
+    }
+    return loc;
+  }, []);
 
   const fetchAlerts = useCallback(async () => {
     const loc = locationRef.current;
@@ -53,11 +79,15 @@ export const useEmcommData = (options = {}) => {
 
   const fetchDisasters = useCallback(async () => {
     const loc = locationRef.current;
-    // Derive state from location — use the config's state if available
-    // For now, we pass the state via a simple reverse-geocode or fallback
-    if (!loc?.state) return;
+    // Resolve state from lat/lon if not already set
+    const resolved = await resolveState(loc || {});
+    if (!resolved?.state) return;
+    // Update ref so subsequent calls use cached state
+    if (!locationRef.current?.state && resolved.state) {
+      locationRef.current = { ...locationRef.current, state: resolved.state };
+    }
     try {
-      const res = await apiFetch(`/api/emcomm/disasters?state=${encodeURIComponent(loc.state)}`, {
+      const res = await apiFetch(`/api/emcomm/disasters?state=${encodeURIComponent(resolved.state)}`, {
         cache: 'no-store',
       });
       if (res?.ok) {
@@ -67,7 +97,7 @@ export const useEmcommData = (options = {}) => {
     } catch (err) {
       console.error('[EmComm] Disasters fetch error:', err);
     }
-  }, []);
+  }, [resolveState]);
 
   // Poll all endpoints at different intervals
   useEffect(() => {

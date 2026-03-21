@@ -632,8 +632,8 @@ module.exports = function (app, ctx) {
       return res.json({ ...wsprCache.data.result, cached: true });
     }
 
-    // 2. Backoff active (WSPR uses PSKReporter upstream, shares its backoff)
-    if (upstream.isBackedOff('pskreporter')) {
+    // 2. Backoff active (WSPR HTTP endpoint has its own backoff, separate from MQTT PSKReporter)
+    if (upstream.isBackedOff('wspr')) {
       if (wsprCache.data && wsprCache.data.cacheKey === cacheKey) {
         return res.json({ ...wsprCache.data.result, cached: true, stale: true });
       }
@@ -671,7 +671,7 @@ module.exports = function (app, ctx) {
         clearTimeout(timeout);
 
         if (!response.ok) {
-          const backoffSecs = upstream.recordFailure('pskreporter', response.status);
+          const backoffSecs = upstream.recordFailure('wspr', response.status);
           throw new Error(`HTTP ${response.status} — backing off for ${backoffSecs}s`);
         }
 
@@ -744,7 +744,7 @@ module.exports = function (app, ctx) {
         }
 
         spots.sort((a, b) => b.timestamp - a.timestamp);
-        upstream.recordSuccess('pskreporter');
+        upstream.recordSuccess('wspr');
 
         let result;
         if (raw) {

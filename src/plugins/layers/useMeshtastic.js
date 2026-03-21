@@ -9,7 +9,7 @@ export const metadata = {
   name: 'Meshtastic Nodes',
   description: 'Mesh network nodes from your Meshtastic device',
   icon: '📡',
-  category: 'amateur-radio',
+  category: 'amateur',
   defaultEnabled: false,
   defaultOpacity: 0.9,
   shortcut: 'M',

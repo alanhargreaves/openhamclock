@@ -25,6 +25,7 @@ import * as VOACAPHeatmapPlugin from './layers/useVOACAPHeatmap.js';
 import * as MUFMapPlugin from './layers/useMUFMap.js';
 import * as SatellitePlugin from './layers/useSatelliteLayer.js';
 import * as MeshtasticPlugin from './layers/useMeshtastic.js';
+import * as ActiveUsersPlugin from './layers/useActiveUsers.js';
 
 // Auto-discover local/custom plugins (gitignored — survive updates)
 const localPluginModules = import.meta.glob('./local/*.js', { eager: true });
@@ -63,6 +64,7 @@ const layerPlugins = [
   VOACAPHeatmapPlugin,
   MUFMapPlugin,
   MeshtasticPlugin,
+  ActiveUsersPlugin,
   ...localPlugins,
 ];
 
@@ -91,6 +93,7 @@ const PINNED_SHORTCUTS = {
   n3fjp_logged_qsos: 'n',
   wspr: 'p',
   floods: 'i',
+  'active-users': 'u',
 };
 
 export function getAllLayers() {

@@ -46,6 +46,34 @@ module.exports = function (app, ctx) {
     return hemi === 'W' ? -lon : lon;
   }
 
+  // Parse resource tokens from APRS comment field (bracket notation)
+  function parseResourceTokens(comment) {
+    if (!comment) return { tokens: [], cleanComment: '' };
+    const tokens = [];
+    const regex = /\[([A-Za-z]+)\s+([^\]]+)\]/g;
+    let match;
+    while ((match = regex.exec(comment)) !== null) {
+      const key = match[1];
+      const val = match[2].trim();
+      const capacityMatch = val.match(/^(\d+)\/(\d+)$/);
+      if (capacityMatch) {
+        tokens.push({ key, current: parseInt(capacityMatch[1]), max: parseInt(capacityMatch[2]), type: 'capacity' });
+      } else if (val === '!') {
+        tokens.push({ key, value: '!', type: 'critical' });
+      } else if (val.toUpperCase() === 'OK') {
+        tokens.push({ key, value: 'OK', type: 'status' });
+      } else if (/^-\d+$/.test(val)) {
+        tokens.push({ key, value: parseInt(val), type: 'need' });
+      } else if (/^\d+$/.test(val)) {
+        tokens.push({ key, value: parseInt(val), type: 'quantity' });
+      } else {
+        tokens.push({ key, value: val, type: 'text' });
+      }
+    }
+    const cleanComment = comment.replace(regex, '').trim();
+    return { tokens, cleanComment };
+  }
+
   // Parse a raw APRS packet into a position object (or null if not a position packet)
   function parseAprsPacket(line) {
     try {
@@ -110,6 +138,8 @@ module.exports = function (app, ctx) {
         altitude = parseInt(altMatch[1]); // feet
       }
 
+      const { tokens, cleanComment } = parseResourceTokens(comment);
+
       return {
         call: callsign,
         ssid,
@@ -117,6 +147,8 @@ module.exports = function (app, ctx) {
         lon,
         symbol: `${symbolTable}${symbolCode}`,
         comment: comment || '',
+        tokens,
+        cleanComment,
         speed,
         course,
         altitude,
@@ -229,6 +261,8 @@ module.exports = function (app, ctx) {
           lon: station.lon,
           symbol: station.symbol,
           comment: station.comment,
+          tokens: station.tokens || [],
+          cleanComment: station.cleanComment || station.comment,
           speed: station.speed,
           course: station.course,
           altitude: station.altitude,

@@ -834,11 +834,18 @@ module.exports = function (app, ctx) {
     }
 
     // Resolve hostname to IPv4 addresses.
+    // Try resolve4 first (direct DNS), then fall back to lookup (OS resolver)
+    // which handles /etc/hosts, search domains, and alternate resolvers.
     let addresses;
     try {
       addresses = await dns.promises.resolve4(host);
     } catch {
-      return { ok: false, reason: 'Host could not be resolved (IPv4 required for custom DX clusters)' };
+      try {
+        const result = await dns.promises.lookup(host, { family: 4 });
+        if (result?.address) addresses = [result.address];
+      } catch {
+        return { ok: false, reason: 'Host could not be resolved (IPv4 required for custom DX clusters)' };
+      }
     }
 
     if (!addresses || addresses.length === 0) {

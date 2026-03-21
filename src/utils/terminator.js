@@ -110,6 +110,12 @@ function computeNightPolygon(time, resolution) {
  * Create a Leaflet terminator layer
  * Drop-in replacement for L.terminator()
  *
+ * Uses a single night polygon with a CSS blur filter on the SVG path
+ * to create a smooth gradient at the day/night boundary. This produces
+ * a uniform-width soft edge along the entire terminator regardless of
+ * the curve geometry, unlike polygon-offset approaches which only
+ * feather at the apex.
+ *
  * @param {Object} options - Leaflet polygon style options + resolution
  * @returns {L.Polygon} Polygon with setTime() method
  */

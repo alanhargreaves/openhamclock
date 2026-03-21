@@ -49,6 +49,8 @@ import useScreenWakeLock from './hooks/app/useScreenWakeLock';
 import useResponsiveScale from './hooks/app/useResponsiveScale';
 import useLocalInstall from './hooks/app/useLocalInstall';
 import useVersionCheck from './hooks/app/useVersionCheck';
+import usePresence from './hooks/app/usePresence';
+import useAudioAlerts from './hooks/app/useAudioAlerts';
 import WhatsNew from './components/WhatsNew.jsx';
 import { initCtyLookup } from './utils/ctyLookup.js';
 import { getAllLayers } from './plugins/layerRegistry.js';
@@ -227,6 +229,9 @@ const App = () => {
     }
   }, [updateInProgress, t]);
 
+  // Report presence to active users layer (runs for all configured users)
+  usePresence({ callsign: config.callsign, locator: config.locator });
+
   // Location & map state
   const { dxLocation, dxLocked, handleToggleDxLock, handleDXChange } = useDXLocation(config.defaultDX);
 
@@ -300,6 +305,17 @@ const App = () => {
   const dxClusterData = useDXClusterData(dxFilters, config);
   const dxpeditions = useDXpeditions();
   const contests = useContests();
+  // Audio alerts for new items in data feeds
+  useAudioAlerts({
+    pota: potaSpots.data,
+    sota: sotaSpots.data,
+    wwff: wwffSpots.data,
+    wwbota: wwbotaSpots.data,
+    dxcluster: dxClusterData.spots,
+    dxpeditions: dxpeditions.data?.dxpeditions,
+    contests: contests.data,
+  });
+
   const propagation = usePropagation(config.location, dxLocation, config.propagation);
   const mySpots = useMySpots(config.callsign);
   const satellites = useSatellites(config.location);

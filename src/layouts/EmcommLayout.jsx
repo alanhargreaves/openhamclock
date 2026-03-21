@@ -28,6 +28,19 @@ const SYMBOL_LABELS = {
   '\\y': 'Skywarn',
 };
 
+const TOKEN_META = {
+  Beds: { label: 'Beds', icon: '🛏️', color: '#22d3ee' },
+  Water: { label: 'Water', icon: '💧', color: '#3b82f6' },
+  Food: { label: 'Food', icon: '🍞', color: '#f59e0b' },
+  Power: { label: 'Power', icon: '⚡', color: '#22c55e' },
+  Fuel: { label: 'Fuel', icon: '⛽', color: '#ef4444' },
+  Med: { label: 'Medical', icon: '🏥', color: '#dc2626' },
+  Staff: { label: 'Staff', icon: '👥', color: '#a855f7' },
+  Evac: { label: 'Evacuees', icon: '🚶', color: '#f97316' },
+  Comms: { label: 'Comms', icon: '📡', color: '#22d3ee' },
+  Gen: { label: 'Generator', icon: '🔋', color: '#eab308' },
+};
+
 const SEVERITY_COLORS = {
   Extreme: '#dc2626',
   Severe: '#ea580c',
@@ -213,6 +226,41 @@ export default function EmcommLayout(props) {
       overlayLayersRef.current.push(marker);
     });
 
+    // EmComm APRS station markers with token popups
+    emcommStationsWithDistance.forEach((station) => {
+      if (!station.lat || !station.lon) return;
+      const marker = L.circleMarker([station.lat, station.lon], {
+        radius: 6,
+        color: '#22d3ee',
+        fillColor: '#22d3ee',
+        fillOpacity: 0.5,
+        weight: 2,
+      });
+      let popupHtml = `<b style="color:#22d3ee">${station.ssid || station.call}</b>`;
+      popupHtml += `<br><span style="color:#888">${SYMBOL_LABELS[station.symbol] || 'EmComm'}</span>`;
+      if (station.tokens && station.tokens.length > 0) {
+        popupHtml += '<br><div style="margin-top:4px">';
+        station.tokens.forEach((t) => {
+          const meta = TOKEN_META[t.key] || { icon: '📦', label: t.key };
+          let val;
+          if (t.type === 'capacity') val = `${t.current}/${t.max}`;
+          else if (t.type === 'need') val = `<span style="color:#ef4444">${t.value} NEEDED</span>`;
+          else if (t.type === 'critical') val = '<span style="color:#ef4444">CRITICAL</span>';
+          else val = t.value;
+          popupHtml += `${meta.icon} <b>${meta.label}:</b> ${val}<br>`;
+        });
+        popupHtml += '</div>';
+        if (station.cleanComment) {
+          popupHtml += `<div style="color:#888;margin-top:4px">${station.cleanComment}</div>`;
+        }
+      } else if (station.comment) {
+        popupHtml += `<br>${station.comment}`;
+      }
+      marker.bindPopup(popupHtml);
+      marker.addTo(map);
+      overlayLayersRef.current.push(marker);
+    });
+
     return () => {
       overlayLayersRef.current.forEach((layer) => {
         try {
@@ -223,7 +271,7 @@ export default function EmcommLayout(props) {
       });
       overlayLayersRef.current = [];
     };
-  }, [config.location, alerts, shelters]);
+  }, [config.location, alerts, shelters, emcommStationsWithDistance]);
 
   // Click shelter to pan map
   const panToShelter = useCallback((shelter) => {
@@ -372,6 +420,9 @@ export default function EmcommLayout(props) {
             gap: '8px',
           }}
         >
+          {/* Resource Summary Dashboard */}
+          <ResourceSummary stations={emcommStationsWithDistance} />
+
           {/* NWS Alerts Panel */}
           <PanelSection title="NWS Alerts" count={sortedAlerts.length} color="#dc2626">
             {sortedAlerts.length === 0 ? (
@@ -504,30 +555,43 @@ export default function EmcommLayout(props) {
             ) : (
               emcommStationsWithDistance.map((s) => {
                 const ageStr = s.age < 1 ? 'now' : s.age < 60 ? `${s.age}m ago` : `${Math.floor(s.age / 60)}h ago`;
+                const hasTokens = s.tokens && s.tokens.length > 0;
                 return (
                   <div
                     key={s.call}
                     style={{
-                      padding: '4px 8px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
+                      padding: hasTokens ? '6px 8px' : '4px 8px',
                       fontSize: '11px',
-                      marginBottom: '2px',
+                      marginBottom: hasTokens ? '4px' : '2px',
+                      borderLeft: hasTokens ? '2px solid #22d3ee' : 'none',
+                      background: hasTokens ? '#0d1117' : 'transparent',
+                      borderRadius: hasTokens ? '4px' : '0',
                     }}
                   >
-                    <div>
-                      <span style={{ color: '#22d3ee', fontWeight: 600 }}>{s.ssid || s.call}</span>
-                      <span style={{ color: '#888', marginLeft: '6px', fontSize: '10px' }}>
-                        {SYMBOL_LABELS[s.symbol] || 'EmComm'}
-                      </span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <span style={{ color: '#22d3ee', fontWeight: 600 }}>{s.ssid || s.call}</span>
+                        <span style={{ color: '#888', marginLeft: '6px', fontSize: '10px' }}>
+                          {SYMBOL_LABELS[s.symbol] || 'EmComm'}
+                        </span>
+                      </div>
+                      <div style={{ color: '#888', fontSize: '10px', textAlign: 'right' }}>
+                        {s.distance != null && (
+                          <span>{formatDistance(s.distance, config.allUnits?.dist || 'imperial')} </span>
+                        )}
+                        <span>{ageStr}</span>
+                      </div>
                     </div>
-                    <div style={{ color: '#888', fontSize: '10px', textAlign: 'right' }}>
-                      {s.distance != null && (
-                        <span>{formatDistance(s.distance, config.allUnits?.dist || 'imperial')} </span>
-                      )}
-                      <span>{ageStr}</span>
-                    </div>
+                    {hasTokens && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '4px' }}>
+                        {s.tokens.map((t, i) => (
+                          <TokenPill key={`${t.key}-${i}`} token={t} />
+                        ))}
+                      </div>
+                    )}
+                    {hasTokens && s.cleanComment && (
+                      <div style={{ color: '#888', fontSize: '10px', marginTop: '3px' }}>{s.cleanComment}</div>
+                    )}
                   </div>
                 );
               })
@@ -536,6 +600,144 @@ export default function EmcommLayout(props) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Token pill badge */
+function TokenPill({ token }) {
+  const meta = TOKEN_META[token.key] || { icon: '📦', color: '#888', label: token.key };
+  let display;
+  if (token.type === 'capacity') display = `${token.current}/${token.max}`;
+  else if (token.type === 'need') display = `${token.value}`;
+  else if (token.type === 'critical') display = '!';
+  else if (token.type === 'status') display = token.value;
+  else display = String(token.value);
+
+  const bg = token.type === 'critical' ? '#dc2626' : token.type === 'need' ? '#991b1b' : `${meta.color}22`;
+  const fg = token.type === 'critical' || token.type === 'need' ? '#fff' : meta.color;
+
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '3px',
+        background: bg,
+        color: fg,
+        fontSize: '10px',
+        fontWeight: 600,
+        padding: '1px 5px',
+        borderRadius: '4px',
+        border: `1px solid ${meta.color}44`,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {meta.icon} {display}
+    </span>
+  );
+}
+
+/** Resource summary dashboard — aggregates tokens from all emcomm stations */
+function ResourceSummary({ stations }) {
+  const aggregated = useMemo(() => {
+    const byKey = {};
+    stations.forEach((s) => {
+      (s.tokens || []).forEach((t) => {
+        if (!byKey[t.key])
+          byKey[t.key] = {
+            key: t.key,
+            capacity: [],
+            needs: 0,
+            quantities: 0,
+            statuses: { ok: 0, critical: 0 },
+            count: 0,
+          };
+        const agg = byKey[t.key];
+        agg.count++;
+        if (t.type === 'capacity') agg.capacity.push({ current: t.current, max: t.max });
+        else if (t.type === 'need') agg.needs += t.value;
+        else if (t.type === 'quantity') agg.quantities += t.value;
+        else if (t.type === 'status') agg.statuses.ok++;
+        else if (t.type === 'critical') agg.statuses.critical++;
+      });
+    });
+    return Object.values(byKey);
+  }, [stations]);
+
+  if (aggregated.length === 0) return null;
+
+  return (
+    <PanelSection title="Resource Summary" count={aggregated.length} color="#f59e0b">
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', padding: '4px 6px' }}>
+        {aggregated.map((agg) => {
+          const meta = TOKEN_META[agg.key] || { icon: '📦', color: '#888', label: agg.key };
+          return (
+            <div
+              key={agg.key}
+              style={{
+                background: '#1a1a1a',
+                borderRadius: '6px',
+                padding: '6px 10px',
+                minWidth: '100px',
+                flex: '1 1 calc(50% - 6px)',
+                border: `1px solid ${meta.color}33`,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                <span style={{ fontSize: '14px' }}>{meta.icon}</span>
+                <span style={{ color: meta.color, fontSize: '11px', fontWeight: 600 }}>{meta.label}</span>
+              </div>
+              {agg.capacity.length > 0 &&
+                (() => {
+                  const totalCurrent = agg.capacity.reduce((s, c) => s + c.current, 0);
+                  const totalMax = agg.capacity.reduce((s, c) => s + c.max, 0);
+                  const pct = totalMax > 0 ? Math.round((totalCurrent / totalMax) * 100) : 0;
+                  const barColor = pct > 90 ? '#ef4444' : pct > 70 ? '#f59e0b' : '#22c55e';
+                  return (
+                    <div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          fontSize: '10px',
+                          color: '#aaa',
+                          marginBottom: '2px',
+                        }}
+                      >
+                        <span>
+                          {totalCurrent}/{totalMax}
+                        </span>
+                        <span>{pct}%</span>
+                      </div>
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '5px',
+                          background: '#333',
+                          borderRadius: '3px',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: '3px' }} />
+                      </div>
+                    </div>
+                  );
+                })()}
+              {agg.needs < 0 && (
+                <div style={{ color: '#ef4444', fontSize: '11px', fontWeight: 700 }}>{agg.needs} NEEDED</div>
+              )}
+              {agg.quantities > 0 && <div style={{ color: '#aaa', fontSize: '11px' }}>{agg.quantities} units</div>}
+              {(agg.statuses.ok > 0 || agg.statuses.critical > 0) && (
+                <div style={{ fontSize: '10px', display: 'flex', gap: '6px' }}>
+                  {agg.statuses.ok > 0 && <span style={{ color: '#22c55e' }}>{agg.statuses.ok} OK</span>}
+                  {agg.statuses.critical > 0 && <span style={{ color: '#ef4444' }}>{agg.statuses.critical} CRIT</span>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </PanelSection>
   );
 }
 
