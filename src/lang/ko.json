@@ -331,6 +331,7 @@
   "station.settings.satellites.selectedCount": "{{count}}개 위성 선택됨",
   "station.settings.satellites.showAll": "모든 위성 표시 중 (필터 없음)",
   "station.settings.satellites.visible": "✓ 가시",
+  "station.settings.tab.title.alerts": "Alerts",
   "station.settings.tab.title.community": "Community",
   "station.settings.tab.title.display": "Display",
   "station.settings.tab.title.integrations": "Integrations",

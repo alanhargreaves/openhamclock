@@ -331,6 +331,7 @@
   "station.settings.satellites.selectedCount": "{{count}} satelit dipilih",
   "station.settings.satellites.showAll": "Menunjukkan semua satelit",
   "station.settings.satellites.visible": "✓ Kelihatan",
+  "station.settings.tab.title.alerts": "Alerts",
   "station.settings.tab.title.community": "Community",
   "station.settings.tab.title.display": "Display",
   "station.settings.tab.title.integrations": "Integrations",

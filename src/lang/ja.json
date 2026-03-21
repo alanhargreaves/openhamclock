@@ -331,6 +331,7 @@
   "station.settings.satellites.selectedCount": "{{count}}個の衛星を選択",
   "station.settings.satellites.showAll": "全衛星を表示中 (フィルタなし)",
   "station.settings.satellites.visible": "✓ 可視",
+  "station.settings.tab.title.alerts": "Alerts",
   "station.settings.tab.title.community": "Community",
   "station.settings.tab.title.display": "Display",
   "station.settings.tab.title.integrations": "Integrations",

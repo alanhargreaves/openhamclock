@@ -331,6 +331,7 @@
   "station.settings.satellites.selectedCount": "ดาวเทียม {{count}} ที่ได้รับการคัดเลือก",
   "station.settings.satellites.showAll": "แสดงดาวเทียมทั้งหมด (ปิดตัวกรอง)",
   "station.settings.satellites.visible": "✓ มองเห็นได้",
+  "station.settings.tab.title.alerts": "การแจ้งเตือน",
   "station.settings.tab.title.community": "ชุมชน",
   "station.settings.tab.title.display": "แสดง",
   "station.settings.tab.title.integrations": "การรวมระบบ",

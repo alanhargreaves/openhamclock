@@ -331,6 +331,7 @@
   "station.settings.satellites.selectedCount": "Выбрано спутников: {{count}}",
   "station.settings.satellites.showAll": "Показаны все спутники (без фильтра)",
   "station.settings.satellites.visible": "✓ Виден",
+  "station.settings.tab.title.alerts": "Alerts",
   "station.settings.tab.title.community": "Community",
   "station.settings.tab.title.display": "Display",
   "station.settings.tab.title.integrations": "Integrations",

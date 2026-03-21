@@ -653,7 +653,7 @@ export const SettingsPanel = ({
               fontFamily: 'JetBrains Mono, monospace',
             }}
           >
-            🔔 Alerts
+            🔔 {t('station.settings.tab.title.alerts')}
           </button>
         </div>
 

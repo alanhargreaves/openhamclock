@@ -331,6 +331,7 @@
   "station.settings.satellites.selectedCount": "არჩეულია {{count}} თანამგზავრი",
   "station.settings.satellites.showAll": "ნაჩვენებია ყველა თანამგზავრი (ფილტრის გარეშე)",
   "station.settings.satellites.visible": "✓ ხილული",
+  "station.settings.tab.title.alerts": "Alerts",
   "station.settings.tab.title.community": "Community",
   "station.settings.tab.title.display": "Display",
   "station.settings.tab.title.integrations": "Integrations",

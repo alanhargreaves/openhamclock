@@ -329,6 +329,7 @@
   "station.settings.satellites.selectedCount": "{{count}} satélite(s) seleccionado(s)",
   "station.settings.satellites.showAll": "Mostrando todos los satélites (sin filtro)",
   "station.settings.satellites.visible": "✓ Visible",
+  "station.settings.tab.title.alerts": "Alerts",
   "station.settings.tab.title.community": "Community",
   "station.settings.tab.title.display": "Display",
   "station.settings.tab.title.integrations": "Integrations",

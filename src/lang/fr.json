@@ -331,6 +331,7 @@
   "station.settings.satellites.selectedCount": "{{count}} satellite(s) sélectionné(s)",
   "station.settings.satellites.showAll": "Tous les satellites affichés (aucun filtre)",
   "station.settings.satellites.visible": "✓ Visible",
+  "station.settings.tab.title.alerts": "Alerts",
   "station.settings.tab.title.community": "Community",
   "station.settings.tab.title.display": "Display",
   "station.settings.tab.title.integrations": "Integrations",
