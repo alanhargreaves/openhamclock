@@ -6,6 +6,9 @@ on:
   pull_request:
     types: [assigned]
 
+permissions:
+  contents: read
+
 jobs:
   move-to-in-progress:
     runs-on: ubuntu-latest
