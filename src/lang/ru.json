@@ -454,5 +454,9 @@
   "weather.wind.SW": "ЮЗ",
   "weather.wind.W": "З",
   "weather.wind.WNW": "ЗСЗ",
-  "weather.wind.WSW": "ЗЮЗ"
+  "weather.wind.WSW": "ЗЮЗ",
+  "app.rigControl.error.unauthorized": "Ошибка аутентификации — проверьте API-токен в настройках управления трансивером",
+  "station.settings.rigControl.apiToken": "API-токен",
+  "station.settings.rigControl.apiToken.hint": "Скопируйте со страницы настройки rig-bridge (http://localhost:5555)",
+  "station.settings.rigControl.apiToken.placeholder": "Вставьте токен сюда"
 }

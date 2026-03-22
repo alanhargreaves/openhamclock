@@ -454,5 +454,9 @@
   "weather.wind.SW": "남서",
   "weather.wind.W": "서",
   "weather.wind.WNW": "서북서",
-  "weather.wind.WSW": "서남서"
+  "weather.wind.WSW": "서남서",
+  "app.rigControl.error.unauthorized": "인증 실패 — 리그 컨트롤 설정에서 API 토큰을 확인하세요",
+  "station.settings.rigControl.apiToken": "API 토큰",
+  "station.settings.rigControl.apiToken.hint": "rig-bridge 설정 페이지에서 복사 (http://localhost:5555)",
+  "station.settings.rigControl.apiToken.placeholder": "여기에 토큰 붙여넣기"
 }

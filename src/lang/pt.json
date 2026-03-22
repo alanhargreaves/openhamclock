@@ -454,5 +454,9 @@
   "weather.wind.SW": "SO",
   "weather.wind.W": "O",
   "weather.wind.WNW": "ONO",
-  "weather.wind.WSW": "OSO"
+  "weather.wind.WSW": "OSO",
+  "app.rigControl.error.unauthorized": "Falha na autenticação — verificar o Token API nas configurações de controlo do rádio",
+  "station.settings.rigControl.apiToken": "Token API",
+  "station.settings.rigControl.apiToken.hint": "Copiar da página de configuração do rig-bridge (http://localhost:5555)",
+  "station.settings.rigControl.apiToken.placeholder": "Colar token aqui"
 }

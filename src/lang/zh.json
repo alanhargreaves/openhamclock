@@ -454,5 +454,9 @@
   "weather.wind.SW": "西南",
   "weather.wind.W": "西",
   "weather.wind.WNW": "西西北",
-  "weather.wind.WSW": "西西南"
+  "weather.wind.WSW": "西西南",
+  "app.rigControl.error.unauthorized": "认证失败 — 请检查无线电控制设置中的 API 令牌",
+  "station.settings.rigControl.apiToken": "API 令牌",
+  "station.settings.rigControl.apiToken.hint": "从 rig-bridge 设置页面复制 (http://localhost:5555)",
+  "station.settings.rigControl.apiToken.placeholder": "在此处粘贴令牌"
 }

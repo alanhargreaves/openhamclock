@@ -454,5 +454,9 @@
   "weather.wind.SW": "JZ",
   "weather.wind.W": "Z",
   "weather.wind.WNW": "ZSZ",
-  "weather.wind.WSW": "ZJZ"
+  "weather.wind.WSW": "ZJZ",
+  "app.rigControl.error.unauthorized": "Avtentikacija ni uspela — preverite API žeton v nastavitvah nadzora radijske postaje",
+  "station.settings.rigControl.apiToken": "API žeton",
+  "station.settings.rigControl.apiToken.hint": "Kopiraj s strani za nastavitev rig-bridge (http://localhost:5555)",
+  "station.settings.rigControl.apiToken.placeholder": "Prilepi žeton sem"
 }

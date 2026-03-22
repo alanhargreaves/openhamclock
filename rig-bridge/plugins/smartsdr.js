@@ -155,6 +155,18 @@ module.exports = {
       handle = null;
       lineBuf = '';
 
+      // SECURITY: Defensive host check — primary validation is in POST /api/config,
+      // but guard here too in case config is edited manually.
+      if (
+        !/^(localhost|\d{1,3}(\.\d{1,3}){3}|\[[\da-fA-F:]+\]|[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*)$/.test(
+          host,
+        ) ||
+        /[/:]{2}|[/\\]/.test(host)
+      ) {
+        console.error(`[SmartSDR] Refused to connect: invalid host value "${host}"`);
+        return;
+      }
+
       console.log(`[SmartSDR] Connecting to ${host}:${port}...`);
 
       const s = new net.Socket();

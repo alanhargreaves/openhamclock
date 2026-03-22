@@ -454,5 +454,9 @@
   "weather.wind.SW": "SO",
   "weather.wind.W": "O",
   "weather.wind.WNW": "ONO",
-  "weather.wind.WSW": "OSO"
+  "weather.wind.WSW": "OSO",
+  "app.rigControl.error.unauthorized": "Échec de l'authentification — vérifier le jeton API dans les paramètres de contrôle du radio",
+  "station.settings.rigControl.apiToken": "Jeton API",
+  "station.settings.rigControl.apiToken.hint": "Copier depuis la page de configuration de rig-bridge (http://localhost:5555)",
+  "station.settings.rigControl.apiToken.placeholder": "Coller le jeton ici"
 }

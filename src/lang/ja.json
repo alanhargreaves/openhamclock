@@ -454,5 +454,9 @@
   "weather.wind.SW": "南西",
   "weather.wind.W": "西",
   "weather.wind.WNW": "西北西",
-  "weather.wind.WSW": "西南西"
+  "weather.wind.WSW": "西南西",
+  "app.rigControl.error.unauthorized": "認証失敗 — リグコントロール設定のAPIトークンを確認してください",
+  "station.settings.rigControl.apiToken": "APIトークン",
+  "station.settings.rigControl.apiToken.hint": "rig-bridge設定ページからコピー (http://localhost:5555)",
+  "station.settings.rigControl.apiToken.placeholder": "トークンをここに貼り付け"
 }

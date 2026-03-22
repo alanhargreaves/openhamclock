@@ -454,5 +454,9 @@
   "weather.wind.SW": "ს/დ",
   "weather.wind.W": "დ",
   "weather.wind.WNW": "დჩდ",
-  "weather.wind.WSW": "დს/დ"
+  "weather.wind.WSW": "დს/დ",
+  "app.rigControl.error.unauthorized": "ავტორიზაცია ვერ მოხდა — შეამოწმეთ API ტოკენი ანტენის კონტროლის პარამეტრებში",
+  "station.settings.rigControl.apiToken": "API ტოკენი",
+  "station.settings.rigControl.apiToken.hint": "დააკოპირეთ rig-bridge-ის კონფიგურაციის გვერდიდან (http://localhost:5555)",
+  "station.settings.rigControl.apiToken.placeholder": "ჩასვით ტოკენი აქ"
 }

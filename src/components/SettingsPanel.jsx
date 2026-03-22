@@ -71,6 +71,8 @@ export const SettingsPanel = ({
   const [rigPort, setRigPort] = useState(normalizeRigPort(config?.rigControl?.port));
   const [tuneEnabled, setTuneEnabled] = useState(config?.rigControl?.tuneEnabled || false);
   const [autoMode, setAutoMode] = useState(config?.rigControl?.autoMode !== false);
+  const [rigApiToken, setRigApiToken] = useState(config?.rigControl?.apiToken || '');
+  const [showRigToken, setShowRigToken] = useState(false);
   const [satelliteSearch, setSatelliteSearch] = useState('');
   const isLocalInstall = useLocalInstall();
   const [rotatorEnabled, setRotatorEnabled] = useState(() => {
@@ -187,6 +189,7 @@ export const SettingsPanel = ({
       setRigPort(normalizeRigPort(config.rigControl?.port));
       setTuneEnabled(config.rigControl?.tuneEnabled || false);
       setAutoMode(config.rigControl?.autoMode !== false);
+      setRigApiToken(config.rigControl?.apiToken || '');
       if (config.location?.lat != null && config.location?.lon != null) {
         const grid = calculateGridSquare(config.location.lat, config.location.lon);
         setGridSquare(grid);
@@ -429,6 +432,7 @@ export const SettingsPanel = ({
         port: nextRigPort,
         tuneEnabled,
         autoMode,
+        apiToken: rigApiToken.trim(),
       },
     });
   };
@@ -1275,6 +1279,52 @@ export const SettingsPanel = ({
                         <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
                           {t('station.settings.rigControl.autoMode.hint')}
                         </div>
+                      </div>
+                    </div>
+
+                    {/* API Token */}
+                    <div style={{ marginTop: '12px' }}>
+                      <label
+                        style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}
+                      >
+                        {t('station.settings.rigControl.apiToken')}
+                      </label>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <input
+                          type={showRigToken ? 'text' : 'password'}
+                          value={rigApiToken}
+                          onChange={(e) => setRigApiToken(e.target.value)}
+                          placeholder={t('station.settings.rigControl.apiToken.placeholder')}
+                          style={{
+                            flex: 1,
+                            padding: '6px 10px',
+                            background: 'var(--bg-primary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '4px',
+                            color: 'var(--text-primary)',
+                            fontSize: '12px',
+                            fontFamily: 'monospace',
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowRigToken((v) => !v)}
+                          style={{
+                            padding: '6px 10px',
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '4px',
+                            color: 'var(--text-secondary)',
+                            fontSize: '11px',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {showRigToken ? '🙈 Hide' : '👁 Show'}
+                        </button>
+                      </div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px', lineHeight: 1.4 }}>
+                        {t('station.settings.rigControl.apiToken.hint')}
                       </div>
                     </div>
                   </>

@@ -76,6 +76,18 @@ module.exports = {
       headerParsed = false;
       headerBuf = Buffer.alloc(0);
 
+      // SECURITY: Defensive host check — primary validation is in POST /api/config,
+      // but guard here too in case config is edited manually.
+      if (
+        !/^(localhost|\d{1,3}(\.\d{1,3}){3}|\[[\da-fA-F:]+\]|[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*)$/.test(
+          host,
+        ) ||
+        /[/:]{2}|[/\\]/.test(host)
+      ) {
+        console.error(`[RTL-TCP] Refused to connect: invalid host value "${host}"`);
+        return;
+      }
+
       console.log(`[RTL-TCP] Connecting to ${host}:${port}...`);
 
       const s = new net.Socket();

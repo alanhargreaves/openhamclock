@@ -205,6 +205,18 @@ module.exports = {
       if (ws || wasExplicitlyDisconnected) return;
       if (!WS) return;
 
+      // SECURITY: Defensive host check — primary validation is in POST /api/config,
+      // but guard here too in case config is edited manually.
+      if (
+        /[/:]{2}|[/\\]/.test(host) ||
+        !/^(localhost|\d{1,3}(\.\d{1,3}){3}|\[[\da-fA-F:]+\]|[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*)$/.test(
+          host,
+        )
+      ) {
+        console.error(`[TCI] Refused to connect: invalid host value "${host}"`);
+        return;
+      }
+
       console.log(`[TCI] Connecting to ${url}...`);
       try {
         // perMessageDeflate disabled for compatibility with non-standard TCI servers

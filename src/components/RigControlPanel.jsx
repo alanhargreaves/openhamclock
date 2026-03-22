@@ -46,7 +46,8 @@ const RigControlPanel = () => {
       </div>
 
       <div className="panel-content">
-        {error && <div className="error-banner">{t('app.rigControl.error.daemon')}</div>}
+        {error === 'unauthorized' && <div className="error-banner">{t('app.rigControl.error.unauthorized')}</div>}
+        {error && error !== 'unauthorized' && <div className="error-banner">{t('app.rigControl.error.daemon')}</div>}
 
         <div className="rig-display">
           <div className={`frequency-readout ${ptt ? 'transmitting' : ''}`}>
