@@ -900,7 +900,7 @@ function buildSetupHtml(version, firstRunToken = null) {
       statusEl.style.color = '#9ca3af';
       statusEl.textContent = 'Fetching credentials…';
       try {
-        const res = await fetch(url.replace(/\/$/, '') + '/api/wsjtx/relay-credentials');
+        const res = await fetch(url.replace(/[/]$/, '') + '/api/wsjtx/relay-credentials');
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           statusEl.style.color = '#f87171';
