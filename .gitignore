@@ -103,5 +103,9 @@ start.sh
 stop.sh
 restart.sh
 status.sh
+# Local/custom plugins (survive updates — see src/plugins/local/README.md)
+src/plugins/local/*.js
+src/plugins/local/*.jsx
+
 # Self-hosted vendor assets (downloaded by scripts/vendor-download.sh)
 public/vendor/

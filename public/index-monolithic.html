@@ -2730,8 +2730,9 @@
           
           filteredPaths.forEach((path, index) => {
             try {
-              // Skip if missing or invalid coordinates
-              if (!path.spotterLat || !path.spotterLon || !path.dxLat || !path.dxLon) return;
+              // Skip if missing or invalid coordinates.
+              // Using != null instead of truthy check (!) ensures coordinates at 0,0 are handled correctly.
+              if (path.spotterLat == null || path.spotterLon == null || path.dxLat == null || path.dxLon == null) return;
               if (isNaN(path.spotterLat) || isNaN(path.spotterLon) || isNaN(path.dxLat) || isNaN(path.dxLon)) return;
               
               // Draw great circle line from spotter to DX station

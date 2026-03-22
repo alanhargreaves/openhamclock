@@ -82,6 +82,7 @@ installRateLimiter();
 // ── Upstream request manager ──
 const UpstreamManager = require('./server/utils/upstream-manager');
 const upstream = new UpstreamManager();
+upstream.setMaxBackoff('wspr', 5 * 60 * 1000); // WSPR: 5 min max (PSKReporter rate limits are transient)
 
 // ── Express app ──
 const app = express();
@@ -231,6 +232,7 @@ Object.assign(ctx, spaceWeatherExports);
 // 3. Remaining routes (can use callsign + space-weather exports)
 require('./server/routes/rotator')(app, ctx);
 require('./server/routes/spots')(app, ctx);
+require('./server/routes/emcomm')(app, ctx);
 require('./server/routes/dxpeditions')(app, ctx);
 
 const dxclusterExports = require('./server/routes/dxcluster')(app, ctx);
@@ -252,6 +254,7 @@ require('./server/routes/aprs')(app, ctx);
 require('./server/routes/wsjtx')(app, ctx);
 require('./server/routes/n1mm')(app, ctx);
 require('./server/routes/meshtastic')(app, ctx);
+require('./server/routes/presence')(app, ctx);
 require('./server/routes/config-routes')(app, ctx);
 require('./server/routes/admin')(app, ctx);
 

@@ -22,6 +22,7 @@ import ThemeSelector from './ThemeSelector';
 import CustomThemeEditor from './CustomThemeEditor';
 import useLocalInstall from '../hooks/app/useLocalInstall.js';
 import { emojiToIso2 } from '../utils/countryFlags';
+import { getAlertSettings, saveAlertSettings, playTone, TONE_PRESETS, ALERT_FEEDS } from '../utils/audioAlerts';
 
 export const SettingsPanel = ({
   isOpen,
@@ -42,6 +43,8 @@ export const SettingsPanel = ({
 
   const [callsign, setCallsign] = useState(config?.callsign || '');
   const [headerSize, setheaderSize] = useState(config?.headerSize || 1.0);
+  const [swapHeaderClocks, setSwapHeaderClocks] = useState(config?.swapHeaderClocks || false);
+  const [showMutualReception, setShowMutualReception] = useState(config?.showMutualReception ?? true);
   const [gridSquare, setGridSquare] = useState(config?.locator || '');
   const [lat, setLat] = useState(config?.location?.lat || 0);
   const [lon, setLon] = useState(config?.location?.lon || 0);
@@ -52,6 +55,7 @@ export const SettingsPanel = ({
   const [customDxCluster, setCustomDxCluster] = useState(
     config?.customDxCluster || { enabled: false, host: '', port: 7300 },
   );
+  const [udpDxCluster, setUdpDxCluster] = useState(config?.udpDxCluster || { host: '', port: 12060 });
   const [lowMemoryMode, setLowMemoryMode] = useState(config?.lowMemoryMode || false);
   const [preventSleep, setPreventSleep] = useState(config?.preventSleep || false);
   const [distUnits, setDistUnits] = useState(config?.allUnits?.dist || config?.units || 'imperial');
@@ -167,6 +171,7 @@ export const SettingsPanel = ({
       setTimezone(config.timezone || '');
       setDxClusterSource(config.dxClusterSource || 'dxspider-proxy');
       setCustomDxCluster(config.customDxCluster || { enabled: false, host: '', port: 7300 });
+      setUdpDxCluster(config.udpDxCluster || { host: '', port: 12060 });
       setLowMemoryMode(config.lowMemoryMode || false);
       setPreventSleep(config.preventSleep || false);
       setDistUnits(config.allUnits?.dist || config.units || 'imperial');
@@ -286,6 +291,8 @@ export const SettingsPanel = ({
     }
   };
 
+  const gridEditingRef = useRef(false);
+
   function setConfigLocator(grid) {
     if (grid.length >= 4) {
       config.locator = grid.slice(0, 4).toUpperCase() + grid.slice(4).toLowerCase();
@@ -294,6 +301,7 @@ export const SettingsPanel = ({
     }
   }
   const handleGridChange = (grid) => {
+    gridEditingRef.current = true;
     setGridSquare(grid.toUpperCase());
     if (grid.length >= 4) {
       const parsed = parseGridSquare(grid);
@@ -305,7 +313,19 @@ export const SettingsPanel = ({
     setConfigLocator(grid);
   };
 
+  const handleGridBlur = () => {
+    gridEditingRef.current = false;
+    // Now recalculate full 6-char grid from lat/lon
+    if (lat != null && lon != null) {
+      const grid = calculateGridSquare(lat, lon);
+      setGridSquare(grid);
+      setConfigLocator(grid);
+    }
+  };
+
   useEffect(() => {
+    // Skip auto-completion while user is actively typing in the grid field
+    if (gridEditingRef.current) return;
     if (lat != null && lon != null) {
       const grid = calculateGridSquare(lat, lon);
       setGridSquare(grid);
@@ -366,7 +386,7 @@ export const SettingsPanel = ({
     }
   };
 
-  const handleSave = () => {
+  const persistCurrentSettings = () => {
     const rigPortValue = String(rigPort ?? '').trim();
     let nextRigPort = 5555;
     if (rigPortValue === '0') {
@@ -382,6 +402,8 @@ export const SettingsPanel = ({
       ...config,
       callsign: callsign.toUpperCase(),
       headerSize: headerSize,
+      swapHeaderClocks,
+      showMutualReception,
       location: { lat: parseFloat(lat), lon: parseFloat(lon) },
       theme,
       customTheme,
@@ -390,6 +412,7 @@ export const SettingsPanel = ({
       timezone,
       dxClusterSource,
       customDxCluster,
+      udpDxCluster,
       lowMemoryMode,
       preventSleep,
       // units,
@@ -404,6 +427,10 @@ export const SettingsPanel = ({
         autoMode,
       },
     });
+  };
+
+  const handleSave = () => {
+    persistCurrentSettings();
     onClose();
   };
 
@@ -429,6 +456,7 @@ export const SettingsPanel = ({
     tablet: t('station.settings.layout.tablet.describe'),
     compact: t('station.settings.layout.compact.describe'),
     dockable: t('station.settings.layout.dockable.describe'),
+    emcomm: t('station.settings.layout.emcomm.describe'),
   };
   const unitString = (t) => {
     return t == 'imperial' ? '🇺🇸 Imperial' : '🌍 Metric';
@@ -471,7 +499,7 @@ export const SettingsPanel = ({
             fontSize: '20px',
           }}
         >
-          {t('station.settings.title')}
+          ⚙ {t('station.settings.title')}
         </h2>
 
         {/* Tab Navigation */}
@@ -500,7 +528,7 @@ export const SettingsPanel = ({
               fontFamily: 'JetBrains Mono, monospace',
             }}
           >
-            {t('station.settings.tab1.title')}
+            📻 {t('station.settings.tab.title.station')}
           </button>
 
           <button
@@ -518,7 +546,7 @@ export const SettingsPanel = ({
               fontFamily: 'JetBrains Mono, monospace',
             }}
           >
-            Integrations
+            🔌 {t('station.settings.tab.title.integrations')}
           </button>
 
           <button
@@ -536,7 +564,7 @@ export const SettingsPanel = ({
               fontFamily: 'JetBrains Mono, monospace',
             }}
           >
-            Display
+            🎨 {t('station.settings.tab.title.display')}
           </button>
 
           <button
@@ -554,8 +582,9 @@ export const SettingsPanel = ({
               fontFamily: 'JetBrains Mono, monospace',
             }}
           >
-            {t('station.settings.tab2.title')}
+            🗺️ {t('station.settings.tab.title.mapLayers')}
           </button>
+
           <button
             onClick={() => setActiveTab('satellites')}
             style={{
@@ -571,8 +600,9 @@ export const SettingsPanel = ({
               fontFamily: 'JetBrains Mono, monospace',
             }}
           >
-            {t('station.settings.tab3.title')}
+            🛰️ {t('station.settings.tab.title.satellites')}
           </button>
+
           <button
             onClick={() => {
               setActiveTab('profiles');
@@ -591,8 +621,9 @@ export const SettingsPanel = ({
               fontFamily: 'JetBrains Mono, monospace',
             }}
           >
-            Profiles
+            👤 {t('station.settings.tab.title.profiles')}
           </button>
+
           <button
             onClick={() => setActiveTab('community')}
             style={{
@@ -608,7 +639,25 @@ export const SettingsPanel = ({
               fontFamily: 'JetBrains Mono, monospace',
             }}
           >
-            Community
+            🌐 {t('station.settings.tab.title.community')}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('alerts')}
+            style={{
+              flex: 1,
+              padding: '10px',
+              background: activeTab === 'alerts' ? 'var(--accent-amber)' : 'transparent',
+              border: 'none',
+              borderRadius: '6px 6px 0 0',
+              color: activeTab === 'alerts' ? '#000' : 'var(--text-secondary)',
+              fontSize: '13px',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'alerts' ? '700' : '400',
+              fontFamily: 'JetBrains Mono, monospace',
+            }}
+          >
+            🔔 {t('station.settings.tab.title.alerts')}
           </button>
         </div>
 
@@ -703,6 +752,7 @@ export const SettingsPanel = ({
                 type="text"
                 value={gridSquare}
                 onChange={(e) => handleGridChange(e.target.value)}
+                onBlur={handleGridBlur}
                 placeholder={t('station.settings.locator.placeholder')}
                 maxLength={6}
                 style={{
@@ -1549,11 +1599,95 @@ export const SettingsPanel = ({
                 <option value="dxwatch">{t('station.settings.dx.option3')}</option>
                 <option value="auto">{t('station.settings.dx.option4')}</option>
                 <option value="custom">{t('station.settings.dx.custom.option')}</option>
+                <option value="udp">
+                  {t('station.settings.dx.udp.option', { defaultValue: 'UDP Spots (Local Network)' })}
+                </option>
               </select>
               <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
                 {t('station.settings.dx.describe')}
               </div>
             </div>
+
+            {dxClusterSource === 'udp' && (
+              <div
+                style={{
+                  marginBottom: '20px',
+                  padding: '16px',
+                  background: 'var(--bg-tertiary)',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                }}
+              >
+                <label
+                  style={{
+                    display: 'block',
+                    marginBottom: '12px',
+                    color: 'var(--accent-cyan)',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                  }}
+                >
+                  {t('station.settings.dx.udp.title', { defaultValue: 'UDP Spot Listener' })}
+                </label>
+
+                <div style={{ marginBottom: '12px' }}>
+                  <label
+                    style={{ display: 'block', marginBottom: '4px', color: 'var(--text-muted)', fontSize: '11px' }}
+                  >
+                    {t('station.settings.dx.udp.host', { defaultValue: 'UDP IP Address (optional)' })}
+                  </label>
+                  <input
+                    type="text"
+                    value={udpDxCluster.host}
+                    onChange={(e) => setUdpDxCluster({ ...udpDxCluster, host: e.target.value.trim() })}
+                    placeholder={t('station.settings.dx.udp.host.placeholder', {
+                      defaultValue: 'Leave blank unless a specific sender/multicast IP is required',
+                    })}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      fontSize: '14px',
+                      fontFamily: 'JetBrains Mono, monospace',
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '12px' }}>
+                  <label
+                    style={{ display: 'block', marginBottom: '4px', color: 'var(--text-muted)', fontSize: '11px' }}
+                  >
+                    {t('station.settings.dx.udp.port', { defaultValue: 'UDP Port' })}
+                  </label>
+                  <input
+                    type="number"
+                    value={udpDxCluster.port}
+                    onChange={(e) => setUdpDxCluster({ ...udpDxCluster, port: parseInt(e.target.value, 10) || 12060 })}
+                    placeholder={t('station.settings.dx.udp.port.placeholder', { defaultValue: '12060' })}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      fontSize: '14px',
+                      fontFamily: 'JetBrains Mono, monospace',
+                    }}
+                  />
+                </div>
+
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
+                  {t('station.settings.dx.udp.help', {
+                    defaultValue:
+                      'OpenHamClock listens for UDP DX spot packets on this port and plots matched spots on the map.',
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Custom DX Cluster Settings */}
             {dxClusterSource === 'custom' && (
@@ -2275,6 +2409,57 @@ export const SettingsPanel = ({
               </div>
             </div>
 
+            {/* Clock Order */}
+            <div style={{ marginBottom: '24px' }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={swapHeaderClocks}
+                  onChange={(e) => setSwapHeaderClocks(e.target.checked)}
+                  style={{ accentColor: 'var(--accent-amber)' }}
+                />
+                Show Local Time before UTC in header
+              </label>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                By default, UTC is shown first. Enable this to display Local Time first.
+              </div>
+            </div>
+
+            {/* Mutual Reception Indicator */}
+            <div style={{ marginBottom: '24px' }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={showMutualReception}
+                  onChange={(e) => setShowMutualReception(e.target.checked)}
+                  style={{ accentColor: 'var(--accent-amber)' }}
+                />
+                Show mutual reception indicator on PSK Reporter spots
+              </label>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                Marks spots with a gold star (★) when a station hears you AND you hear them on the same band, indicating
+                a QSO is likely possible.
+              </div>
+            </div>
+
             {/* Layout */}
             <div style={{ marginBottom: '24px' }}>
               <label
@@ -2290,7 +2475,7 @@ export const SettingsPanel = ({
                 {t('station.settings.layout')}
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-                {['modern', 'classic', 'tablet', 'compact', 'dockable'].map((l) => (
+                {['modern', 'classic', 'tablet', 'compact', 'dockable', 'emcomm'].map((l) => (
                   <button
                     key={l}
                     onClick={() => setLayout(l)}
@@ -2313,7 +2498,9 @@ export const SettingsPanel = ({
                           ? '📱'
                           : l === 'compact'
                             ? '📊'
-                            : '⊞'}{' '}
+                            : l === 'emcomm'
+                              ? '📍'
+                              : '⊞'}{' '}
                     {l === 'dockable' ? t('station.settings.layout.dockable') : t('station.settings.layout.' + l)}
                   </button>
                 ))}
@@ -2384,6 +2571,12 @@ export const SettingsPanel = ({
         {activeTab === 'layers' && (
           <div>
             {(() => {
+              const togglePanelVisible = (panelKey) => {
+                const panels = { ...config.panels };
+                panels[panelKey] = { ...panels[panelKey], visible: !(panels[panelKey]?.visible !== false) };
+                onSave({ ...config, panels });
+              };
+
               const overlayCards = [
                 {
                   id: 'de-dx-markers',
@@ -2392,6 +2585,14 @@ export const SettingsPanel = ({
                   icon: '📍',
                   title: 'DE/DX Markers',
                   description: 'Show or hide your DE and DX position markers on the map',
+                },
+                {
+                  id: 'dx-target-panel',
+                  checked: config.panels?.dxLocation?.visible !== false,
+                  onChange: () => togglePanelVisible('dxLocation'),
+                  icon: '🎯',
+                  title: 'DX Target Panel',
+                  description: 'Show or hide the DX target info panel (grid, bearing, sun times)',
                 },
                 {
                   id: 'dx-news-ticker',
@@ -2411,6 +2612,7 @@ export const SettingsPanel = ({
                   { key: 'space-weather', label: '☀️ Space Weather' },
                   { key: 'hazards', label: '⚠️ Natural Hazards' },
                   { key: 'geology', label: '🌍 Geology' },
+                  { key: 'fun', label: '🎉 Community' },
                 ];
 
                 const nonSatLayers = layers.filter((l) => l.category !== 'satellites');
@@ -2998,6 +3200,7 @@ export const SettingsPanel = ({
                       const exists = profiles[newProfileName.trim()];
                       if (exists && !window.confirm(`Profile "${newProfileName.trim()}" already exists. Overwrite?`))
                         return;
+                      persistCurrentSettings();
                       saveProfile(newProfileName.trim());
                       setNewProfileName('');
                       refreshProfiles();
@@ -3023,6 +3226,7 @@ export const SettingsPanel = ({
                     const exists = profiles[newProfileName.trim()];
                     if (exists && !window.confirm(`Profile "${newProfileName.trim()}" already exists. Overwrite?`))
                       return;
+                    persistCurrentSettings();
                     saveProfile(newProfileName.trim());
                     setNewProfileName('');
                     refreshProfiles();
@@ -3242,6 +3446,7 @@ export const SettingsPanel = ({
                               {/* Update (overwrite with current state) */}
                               <button
                                 onClick={() => {
+                                  persistCurrentSettings();
                                   saveProfile(name);
                                   refreshProfiles();
                                   setProfileMessage({ type: 'success', text: `"${name}" updated with current state` });
@@ -3395,6 +3600,9 @@ export const SettingsPanel = ({
                 </a>{' '}
                 user profiles (user-supplied coordinates, geocoded addresses, grid squares). Without this, locations
                 fall back to HamQTH (country-level only). Requires a QRZ Logbook Data subscription.
+                <br />
+                <strong>Note</strong> this is a server setting and is not related to clicking a callsign to go to
+                qrz.com. If you are not running a server, you will likely not have the permissions to change this.
               </div>
               {qrzStatus?.source === 'env' ? (
                 <div
@@ -3897,6 +4105,9 @@ export const SettingsPanel = ({
           </div>
         )}
 
+        {/* Audio Alerts Tab */}
+        {activeTab === 'alerts' && <AudioAlertsTab />}
+
         {/* Buttons */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '24px' }}>
           <button
@@ -3939,6 +4150,141 @@ export const SettingsPanel = ({
 };
 
 export default SettingsPanel;
+
+/** Audio Alerts settings tab */
+function AudioAlertsTab() {
+  const [alertSettings, setAlertSettingsState] = useState(() => getAlertSettings());
+  const updateSettings = (newSettings) => {
+    setAlertSettingsState(newSettings);
+    saveAlertSettings(newSettings);
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ color: 'var(--text-muted)', fontSize: '12px', lineHeight: '1.5' }}>
+        Play audio tones when new items appear in data feeds. Each feed can have its own tone. Alerts are suppressed on
+        initial page load and when returning to a background tab.
+      </div>
+
+      {/* Volume */}
+      <div
+        style={{
+          background: 'var(--bg-tertiary)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '8px',
+          padding: '14px',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <span style={{ color: 'var(--text-primary)', fontSize: '13px', fontWeight: 600 }}>Master Volume</span>
+          <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+            {Math.round((alertSettings.volume ?? 0.5) * 100)}%
+          </span>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={Math.round((alertSettings.volume ?? 0.5) * 100)}
+          onChange={(e) => updateSettings({ ...alertSettings, volume: parseInt(e.target.value) / 100 })}
+          style={{ width: '100%', accentColor: 'var(--accent-amber)' }}
+        />
+      </div>
+
+      {/* Per-feed settings */}
+      {Object.entries(ALERT_FEEDS).map(([feedId, feed]) => {
+        const feedConf = alertSettings[feedId] || { enabled: false, tone: feed.defaultTone };
+        return (
+          <div
+            key={feedId}
+            style={{
+              background: 'var(--bg-tertiary)',
+              border: `1px solid ${feedConf.enabled ? 'var(--accent-amber)' : 'var(--border-color)'}`,
+              borderRadius: '8px',
+              padding: '14px',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: feedConf.enabled ? '10px' : '0',
+              }}
+            >
+              <span style={{ color: 'var(--text-primary)', fontSize: '13px', fontWeight: 500 }}>{feed.label}</span>
+              <button
+                onClick={() =>
+                  updateSettings({
+                    ...alertSettings,
+                    [feedId]: { ...feedConf, enabled: !feedConf.enabled },
+                  })
+                }
+                style={{
+                  background: feedConf.enabled ? 'var(--accent-amber)' : 'var(--bg-secondary)',
+                  color: feedConf.enabled ? '#000' : 'var(--text-muted)',
+                  border: `1px solid ${feedConf.enabled ? 'var(--accent-amber)' : 'var(--border-color)'}`,
+                  borderRadius: '4px',
+                  padding: '4px 12px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'JetBrains Mono, monospace',
+                }}
+              >
+                {feedConf.enabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+            {feedConf.enabled && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <select
+                  value={feedConf.tone}
+                  onChange={(e) =>
+                    updateSettings({
+                      ...alertSettings,
+                      [feedId]: { ...feedConf, tone: e.target.value },
+                    })
+                  }
+                  style={{
+                    flex: 1,
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    padding: '6px 8px',
+                    fontSize: '12px',
+                    fontFamily: 'JetBrains Mono, monospace',
+                  }}
+                >
+                  {Object.entries(TONE_PRESETS).map(([key, preset]) => (
+                    <option key={key} value={key}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => playTone(feedConf.tone, alertSettings.volume ?? 0.5)}
+                  title="Preview tone"
+                  style={{
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    padding: '5px 10px',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                  }}
+                >
+                  🔊
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const normalizeRigPort = (value) => {
   if (value === 0 || value === '0') return 0;
   const parsed = parseInt(String(value ?? '').trim(), 10);

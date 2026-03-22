@@ -1516,7 +1516,6 @@ module.exports = function (app, ctx) {
       E52: 'AI38',
       ZK3: 'AH89',
       FK: 'RG37',
-      TX: 'RG37',
       'FK/C': 'RH29',
       FO: 'BH52',
       'FO/A': 'CJ07',

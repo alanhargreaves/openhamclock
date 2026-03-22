@@ -26,7 +26,9 @@ import {
 } from '../components';
 import { useRig } from '../contexts/RigContext.jsx';
 import { calculateDistance, formatDistance } from '../utils/geo.js';
+import { findDXPathForSpot } from '../utils/dxClusterSpotMatcher';
 import { DXGridInput } from '../components/DXGridInput.jsx';
+import { DXFavorites } from '../components/DXFavorites.jsx';
 import DXCCSelect from '../components/DXCCSelect.jsx';
 import useBreakpoint from '../hooks/app/useBreakpoint';
 
@@ -129,7 +131,7 @@ export default function ModernLayout(props) {
   const handleParkSpotClick = (spot) => tuneTo(spot);
   const handleDXSpotClick = (spot) => {
     tuneTo(spot);
-    const path = (dxClusterData.paths || []).find((p) => p.dxCall === spot.call);
+    const path = findDXPathForSpot(dxClusterData.paths || [], spot);
     if (path && path.dxLat != null && path.dxLon != null) {
       handleDXChange({ lat: path.dxLat, lon: path.dxLon });
     }
@@ -168,6 +170,7 @@ export default function ModernLayout(props) {
         showSatellites={mapLayers.showSatellites}
         showPSKReporter={mapLayers.showPSKReporter}
         showPSKPaths={mapLayers.showPSKPaths}
+        showMutualReception={config.showMutualReception !== false}
         wsjtxSpots={wsjtxMapSpots}
         showWSJTX={mapLayers.showWSJTX}
         showDXNews={mapLayers.showDXNews}
@@ -258,6 +261,7 @@ export default function ModernLayout(props) {
               flex: '1 1 auto',
             }}
           />
+          <DXFavorites dxLocation={dxLocation} dxGrid={dxGrid} onDXChange={handleDXChange} dxLocked={dxLocked} />
           <button
             type="button"
             onClick={() => setShowDxccSelect((prev) => !prev)}
@@ -346,6 +350,7 @@ export default function ModernLayout(props) {
   const pskPanel = config.panels?.pskReporter?.visible !== false && (
     <PSKReporterPanel
       callsign={config.callsign}
+      showMutualReception={config.showMutualReception !== false}
       pskReporter={pskReporter}
       showOnMap={mapLayers.showPSKReporter}
       onToggleMap={togglePSKReporter}
@@ -488,7 +493,7 @@ export default function ModernLayout(props) {
           {mobileCard(deLocationPanel, 'de')}
 
           {/* DX Location */}
-          {mobileCard(dxLocationPanel, 'dx')}
+          {config.panels?.dxLocation?.visible !== false && mobileCard(dxLocationPanel, 'dx')}
 
           {/* DX Cluster — give it room to show spots */}
           {dxCluster && mobileCard(dxCluster, 'dxc', { minH: '280px' })}
@@ -559,7 +564,7 @@ export default function ModernLayout(props) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {deLocationPanel}
-              {dxLocationPanel}
+              {config.panels?.dxLocation?.visible !== false && dxLocationPanel}
               {config.panels?.solar?.visible !== false && (
                 <SolarPanel solarIndices={solarIndices} bandConditions={bandConditions} />
               )}

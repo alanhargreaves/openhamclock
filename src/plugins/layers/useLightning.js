@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { addMinimizeToggle } from './addMinimizeToggle.js';
 import { makeDraggable } from './makeDraggable.js';
 
@@ -68,6 +69,7 @@ function getStrikeColor(ageMinutes) {
 }
 
 export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemoryMode = false, allUnits }) {
+  const { t } = useTranslation();
   const [strikeMarkers, setStrikeMarkers] = useState([]);
   const [lightningData, setLightningData] = useState([]);
   const [statsControl, setStatsControl] = useState(null);
@@ -85,7 +87,10 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
   const MAX_STRIKES = lowMemoryMode ? 100 : 500;
   const STRIKE_RETENTION_MS = 1800000; // 30 min
 
-  const unitsStr = allUnits.dist === 'metric' ? 'km' : 'miles';
+  const PROXIMITY_RADIUS_KM = 30;
+  const PROXIMITY_RADIUS_MILES = PROXIMITY_RADIUS_KM * 0.621371;
+  const isMetric = allUnits.dist === 'metric';
+  const unitsStr = isMetric ? 'km' : 'miles';
 
   // Fetch WebSocket key from Blitzortung (fallback to 111)
   useEffect(() => {
@@ -308,14 +313,14 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
       });
 
       // Popup with strike details
-      const ageStr = ageMinutes < 1 ? `${Math.round(ageSeconds)}s ago` : `${Math.round(ageMinutes)}m ago`;
+      const ageStr = ageMinutes < 1 ? `${Math.round(ageSeconds)}s` : `${Math.round(ageMinutes)}min`;
 
       marker.bindPopup(`
         <div style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">
-          <strong>⚡ Lightning Strike</strong><br>
-          <strong>Time:</strong> ${ageStr}<br>
-          <strong>Polarity:</strong> ${polarity === 'positive' ? '+' : '-'} ${Math.round(intensity)} kA<br>
-          <strong>Location:</strong> ${lat.toFixed(3)}°, ${lon.toFixed(3)}°
+          <strong>⚡ ${t('plugins.layers.lightning.lightningStrike')}</strong><br>
+          <strong>${t('plugins.layers.lightning.age')}:</strong> ${ageStr}<br>
+          <strong>${t('plugins.layers.lightning.polarity')}:</strong> ${polarity === 'positive' ? '+' : '-'}${Math.round(intensity)}kA<br>
+          <strong>${t('plugins.layers.lightning.location')}:</strong> ${lat.toFixed(3)}°, ${lon.toFixed(3)}°
         </div>
       `);
 
@@ -453,7 +458,7 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
         const div = L.DomUtil.create('div', 'lightning-stats', panelWrapper);
 
         div.innerHTML = `
-          <div class="floating-panel-header">⚡️ Lightning Activity</div>
+          <div class="floating-panel-header">⚡️ ${t('plugins.layers.lightning.name')}</div>
           <div style="opacity: 0.7; font-size: 10px;">Connecting...</div>
         `;
 
@@ -542,13 +547,13 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
 
     const contentHTML = `
       <table style="width: 100%; font-size: 11px;">
-        <tr><td>Fresh (&lt;1 min):</td><td style="text-align: right; color: var(--accent-amber);">${fresh}</td></tr>
-        <tr><td>Recent (&lt;5 min):</td><td style="text-align: right; color: var(--accent-amber-dim);">${recent}</td></tr>
-        <tr><td>Total (30 min):</td><td style="text-align: right; color: var(--accent-red);">${total}</td></tr>
+        <tr><td>${t('plugins.layers.lightning.fresh')}:</td><td style="text-align: right; color: var(--accent-amber);">${fresh}</td></tr>
+        <tr><td>${t('plugins.layers.lightning.recent')}:</td><td style="text-align: right; color: var(--accent-amber-dim);">${recent}</td></tr>
+        <tr><td>${t('plugins.layers.lightning.total')}:</td><td style="text-align: right; color: var(--accent-red);">${total}</td></tr>
         <tr><td colspan="2" style="padding-top: 8px; border-top: 1px solid var(--border-color);"></td></tr>
-        <tr><td>Avg Intensity:</td><td style="text-align: right;">${avgIntensity.toFixed(1)} kA</td></tr>
-        <tr><td>Positive:</td><td style="text-align: right; color: var(--accent-amber);">+${positiveStrikes}</td></tr>
-        <tr><td>Negative:</td><td style="text-align: right; color: var(--accent-cyan);">-${negativeStrikes}</td></tr>
+        <tr><td>${t('plugins.layers.lightning.avgIntensity')}:</td><td style="text-align: right;">${avgIntensity.toFixed(1)} kA</td></tr>
+        <tr><td>${t('plugins.layers.lightning.positive')}:</td><td style="text-align: right; color: var(--accent-amber);">+${positiveStrikes}</td></tr>
+        <tr><td>${t('plugins.layers.lightning.negative')}:</td><td style="text-align: right; color: var(--accent-cyan);">-${negativeStrikes}</td></tr>
       </table>
       <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color); font-size: 9px; color: var(--text-muted); text-align: center;">
         Real-time via Blitzortung.org
@@ -572,7 +577,7 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
     }
   }, [statsControl, enabled, lightningData]);
 
-  // Proximity detection and alerts (30km radius)
+  // Proximity detection and alerts (within radius PROXIMITY_RADIUS_KM)
   useEffect(() => {
     if (!enabled) return;
 
@@ -591,16 +596,15 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
 
     if (!stationLat || !stationLon || lightningData.length === 0) return;
 
-    const ALERT_RADIUS_KM = 30;
     const now = Date.now();
     const ONE_MINUTE_AGO = now - 60000;
 
-    // Check for new strikes within 30km in the last minute
+    // Check for new strikes within radius of PROXIMITY_RADIUS_KM during the last minute
     const nearbyNewStrikes = lightningData.filter((strike) => {
       if (strike.timestamp < ONE_MINUTE_AGO) return false;
 
       const distance = calculateDistance(stationLat, stationLon, strike.lat, strike.lon);
-      return distance.km <= ALERT_RADIUS_KM;
+      return distance.km <= PROXIMITY_RADIUS_KM;
     });
 
     // Flash the stats panel red if there are nearby strikes
@@ -628,7 +632,7 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
     }
   }, [enabled, lightningData]);
 
-  // Create proximity panel control (30km radius)
+  // Create proximity panel control (within radius of PROXIMITY_RADIUS_KM)
   useEffect(() => {
     console.log(
       '[Lightning] Proximity effect triggered - enabled:',
@@ -693,7 +697,8 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
         const div = L.DomUtil.create('div', 'lightning-proximity', panelWrapper);
 
         // Unfortunately, to fit both km and miles in the header we need to override the font size
-        div.innerHTML = `<div class="floating-panel-header" style="font-size: 11px">📍 Nearby Strikes(30km/18.6miles)</div><div style="opacity: 0.7; font-size: 10px; text-align: center;">No recent strikes</div>`;
+        let distStr = isMetric ? ` (${PROXIMITY_RADIUS_KM}km)` : ` (${PROXIMITY_RADIUS_MILES.toFixed(1)}miles)`;
+        div.innerHTML = `<div class="floating-panel-header" style="font-size: 11px">📍 ${t('plugins.layers.lightning.nearbyStrikes')}${distStr}</div><div style="opacity: 0.7; font-size: 10px; text-align: center;">No recent strikes</div>`;
 
         // Prevent map interaction
         L.DomEvent.disableClickPropagation(div);
@@ -827,10 +832,9 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
 
     if (!stationLat || !stationLon) return;
 
-    const PROXIMITY_RADIUS_KM = 30;
     const now = Date.now();
 
-    // Find all strikes within 30km
+    // Find all strikes within radius of PROXIMITY_RADIUS_KM
     const nearbyStrikes = lightningData
       .map((strike) => {
         const distance = calculateDistance(stationLat, stationLon, strike.lat, strike.lon, 'km');
@@ -842,43 +846,42 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
     let contentHTML = '';
 
     if (nearbyStrikes.length === 0) {
+      let distStr = isMetric ? ` ${PROXIMITY_RADIUS_KM} km` : ` ${PROXIMITY_RADIUS_MILES.toFixed(1)} miles`;
       contentHTML = `
         <div style="font-size: 10px; text-align: center;">
-          ✅ No strikes within 30km (18.6 miles)<br/>
-          <span style="font-size: 9px; color: var(--text-muted);">All clear</span>
+          ✅ ${t('plugins.layers.lightning.nearbyNoStrikes')}${distStr}<br/>
+          <span style="font-size: 9px; color: var(--text-muted);">${t('plugins.layers.lightning.allClear')}</span>
         </div>
       `;
     } else {
       const closestStrike = nearbyStrikes[0];
       const ageMinutes = Math.floor((now - closestStrike.timestamp) / 60000);
       const ageSeconds = Math.floor((now - closestStrike.timestamp) / 1000);
-      const ageStr = ageMinutes > 0 ? `${ageMinutes}m ago` : `${ageSeconds}s ago`;
-      const closestStrikeDistance =
-        allUnits.dist === 'metric' ? closestStrike.distance.km : closestStrike.distance.miles;
+      const ageStr = ageMinutes > 0 ? `${ageMinutes}min` : `${ageSeconds}s`;
+      const closestStrikeDistance = isMetric ? closestStrike.distance.km : closestStrike.distance.miles;
 
       contentHTML = `
         <div style="margin-bottom: 8px; padding: 8px; background: rgba(255,0,0,0.1); border-left: 3px solid var(--accent-red); border-radius: 4px;">
           <div style="font-weight: bold; color: var(--accent-red); margin-bottom: 4px;">
-            ⚡ ${nearbyStrikes.length} strike${nearbyStrikes.length > 1 ? 's' : ''} detected
-          </div>
+            ⚡ ${t('plugins.layers.lightning.strikesDetected')}: ${nearbyStrikes.length}</div>
           <div style="font-size: 10px;">
-            <strong>Closest:</strong> ${closestStrikeDistance.toFixed(1)} ${unitsStr}<br>
-            <strong>Time:</strong> ${ageStr}<br>
-            <strong>Polarity:</strong> ${closestStrike.polarity === 'positive' ? '+' : '-'} ${Math.round(closestStrike.intensity)} kA
+            <strong>${t('plugins.layers.lightning.closest')}:</strong> ${closestStrikeDistance.toFixed(1)}${unitsStr}<br>
+            <strong>${t('plugins.layers.lightning.age')}:</strong> ${ageStr}<br>
+            <strong>${t('plugins.layers.lightning.polarity')}:</strong> ${closestStrike.polarity === 'positive' ? '+' : '-'}${Math.round(closestStrike.intensity)}kA
           </div>
         </div>
         <div style="font-size: 9px; color: var(--text-muted); border-top: 1px solid var(--border-color); padding-top: 6px; margin-top: 6px;">
-          <strong>All Nearby Strikes:</strong><br>
+          <strong>${t('plugins.layers.lightning.nearbyStrikes')}:</strong><br>
           <div style="max-height: 150px; overflow-y: auto; margin-top: 4px;">
             ${nearbyStrikes
               .slice(0, 10)
               .map((strike, idx) => {
                 const age = Math.floor((now - strike.timestamp) / 1000);
-                const timeStr = age < 60 ? `${age}s` : `${Math.floor(age / 60)}m`;
-                const dist = (allUnits.dist === 'metric' ? strike.distance.km : strike.distance.miles).toFixed(1);
+                const timeStr = age < 60 ? `${age}s` : `${Math.floor(age / 60)}min`;
+                const dist = (isMetric ? strike.distance.km : strike.distance.miles).toFixed(1);
                 return `
                 <div style="padding: 2px 0; border-bottom: 1px dotted var(--border-color);">
-                  ${idx + 1}. ${dist} ${unitsStr} • ${timeStr} • ${strike.polarity === 'positive' ? '+' : '-'}${Math.round(strike.intensity)} kA
+                  ${idx + 1}. ${dist}${unitsStr} • ${timeStr} • ${strike.polarity === 'positive' ? '+' : '-'}${Math.round(strike.intensity)}kA
                 </div>
               `;
               })

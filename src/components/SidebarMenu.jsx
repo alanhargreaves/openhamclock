@@ -7,20 +7,10 @@
  * In dockable layout mode, also shows layout lock/reset controls,
  * replacing the separate "Layout" dockable panel.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { IconGear, IconExpand, IconShrink } from './Icons.jsx';
 import DonateButton from './DonateButton.jsx';
-
-// Sidebar menu items — each maps to a settings tab
-const MENU_ITEMS = [
-  { id: 'station', icon: '📻', label: 'Station' },
-  { id: 'integrations', icon: '🔌', label: 'Integrations' },
-  { id: 'display', icon: '🎨', label: 'Display' },
-  { id: 'layers', icon: '🗺️', label: 'Layers' },
-  { id: 'satellites', icon: '🛰️', label: 'Satellites' },
-  { id: 'profiles', icon: '👤', label: 'Profiles' },
-  { id: 'community', icon: '🌐', label: 'Community' },
-];
 
 const COLLAPSED_WIDTH = 40;
 const EXPANDED_WIDTH = 180;
@@ -59,17 +49,32 @@ export default function SidebarMenu({
   const hideTimeout = useRef(null);
   const isMobile = breakpoint === 'mobile';
 
-  // Don't render sidebar on mobile
-  if (isMobile) return null;
+  const { t } = useTranslation();
+
+  // Sidebar menu items — each maps to a settings tab
+  const MENU_ITEMS = useMemo(
+    () => [
+      { id: 'station', icon: '📻', label: t('station.settings.tab.title.station') },
+      { id: 'integrations', icon: '🔌', label: t('station.settings.tab.title.integrations') },
+      { id: 'display', icon: '🎨', label: t('station.settings.tab.title.display') },
+      { id: 'layers', icon: '🗺️', label: t('station.settings.tab.title.mapLayers') },
+      { id: 'satellites', icon: '🛰️', label: t('station.settings.tab.title.satellites') },
+      { id: 'profiles', icon: '👤', label: t('station.settings.tab.title.profiles') },
+      { id: 'community', icon: '🌐', label: t('station.settings.tab.title.community') },
+      { id: 'alerts', icon: '🔔', label: t('station.settings.tab.title.alerts') },
+    ],
+    [t],
+  );
 
   // Persist mode
   useEffect(() => {
+    if (isMobile) return; // no-op on mobile but hook still runs
     try {
       localStorage.setItem('openhamclock_sidebarMode', mode);
     } catch {}
     // Notify App.jsx of width change
     window.dispatchEvent(new CustomEvent('sidebar-mode-change', { detail: { mode } }));
-  }, [mode]);
+  }, [mode, isMobile]);
 
   const isExpanded = mode === MODE_PINNED || hoverExpanded;
   const isVisible = mode !== MODE_HIDDEN || hoverExpanded;
@@ -103,6 +108,9 @@ export default function SidebarMenu({
     });
     setHoverExpanded(false);
   }, []);
+
+  // Don't render sidebar on mobile — placed after all hooks to keep hook count stable
+  if (isMobile) return null;
 
   const modeIcon = mode === MODE_HIDDEN ? '◀' : mode === MODE_ICONS ? '☰' : '📌';
   const modeTitle =

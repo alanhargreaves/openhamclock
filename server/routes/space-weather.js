@@ -138,18 +138,20 @@ module.exports = function (app, ctx) {
         return res.json(noaaCache.solarIndices.data);
       }
 
-      const [fluxRes, kIndexRes, kForecastRes, sunspotRes, sfiSummaryRes] = await Promise.allSettled([
+      const [fluxRes, kIndexRes, kForecastRes, sunspotRes, sfiSummaryRes, magRes] = await Promise.allSettled([
         fetch('https://services.swpc.noaa.gov/json/f107_cm_flux.json'),
         fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json'),
         fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json'),
         fetch('https://services.swpc.noaa.gov/json/solar-cycle/observed-solar-cycle-indices.json'),
         fetch('https://services.swpc.noaa.gov/products/summary/10cm-flux.json'),
+        fetch('https://services.swpc.noaa.gov/products/solar-wind/mag-1-day.json'),
       ]);
 
       const result = {
         sfi: { current: null, history: [] },
         kp: { current: null, history: [], forecast: [] },
         ssn: { current: null, history: [] },
+        bz: { current: null },
         timestamp: new Date().toISOString(),
       };
 
@@ -226,6 +228,24 @@ module.exports = function (app, ctx) {
             result.ssn.current = result.ssn.history[result.ssn.history.length - 1]?.value || null;
           }
         }
+      }
+
+      // Bz (IMF Bz component from RTSW magnetic field data)
+      if (magRes.status === 'fulfilled' && magRes.value.ok) {
+        try {
+          const magData = await magRes.value.json();
+          // Format: [["time_tag","bx_gsm","by_gsm","bz_gsm","lon_gsm","lat_gsm","bt"], ...]
+          // Most recent valid entry with a non-null bz_gsm
+          if (magData?.length > 1) {
+            for (let i = magData.length - 1; i >= 1; i--) {
+              const bz = parseFloat(magData[i][3]);
+              if (!isNaN(bz)) {
+                result.bz.current = Math.round(bz * 10) / 10;
+                break;
+              }
+            }
+          }
+        } catch {}
       }
 
       noaaCache.solarIndices = { data: result, timestamp: Date.now() };
@@ -320,6 +340,28 @@ module.exports = function (app, ctx) {
     }
   };
 
+  // SOHO/NASCOM serves HMI intensitygram (visible) when SDO primary is down
+  const fetchFromSOHO = async (type, timeoutMs = 15000) => {
+    if (type !== 'HMIIC') throw new Error(`SOHO fallback only serves HMIIC, not ${type}`);
+    const url = 'https://soho.nascom.nasa.gov/data/realtime/hmi_igr/512/latest.jpg';
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const buffer = Buffer.from(await res.arrayBuffer());
+      if (buffer.length < 500) throw new Error(`Response too small (${buffer.length} bytes)`);
+      return { buffer, contentType: res.headers.get('content-type') || 'image/jpeg', source: 'SOHO' };
+    } catch (e) {
+      clearTimeout(timer);
+      throw e;
+    }
+  };
+
   app.get('/api/solar/image/:type', async (req, res) => {
     const type = req.params.type;
     if (!SDO_VALID_TYPES.has(type)) {
@@ -352,6 +394,7 @@ module.exports = function (app, ctx) {
     const sources = [
       { name: 'SDO', fn: () => fetchFromSDO(type) },
       { name: 'LMSAL', fn: () => fetchFromLMSAL(type) },
+      { name: 'SOHO', fn: () => fetchFromSOHO(type) },
       { name: 'Helioviewer', fn: () => fetchFromHelioviewer(type) },
     ];
 

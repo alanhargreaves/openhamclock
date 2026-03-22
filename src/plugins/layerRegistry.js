@@ -1,5 +1,9 @@
 /**
  * Layer Plugin Registry
+ *
+ * Built-in plugins are imported statically below.
+ * Local/custom plugins are auto-discovered from ./local/*.js via Vite's
+ * import.meta.glob — no registration needed, and they survive git updates.
  */
 
 import * as N3FJPLoggedQSOsPlugin from './layers/useN3FJPLoggedQSOs.js';
@@ -21,6 +25,24 @@ import * as VOACAPHeatmapPlugin from './layers/useVOACAPHeatmap.js';
 import * as MUFMapPlugin from './layers/useMUFMap.js';
 import * as SatellitePlugin from './layers/useSatelliteLayer.js';
 import * as MeshtasticPlugin from './layers/useMeshtastic.js';
+import * as ActiveUsersPlugin from './layers/useActiveUsers.js';
+
+// Auto-discover local/custom plugins (gitignored — survive updates)
+const localPluginModules = import.meta.glob('./local/*.js', { eager: true });
+const localPlugins = Object.entries(localPluginModules)
+  .map(([path, mod]) => {
+    if (mod.metadata && mod.useLayer) return mod;
+    console.warn(`[Plugins] Skipping ${path} — missing metadata or useLayer export`);
+    return null;
+  })
+  .filter(Boolean);
+
+if (localPlugins.length > 0) {
+  console.log(
+    `[Plugins] Loaded ${localPlugins.length} local plugin(s):`,
+    localPlugins.map((p) => p.metadata.id).join(', '),
+  );
+}
 
 const layerPlugins = [
   OWMCloudsPlugin,
@@ -42,6 +64,8 @@ const layerPlugins = [
   VOACAPHeatmapPlugin,
   MUFMapPlugin,
   MeshtasticPlugin,
+  ActiveUsersPlugin,
+  ...localPlugins,
 ];
 
 // Memoize the layer list - it never changes at runtime
@@ -69,6 +93,7 @@ const PINNED_SHORTCUTS = {
   n3fjp_logged_qsos: 'n',
   wspr: 'p',
   floods: 'i',
+  'active-users': 'u',
 };
 
 export function getAllLayers() {

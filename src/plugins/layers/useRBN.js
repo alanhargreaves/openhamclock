@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { esc } from '../../utils/escapeHtml.js';
 import { addMinimizeToggle } from './addMinimizeToggle.js';
 import { makeDraggable } from './makeDraggable.js';
 
@@ -227,6 +228,7 @@ export function useLayer({
   const [timeWindow, setTimeWindow] = useState(lowMemoryMode ? 2 : 5); // minutes - shorter in low memory
   const [minSNR, setMinSNR] = useState(-10);
   const [showPaths, setShowPaths] = useState(true);
+  const [spotterFilter, setSpotterFilter] = useState('');
   const [stats, setStats] = useState({ total: 0, skimmers: 0, avgSNR: 0 });
 
   // Low memory mode limits
@@ -352,10 +354,24 @@ export function useLayer({
       : new Set();
     const hasMapBandFilter = selectedMapBands.size > 0;
 
+    // Parse spotter filter: comma-separated callsigns (case-insensitive)
+    const spotterCallsigns = spotterFilter
+      ? spotterFilter
+          .split(',')
+          .map((s) => s.trim().toUpperCase())
+          .filter(Boolean)
+      : [];
+
     const filteredSpots = spots.filter((spot) => {
       const band = freqToBand(spot.frequency || spot.freq || 0);
       const normalizedBand = normalizeBandKey(spot.band || band);
       const snr = spot.snr || spot.db || 0;
+
+      // Spotter filter — only show spots from specific skimmer stations
+      if (spotterCallsigns.length > 0) {
+        const skimmer = (spot.callsign || '').toUpperCase();
+        if (!spotterCallsigns.some((f) => skimmer.includes(f))) return false;
+      }
 
       // Band filter
       if (selectedBand !== 'all' && selectedBand !== 'All' && band !== selectedBand) return false;
@@ -437,12 +453,12 @@ export function useLayer({
 
       marker.bindPopup(`
         <div style="font-family: 'JetBrains Mono', monospace;">
-          <strong>📡 ${skimmerCall}</strong><br>
-          Heard: <strong>${callsign}</strong><br>
+          <strong>📡 ${esc(skimmerCall)}</strong><br>
+          Heard: <strong>${esc(callsign)}</strong><br>
           SNR: <strong>${snr} dB</strong><br>
-          Band: <strong>${band}</strong><br>
+          Band: <strong>${esc(band)}</strong><br>
           Freq: <strong>${(freq / 1000).toFixed(1)} kHz</strong><br>
-          Grid: ${skimmerGrid}<br>
+          Grid: ${esc(skimmerGrid)}<br>
           Time: ${timestamp.toLocaleTimeString()}
         </div>
       `);
@@ -450,7 +466,19 @@ export function useLayer({
       marker.addTo(map);
       layersRef.current.push(marker);
     });
-  }, [map, enabled, spots, selectedBand, minSNR, showPaths, opacity, callsign, timeWindow, mapBandFilter]);
+  }, [
+    map,
+    enabled,
+    spots,
+    selectedBand,
+    minSNR,
+    showPaths,
+    opacity,
+    callsign,
+    timeWindow,
+    mapBandFilter,
+    spotterFilter,
+  ]);
 
   // Create control panel
   useEffect(() => {
@@ -471,6 +499,11 @@ export function useLayer({
           <div id="rbn-stats-display" style="margin-bottom: 8px; color: var(--text-secondary);">
           Spots: <strong>0</strong> | Skimmers: <strong>0</strong><br>
           Avg SNR: <strong>0 dB</strong>
+        </div>
+        <div style="margin-bottom: 6px;">
+          <label>Spotter:</label>
+          <input type="text" id="rbn-spotter-filter" placeholder="e.g. NU4F, W3LPL" style="width: 100%; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 4px; font-size: 12px; box-sizing: border-box;">
+          <div style="font-size: 9px; color: var(--text-muted); margin-top: 2px;">Comma-separated. Leave blank for all.</div>
         </div>
         <div style="margin-bottom: 6px;">
           <label>Band:</label>
@@ -511,12 +544,22 @@ export function useLayer({
 
         // Add event listeners
         setTimeout(() => {
+          const spotterInput = document.getElementById('rbn-spotter-filter');
           const bandSelect = document.getElementById('rbn-band-select');
           const timeSlider = document.getElementById('rbn-time-slider');
           const timeValue = document.getElementById('rbn-time-value');
           const snrSlider = document.getElementById('rbn-snr-slider');
           const snrValue = document.getElementById('rbn-snr-value');
           const pathsCheck = document.getElementById('rbn-paths-check');
+
+          if (spotterInput) {
+            spotterInput.value = spotterFilter;
+            let spotterDebounce = null;
+            spotterInput.addEventListener('input', (e) => {
+              clearTimeout(spotterDebounce);
+              spotterDebounce = setTimeout(() => setSpotterFilter(e.target.value), 300);
+            });
+          }
 
           if (bandSelect) {
             bandSelect.value = selectedBand;

@@ -23,6 +23,7 @@ const PSKReporterPanel = ({
   onTogglePaths,
   filters = {},
   onOpenFilters,
+  showMutualReception = true,
   // PSK data from App-level hook (single SSE connection)
   pskReporter = {},
   // WSJT-X props
@@ -113,6 +114,22 @@ const PSKReporterPanel = ({
   const filteredTx = useMemo(() => filterReports(txReports), [txReports, filters, activeTab]);
   const filteredRx = useMemo(() => filterReports(rxReports), [rxReports, filters, activeTab]);
   const filteredReports = activeTab === 'tx' ? filteredTx : filteredRx;
+
+  // Mutual reception: build lookup sets for callsigns heard in each direction (keyed by band)
+  const mutualCalls = useMemo(() => {
+    const txCalls = new Set(txReports.map((r) => `${r.receiver?.toUpperCase()}|${r.band}`));
+    const rxCalls = new Set(rxReports.map((r) => `${r.sender?.toUpperCase()}|${r.band}`));
+    const mutual = new Set();
+    for (const key of txCalls) {
+      if (rxCalls.has(key)) mutual.add(key);
+    }
+    return mutual;
+  }, [txReports, rxReports]);
+
+  const isMutual = (report) => {
+    const call = activeTab === 'tx' ? report.receiver : report.sender;
+    return mutualCalls.has(`${call?.toUpperCase()}|${report.band}`);
+  };
   const pskFilterCount = [filters?.bands?.length, filters?.grids?.length, filters?.modes?.length].filter(
     Boolean,
   ).length;
@@ -537,6 +554,14 @@ const PSKReporterPanel = ({
                       }}
                     >
                       <CallsignLink call={displayCall} color="var(--text-primary)" fontWeight="600" fontSize="11px" />
+                      {showMutualReception && isMutual(report) && (
+                        <span
+                          style={{ color: '#fbbf24', marginLeft: '3px', fontSize: '10px' }}
+                          title="Mutual reception — QSO possible"
+                        >
+                          ★
+                        </span>
+                      )}
                       {grid && (
                         <span
                           style={{ color: 'var(--text-muted)', fontWeight: '400', marginLeft: '4px', fontSize: '9px' }}
