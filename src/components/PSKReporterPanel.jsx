@@ -23,6 +23,7 @@ const PSKReporterPanel = ({
   onTogglePaths,
   filters = {},
   onOpenFilters,
+  showMutualReception = true,
   // PSK data from App-level hook (single SSE connection)
   pskReporter = {},
   // WSJT-X props
@@ -39,6 +40,7 @@ const PSKReporterPanel = ({
   wsjtxSessionId,
   showWSJTXOnMap,
   onToggleWSJTXMap,
+  wsjtxRelayMulticast = { enabled: false, address: '224.0.0.1' },
 }) => {
   const { t } = useTranslation();
   const [panelMode, setPanelMode] = useState(() => {
@@ -113,6 +115,22 @@ const PSKReporterPanel = ({
   const filteredTx = useMemo(() => filterReports(txReports), [txReports, filters, activeTab]);
   const filteredRx = useMemo(() => filterReports(rxReports), [rxReports, filters, activeTab]);
   const filteredReports = activeTab === 'tx' ? filteredTx : filteredRx;
+
+  // Mutual reception: build lookup sets for callsigns heard in each direction (keyed by band)
+  const mutualCalls = useMemo(() => {
+    const txCalls = new Set(txReports.map((r) => `${r.receiver?.toUpperCase()}|${r.band}`));
+    const rxCalls = new Set(rxReports.map((r) => `${r.sender?.toUpperCase()}|${r.band}`));
+    const mutual = new Set();
+    for (const key of txCalls) {
+      if (rxCalls.has(key)) mutual.add(key);
+    }
+    return mutual;
+  }, [txReports, rxReports]);
+
+  const isMutual = (report) => {
+    const call = activeTab === 'tx' ? report.receiver : report.sender;
+    return mutualCalls.has(`${call?.toUpperCase()}|${report.band}`);
+  };
   const pskFilterCount = [filters?.bands?.length, filters?.grids?.length, filters?.modes?.length].filter(
     Boolean,
   ).length;
@@ -129,6 +147,10 @@ const PSKReporterPanel = ({
   const activeClients = Object.entries(wsjtxClients);
   const primaryClient = activeClients[0]?.[1] || null;
   const isWSPRMode = primaryClient?.mode?.toUpperCase() === 'WSPR';
+  const wsjtxDownloadParams =
+    'session=' +
+    (wsjtxSessionId ? wsjtxSessionId : '') +
+    (wsjtxRelayMulticast.enabled ? `&multicast=${wsjtxRelayMulticast.address}` : '');
 
   // WSPR decodes filtered by age
   const filteredWspr = useMemo(() => {
@@ -537,6 +559,14 @@ const PSKReporterPanel = ({
                       }}
                     >
                       <CallsignLink call={displayCall} color="var(--text-primary)" fontWeight="600" fontSize="11px" />
+                      {showMutualReception && isMutual(report) && (
+                        <span
+                          style={{ color: '#fbbf24', marginLeft: '3px', fontSize: '10px' }}
+                          title="Mutual reception — QSO possible"
+                        >
+                          ★
+                        </span>
+                      )}
                       {grid && (
                         <span
                           style={{ color: 'var(--text-muted)', fontWeight: '400', marginLeft: '4px', fontSize: '9px' }}
@@ -618,9 +648,23 @@ const PSKReporterPanel = ({
                   ) : (
                     <div style={{ fontSize: '10px', opacity: 0.8, lineHeight: 1.6 }}>
                       <div style={{ marginBottom: '8px' }}>{t('pskReporterPanel.wsjtx.downloadRelay')}</div>
+                      {wsjtxRelayMulticast.enabled ? (
+                        <div style={{ marginBottom: '8px' }}>Multicast Address: {wsjtxRelayMulticast.address}</div>
+                      ) : (
+                        ''
+                      )}
+                      <div style={{ marginBottom: '8px' }}>
+                        <a
+                          style={{ color: 'var(--text-primary)' }}
+                          target="_blank"
+                          href="https://github.com/accius/openhamclock/blob/main/wsjtx-relay/README.md"
+                        >
+                          Installation Instructions
+                        </a>
+                      </div>
                       <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', flexWrap: 'wrap' }}>
                         <a
-                          href={`/api/wsjtx/relay/download/linux?session=${wsjtxSessionId || ''}`}
+                          href={`/api/wsjtx/relay/download/linux?${wsjtxDownloadParams}`}
                           style={{
                             padding: '4px 10px',
                             borderRadius: '4px',
@@ -636,7 +680,7 @@ const PSKReporterPanel = ({
                           {t('pskReporterPanel.wsjtx.platformLinux')}
                         </a>
                         <a
-                          href={`/api/wsjtx/relay/download/mac?session=${wsjtxSessionId || ''}`}
+                          href={`/api/wsjtx/relay/download/mac?${wsjtxDownloadParams}`}
                           style={{
                             padding: '4px 10px',
                             borderRadius: '4px',
@@ -652,7 +696,7 @@ const PSKReporterPanel = ({
                           {t('pskReporterPanel.wsjtx.platformMac')}
                         </a>
                         <a
-                          href={`/api/wsjtx/relay/download/windows?session=${wsjtxSessionId || ''}`}
+                          href={`/api/wsjtx/relay/download/windows?${wsjtxDownloadParams}`}
                           style={{
                             padding: '4px 10px',
                             borderRadius: '4px',

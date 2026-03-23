@@ -11,10 +11,12 @@
  * Zero dependencies — uses only Node.js built-in modules.
  *
  * Usage:
- *   node relay.js --url https://openhamclock.com --key YOUR_RELAY_KEY
+ *   node relay.js --url https://openhamclock.com --key YOUR_RELAY_KEY [--multicast address]
+ *   where the multicast address is something like 224.0.0.1
  *
  *   Or with environment variables:
  *   OPENHAMCLOCK_URL=https://openhamclock.com RELAY_KEY=abc123 node relay.js
+ *   MULTICAST=224.0.0.1
  *
  * In WSJT-X: Settings → Reporting → UDP Server
  *   Address: 127.0.0.1   Port: 2237
@@ -33,6 +35,7 @@ function parseArgs() {
   const args = process.argv.slice(2);
   const config = {
     url: process.env.OPENHAMCLOCK_URL || '',
+    maddr: process.env.MULTICAST || '',
     key: process.env.RELAY_KEY || process.env.OPENHAMCLOCK_RELAY_KEY || '',
     session: process.env.RELAY_SESSION || '',
     port: parseInt(process.env.WSJTX_UDP_PORT || '2237'),
@@ -49,6 +52,10 @@ function parseArgs() {
       case '--key':
       case '-k':
         config.key = args[++i];
+        break;
+      case '--multicast':
+      case '-m':
+        config.maddr = args[++i];
         break;
       case '--session':
       case '-s':
@@ -77,6 +84,9 @@ a remote OpenHamClock server.
 Options:
   --url, -u <url>       OpenHamClock server URL (required)
   --key, -k <key>       Relay authentication key (required)
+  --multicast, -m <address>
+                        Bind to the specified multicast address rather than
+                        a non-multicast socket
   --session, -s <id>    Browser session ID (required for per-user isolation)
   --port, -p <port>     Local UDP port to listen on (default: 2237)
   --interval, -i <ms>   Batch send interval in ms (default: 2000)
@@ -86,6 +96,7 @@ Options:
 Environment variables:
   OPENHAMCLOCK_URL      Same as --url
   RELAY_KEY             Same as --key
+  MULTICAST             Same as --multicast
   RELAY_SESSION         Same as --session
   WSJTX_UDP_PORT        Same as --port
   BATCH_INTERVAL        Same as --interval
@@ -456,7 +467,7 @@ function scheduleBatch() {
 // UDP LISTENER
 // ============================================
 
-const socket = dgram.createSocket('udp4');
+const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
 
 socket.on('message', (buf, rinfo) => {
   const msg = parseWSJTXMessage(buf);
@@ -503,6 +514,15 @@ socket.on('listening', () => {
   console.log('');
   console.log('  Waiting for WSJT-X packets...');
   console.log('');
+
+  if (!!config.maddr) {
+    try {
+      socket.addMembership(config.maddr);
+      console.log(`[WSJT-X] Joined multicast group ${config.maddr}`);
+    } catch (e) {
+      console.error(`[WSJT-X] Failed to join multicast group ${config.maddr}: ${e.message}`);
+    }
+  }
 
   // Start batch relay loop
   scheduleBatch();
@@ -623,8 +643,26 @@ socket.on('listening', () => {
   }, 60000); // every minute
 });
 
-// Bind to all interfaces so WSJT-X can reach it from any address
-socket.bind(config.port, '0.0.0.0');
+if (!!config.maddr) {
+  // Bind to 0.0.0.0 explicitly — on some Linux systems (especially Pi) omitting
+  // the address can cause the socket to bind to the wrong interface, preventing
+  // multicast group membership from working.
+  socket.bind(
+    {
+      port: config.port,
+      address: '0.0.0.0',
+      exclusive: false,
+    },
+    () => {
+      socket.setMulticastLoopback(true);
+    },
+  );
+} else {
+  socket.bind({
+    port: config.port,
+    address: '0.0.0.0',
+  });
+}
 
 // ============================================
 // GRACEFUL SHUTDOWN

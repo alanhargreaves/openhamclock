@@ -4,6 +4,7 @@
  */
 
 const { formatBytes, formatDuration } = require('../utils/helpers');
+const { execFile } = require('child_process');
 
 module.exports = function (app, ctx) {
   const {
@@ -907,8 +908,13 @@ module.exports = function (app, ctx) {
             status: upstream.isBackedOff('pskreporter') ? 'backoff' : 'ok',
             backoffRemaining: upstream.backoffRemaining('pskreporter'),
             consecutive: upstream.backoffs.get('pskreporter')?.consecutive || 0,
-            inFlightRequests: [...upstream.inFlight.keys()].filter((k) => k.startsWith('psk:') || k.startsWith('wspr:'))
-              .length,
+            inFlightRequests: [...upstream.inFlight.keys()].filter((k) => k.startsWith('psk:')).length,
+          },
+          wspr: {
+            status: upstream.isBackedOff('wspr') ? 'backoff' : 'ok',
+            backoffRemaining: upstream.backoffRemaining('wspr'),
+            consecutive: upstream.backoffs.get('wspr')?.consecutive || 0,
+            inFlightRequests: [...upstream.inFlight.keys()].filter((k) => k.startsWith('wspr:')).length,
           },
           weather: {
             status: 'client-direct',
@@ -936,6 +942,22 @@ module.exports = function (app, ctx) {
   });
 
   // ============================================
+  // RESET UPSTREAM BACKOFF
+  // ============================================
+  app.post('/api/admin/reset-backoff', writeLimiter, requireWriteAuth, (req, res) => {
+    const service = req.query.service || req.body?.service;
+    if (!service) {
+      // Reset all backoffs
+      upstream.backoffs.clear();
+      logInfo('[Admin] All upstream backoffs cleared');
+      return res.json({ ok: true, reset: 'all' });
+    }
+    upstream.resetBackoff(service);
+    logInfo(`[Admin] Upstream backoff cleared for: ${service}`);
+    res.json({ ok: true, reset: service });
+  });
+
+  // ============================================
   // MANUAL UPDATE ENDPOINT
   // ============================================
   app.post('/api/update', writeLimiter, requireWriteAuth, async (req, res) => {
@@ -947,9 +969,11 @@ module.exports = function (app, ctx) {
       if (!fs.existsSync(path.join(ROOT_DIR, '.git'))) {
         return res.status(503).json({ error: 'Not a git repository' });
       }
-      await execFilePromise('git', ['--version']);
+      await new Promise((resolve, reject) => {
+        execFile('git', ['--version'], (err) => (err ? reject(err) : resolve()));
+      });
     } catch (err) {
-      return res.status(500).json({ error: 'Update preflight failed' });
+      return res.status(500).json({ error: 'Update preflight failed: ' + (err.message || 'git not found') });
     }
 
     // Respond immediately; update runs asynchronously

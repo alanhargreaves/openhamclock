@@ -3,8 +3,11 @@
  * Lines ~2936-4193 of original server.js
  */
 
+const dns = require('dns');
+const dgram = require('dgram');
 const net = require('net');
 const { gridToLatLon, getBandFromKHz } = require('../utils/grid');
+const { areDXPathsDuplicate } = require('../utils/dxClusterPathIdentity');
 
 module.exports = function (app, ctx) {
   const {
@@ -783,6 +786,439 @@ module.exports = function (app, ctx) {
     return ts;
   }
 
+  const DXUDP_SESSION_MAX_AGE = 15 * 60 * 1000;
+  const DXUDP_SPOT_MAX_AGE = 60 * 60 * 1000;
+  const DXUDP_MAX_SESSIONS = 20;
+  const DXUDP_MAX_SPOTS = 500;
+  const dxUdpSessions = new Map();
+
+  function toHHMMz(ts) {
+    const d = new Date(Number.isFinite(ts) ? ts : Date.now());
+    return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}z`;
+  }
+
+  function parseFreqToMHz(value) {
+    const v = parseFloat(value);
+    if (!Number.isFinite(v) || v <= 0) return null;
+    if (v >= 1000000) return v / 1000000;
+    if (v >= 30000) return v / 1000;
+    return v;
+  }
+
+  function maybeExtractGrid(value) {
+    if (!value || typeof value !== 'string') return null;
+    const m = value
+      .trim()
+      .toUpperCase()
+      .match(/\b([A-R]{2}\d{2}(?:[A-X]{2})?)\b/);
+    return m ? m[1] : null;
+  }
+
+  function parseTimestampValue(value, fallbackTs) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value < 1e12 ? value * 1000 : value;
+    }
+    const str = String(value || '').trim();
+    if (!str) return fallbackTs;
+    if (/^\d{2}:\d{2}z$/i.test(str)) return parseSpotHHMMzToTimestamp(str, fallbackTs);
+
+    const hhmm = str.match(/^(\d{2})(\d{2})z?$/i);
+    if (hhmm) return parseSpotHHMMzToTimestamp(`${hhmm[1]}:${hhmm[2]}z`, fallbackTs);
+
+    const hhmmss = str.match(/^(\d{2})(\d{2})(\d{2})z?$/i);
+    if (hhmmss) return parseSpotHHMMzToTimestamp(`${hhmmss[1]}:${hhmmss[2]}z`, fallbackTs);
+
+    // Some spot feeds emit ISO timestamps without timezone (e.g. 2026-03-17T11:53:00).
+    // Treat these as UTC to avoid local-time offset skew in Zulu display and age math.
+    const isoNoZone = str.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/);
+    if (isoNoZone) {
+      const year = parseInt(isoNoZone[1], 10);
+      const month = parseInt(isoNoZone[2], 10);
+      const day = parseInt(isoNoZone[3], 10);
+      const hour = parseInt(isoNoZone[4], 10);
+      const minute = parseInt(isoNoZone[5], 10);
+      const second = parseInt(isoNoZone[6] || '0', 10);
+      const ms = parseInt((isoNoZone[7] || '0').padEnd(3, '0'), 10);
+
+      const parsedUtc = Date.UTC(year, month - 1, day, hour, minute, second, ms);
+      return Number.isFinite(parsedUtc) ? parsedUtc : fallbackTs;
+    }
+
+    const parsed = Date.parse(str);
+    return Number.isFinite(parsed) ? parsed : fallbackTs;
+  }
+
+  function normalizeUdpCallsign(value) {
+    return String(value || '')
+      .trim()
+      .toUpperCase()
+      .replace(/[<>]/g, '')
+      .replace(/-?#$/, '');
+  }
+
+  function hasExplicitTimezoneHint(value) {
+    const str = String(value || '').trim();
+    if (!str) return false;
+    if (/z$/i.test(str)) return true;
+    if (/[+-]\d{2}:?\d{2}$/.test(str)) return true;
+    if (/\b(?:utc|gmt)\b/i.test(str)) return true;
+    return false;
+  }
+
+  function normalizeUdpSpotCandidate(candidate, fallbackTs = Date.now()) {
+    if (!candidate || typeof candidate !== 'object') return null;
+
+    const spotter = normalizeUdpCallsign(candidate.spotter || candidate.de || candidate.sourceCall || '');
+    const dxCall = normalizeUdpCallsign(candidate.dxCall || candidate.call || candidate.callsign || '');
+    const freqMHz = parseFreqToMHz(candidate.freqMHz ?? candidate.freq ?? candidate.frequency);
+    if (!spotter || !dxCall || !Number.isFinite(freqMHz)) return null;
+
+    const rawTimestamp = candidate.timestamp ?? candidate.time;
+    let timestamp = parseTimestampValue(rawTimestamp, fallbackTs);
+    // Many local UDP feeds provide timezone-less times; if the parsed value is far off,
+    // use receive time so "minutes ago" and displayed Z time reflect current spots.
+    if (!hasExplicitTimezoneHint(rawTimestamp) && Math.abs(timestamp - fallbackTs) > 2 * 60 * 60 * 1000) {
+      timestamp = fallbackTs;
+    }
+    const comment = String(candidate.comment || candidate.info || candidate.text || candidate.remarks || '').trim();
+    const dxGrid = maybeExtractGrid(candidate.dxGrid || candidate.grid || comment);
+    const spotterGrid = maybeExtractGrid(candidate.spotterGrid);
+
+    return {
+      spotter,
+      dxCall,
+      freq: freqMHz.toFixed(3),
+      comment,
+      time: toHHMMz(timestamp),
+      timestamp,
+      dxGrid,
+      spotterGrid,
+      id: `${dxCall}-${freqMHz.toFixed(3)}-${spotter}-${timestamp}`,
+    };
+  }
+
+  function extractXmlTag(xml, tagName) {
+    const match = String(xml || '').match(new RegExp(`<${tagName}>([^<]*)</${tagName}>`, 'i'));
+    return match ? match[1].trim() : '';
+  }
+
+  function parseMacLoggerDxXmlSpot(xml, fallbackTs) {
+    if (!/<spot>/i.test(xml)) return null;
+
+    const action = extractXmlTag(xml, 'action').toLowerCase();
+    if (action && action !== 'add') return null;
+
+    return normalizeUdpSpotCandidate(
+      {
+        dxCall: extractXmlTag(xml, 'dxcall'),
+        frequency: extractXmlTag(xml, 'frequency'),
+        spotter: extractXmlTag(xml, 'spottercall'),
+        comment: extractXmlTag(xml, 'comment'),
+        timestamp: extractXmlTag(xml, 'timestamp'),
+      },
+      fallbackTs,
+    );
+  }
+
+  function parseUdpSpotPayload(payload, fallbackTs = Date.now()) {
+    const text = String(payload || '').trim();
+    if (!text) return [];
+
+    try {
+      const parsedJson = JSON.parse(text);
+      const arr = Array.isArray(parsedJson) ? parsedJson : [parsedJson];
+      return arr.map((item) => normalizeUdpSpotCandidate(item, fallbackTs)).filter(Boolean);
+    } catch {}
+
+    if (
+      text.startsWith('<?xml') ||
+      text.startsWith('<spot') ||
+      text.startsWith('<RadioInfo') ||
+      (text.startsWith('<') && text.includes('>'))
+    ) {
+      // Try the narrow MacLoggerDX parser first (standard <spottercall>/<dxcall> tags)
+      if (text.startsWith('<?xml') || text.startsWith('<spot') || text.startsWith('<RadioInfo')) {
+        const xmlSpot = parseMacLoggerDxXmlSpot(text, fallbackTs);
+        if (xmlSpot) return [xmlSpot];
+        // <RadioInfo> packets are intentionally not spots — skip generic fallback
+        if (text.startsWith('<RadioInfo')) return [];
+      }
+
+      // Generic XML fallback — handles broader tag name variants (e.g. MLDX <StationName>)
+      const readTag = (tagNames) => {
+        for (const tagName of tagNames) {
+          const escaped = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const m = text.match(new RegExp(`<${escaped}[^>]*>\\s*([^<]+?)\\s*<\\/${escaped}>`, 'i'));
+          if (m && m[1]) return m[1].trim();
+        }
+        return '';
+      };
+
+      const xmlSpot = normalizeUdpSpotCandidate(
+        {
+          spotter: readTag([
+            'spotter',
+            'spottercall',
+            'spottercallsign',
+            'de',
+            'decall',
+            'sourcecall',
+            'sourcecallsign',
+            'stationprefix',
+            'mycall',
+            'operator',
+            'opcall',
+            'sender',
+            'stationname',
+            'station_name',
+            'station',
+          ]),
+          dxCall: readTag(['dxcall', 'call', 'callsign', 'dxcallsign', 'workedcall', 'targetcall']),
+          freq: readTag(['freq', 'frequency', 'frequencykhz', 'freqkhz', 'mhz', 'rxfreq', 'txfreq', 'spotfreq']),
+          comment: readTag(['comment', 'info', 'text', 'remarks', 'message', 'notes']),
+          time: readTag(['time', 'timestamp', 'spottime', 'utc', 'utctime']),
+          dxGrid: readTag(['dxgrid', 'grid', 'gridsquare', 'dxgridsquare']),
+          spotterGrid: readTag(['spottergrid', 'mygrid', 'degrid', 'mygridsquare']),
+        },
+        fallbackTs,
+      );
+
+      if (xmlSpot) return [xmlSpot];
+    }
+
+    // ADIF-style payloads used by some logger integrations
+    // Example fragments: <CALL:5>W1AW <FREQ:6>14.074 <STATION_CALLSIGN:5>K1ABC
+    if (text.includes('<') && text.includes(':') && !text.includes('</')) {
+      const adifFields = {};
+      const adifRegex = /<([A-Z0-9_]+)(?::\d+)?>([^<]*)/gi;
+      let m;
+      while ((m = adifRegex.exec(text)) !== null) {
+        const key = String(m[1] || '').toUpperCase();
+        const val = String(m[2] || '').trim();
+        if (key && val) adifFields[key] = val;
+      }
+
+      if (Object.keys(adifFields).length > 0) {
+        const adifSpot = normalizeUdpSpotCandidate(
+          {
+            spotter:
+              adifFields.STATION_CALLSIGN ||
+              adifFields.OPERATOR ||
+              adifFields.MYCALL ||
+              adifFields.DE ||
+              adifFields.SPOTTER ||
+              '',
+            dxCall: adifFields.DXCALL || adifFields.CALL || adifFields.CALLSIGN || '',
+            freq:
+              adifFields.FREQ ||
+              adifFields.FREQUENCY ||
+              adifFields.RXFREQ ||
+              adifFields.TXFREQ ||
+              adifFields.BAND_RX ||
+              '',
+            comment: adifFields.COMMENT || adifFields.NOTES || adifFields.REMARKS || '',
+            time: adifFields.TIME_ON || adifFields.TIME || adifFields.TIMESTAMP || '',
+            dxGrid: adifFields.GRIDSQUARE || adifFields.MY_GRIDSQUARE || '',
+          },
+          fallbackTs,
+        );
+
+        if (adifSpot) return [adifSpot];
+      }
+    }
+
+    const dxDe = text.match(/^DX\s+de\s+([A-Z0-9\/-]+)[^:]*:\s*([0-9.]+)\s+([A-Z0-9\/-]+)\s*(.*?)\s*(\d{4}Z?)?\s*$/i);
+    if (dxDe) {
+      const [, spotter, freq, dxCall, rawComment, hhmm] = dxDe;
+      const comment = (rawComment || '')
+        .trim()
+        .replace(/\s+\d{4}Z?$/i, '')
+        .trim();
+      return [
+        normalizeUdpSpotCandidate({ spotter, dxCall, freq, comment, time: hhmm || undefined }, fallbackTs),
+      ].filter(Boolean);
+    }
+
+    if (text.includes('^')) {
+      const parts = text.split('^');
+      if (parts.length >= 3) {
+        return [
+          normalizeUdpSpotCandidate(
+            { spotter: parts[0], freq: parts[1], dxCall: parts[2], comment: parts[3] || '', time: parts[4] || '' },
+            fallbackTs,
+          ),
+        ].filter(Boolean);
+      }
+    }
+
+    if (/[;,\t]/.test(text)) {
+      const delim = text.includes(';') ? ';' : text.includes('\t') ? '\t' : ',';
+      const parts = text.split(delim).map((p) => p.trim());
+      if (parts.length >= 3) {
+        return [
+          normalizeUdpSpotCandidate(
+            { spotter: parts[0], freq: parts[1], dxCall: parts[2], comment: parts[3] || '', time: parts[4] || '' },
+            fallbackTs,
+          ),
+        ].filter(Boolean);
+      }
+    }
+
+    return [];
+  }
+
+  function isMulticastHost(host) {
+    if (!host) return false;
+    const ipVersion = net.isIP(host);
+    if (ipVersion === 4) {
+      const firstOctet = parseInt(host.split('.')[0], 10);
+      return firstOctet >= 224 && firstOctet <= 239;
+    }
+    if (ipVersion === 6) {
+      return host.toLowerCase().startsWith('ff');
+    }
+    return false;
+  }
+
+  function isBroadcastHost(host) {
+    if (!host || net.isIP(host) !== 4) return false;
+    if (host === '255.255.255.255') return true;
+    const octets = host.split('.');
+    return octets.length === 4 && octets[3] === '255';
+  }
+
+  function getOrCreateDxUdpSession(host, port) {
+    const normalizedHost = String(host || '').trim();
+    // Directed/global broadcast addresses are destination targets, not sender IDs.
+    // Use wildcard listener session so we don't split packets across duplicate binds.
+    const effectiveHost = isBroadcastHost(normalizedHost) ? '' : normalizedHost;
+    const normalizedPort = Number.isFinite(port) ? port : 12060;
+    const key = `${effectiveHost || 'any'}:${normalizedPort}`;
+    const existing = dxUdpSessions.get(key);
+    if (existing) {
+      existing.lastAccess = Date.now();
+      return existing;
+    }
+
+    if (dxUdpSessions.size >= DXUDP_MAX_SESSIONS) {
+      const oldest = [...dxUdpSessions.entries()].sort((a, b) => (a[1].lastAccess || 0) - (b[1].lastAccess || 0))[0];
+      if (oldest) {
+        try {
+          oldest[1].socket?.close();
+        } catch {}
+        dxUdpSessions.delete(oldest[0]);
+      }
+    }
+
+    const session = {
+      key,
+      host: effectiveHost,
+      port: normalizedPort,
+      socket: dgram.createSocket({ type: 'udp4', reuseAddr: true }),
+      spots: [],
+      started: false,
+      lastAccess: Date.now(),
+      packetCount: 0,
+      parsedCount: 0,
+      droppedCount: 0,
+      parseMissCount: 0,
+      lastPacketAt: 0,
+      lastPacketFrom: null,
+      lastPacketPreview: '',
+      lastParseMissPreview: '',
+    };
+
+    session.socket.on('message', (buf, rinfo) => {
+      session.packetCount += 1;
+      session.lastPacketAt = Date.now();
+      session.lastPacketFrom = rinfo?.address ? `${rinfo.address}:${rinfo.port || ''}` : null;
+      session.lastPacketPreview = buf.toString('utf8').replace(/\s+/g, ' ').slice(0, 160);
+
+      if (
+        session.host &&
+        !isMulticastHost(session.host) &&
+        !isBroadcastHost(session.host) &&
+        rinfo?.address &&
+        rinfo.address !== session.host
+      ) {
+        session.droppedCount += 1;
+        return;
+      }
+
+      const now = Date.now();
+      const parsed = parseUdpSpotPayload(buf.toString('utf8'), now);
+      if (!parsed.length) {
+        session.parseMissCount += 1;
+        session.lastParseMissPreview = session.lastPacketPreview;
+        return;
+      }
+
+      session.parsedCount += parsed.length;
+
+      session.spots.push(...parsed);
+      session.spots = session.spots
+        .filter((s) => now - (s.timestamp || now) <= DXUDP_SPOT_MAX_AGE)
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+        .slice(0, DXUDP_MAX_SPOTS);
+    });
+
+    session.socket.on('error', (err) => {
+      logErrorOnce('DX UDP', `${session.host || 'any'}:${session.port} ${err.message}`);
+    });
+
+    session.socket.on('listening', () => {
+      session.started = true;
+      try {
+        if (isMulticastHost(session.host)) {
+          session.socket.addMembership(session.host);
+        }
+      } catch (err) {
+        logErrorOnce('DX UDP', `Multicast ${session.host}:${session.port} ${err.message}`);
+      }
+    });
+
+    session.socket.bind(session.port, '0.0.0.0');
+    dxUdpSessions.set(key, session);
+    return session;
+  }
+
+  app.get('/api/dxcluster/udp-status', (req, res) => {
+    const now = Date.now();
+    const sessions = [...dxUdpSessions.values()].map((s) => ({
+      key: s.key,
+      host: s.host || '',
+      port: s.port,
+      started: !!s.started,
+      activeSpotCount: (s.spots || []).length,
+      packetCount: s.packetCount || 0,
+      parsedCount: s.parsedCount || 0,
+      droppedCount: s.droppedCount || 0,
+      parseMissCount: s.parseMissCount || 0,
+      lastPacketAt: s.lastPacketAt || 0,
+      lastPacketAgeMs: s.lastPacketAt ? now - s.lastPacketAt : null,
+      lastPacketFrom: s.lastPacketFrom || null,
+      lastPacketPreview: s.lastPacketPreview || '',
+      lastParseMissPreview: s.lastParseMissPreview || '',
+      lastAccess: s.lastAccess || 0,
+      lastAccessAgeMs: s.lastAccess ? now - s.lastAccess : null,
+    }));
+
+    res.json({ now, sessionCount: sessions.length, sessions });
+  });
+
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, session] of dxUdpSessions.entries()) {
+      session.spots = (session.spots || []).filter((s) => now - (s.timestamp || now) <= DXUDP_SPOT_MAX_AGE);
+      if (now - (session.lastAccess || 0) > DXUDP_SESSION_MAX_AGE) {
+        try {
+          session.socket?.close();
+        } catch {}
+        dxUdpSessions.delete(key);
+      }
+    }
+  }, 60 * 1000);
+
   /**
    * SSRF protection: resolve hostname to IP and reject private/reserved addresses.
    * Returns the resolved IP so callers can connect to the IP directly, preventing
@@ -821,26 +1257,36 @@ module.exports = function (app, ctx) {
   }
 
   async function validateCustomHost(host) {
-    // Reject obvious localhost strings before DNS
-    if (/^localhost$/i.test(host)) return { ok: false, reason: 'localhost not allowed' };
+    // Allow localhost and IP-literal private addresses directly — OpenHamClock is
+    // self-hosted software and users commonly run local DX cluster servers (CC Cluster,
+    // DXSpider on a Pi, etc.).  SSRF is only a concern for multi-user cloud deployments.
+    if (/^localhost$/i.test(host)) return { ok: true, resolvedIP: '127.0.0.1' };
 
-    // Resolve hostname to IPv4 addresses ONLY.
-    // We intentionally do not fall back to resolve6 because IPv6 has many equivalent
-    // representations for private addresses (e.g. ::ffff:7f00:1 = 127.0.0.1 in hex form)
-    // that bypass string-based checks. DX cluster telnet servers are IPv4.
+    // If the host is already an IP address, allow it directly (including private ranges)
+    const ipParts = host.split('.').map(Number);
+    if (ipParts.length === 4 && ipParts.every((n) => n >= 0 && n <= 255)) {
+      return { ok: true, resolvedIP: host };
+    }
+
+    // Resolve hostname to IPv4 addresses.
+    // Try resolve4 first (direct DNS), then fall back to lookup (OS resolver)
+    // which handles /etc/hosts, search domains, and alternate resolvers.
     let addresses;
     try {
       addresses = await dns.promises.resolve4(host);
     } catch {
-      return { ok: false, reason: 'Host could not be resolved (IPv4 required for custom DX clusters)' };
-    }
-
-    // Check every resolved address — block if any resolve to private/reserved
-    for (const addr of addresses) {
-      if (isPrivateIP(addr)) {
-        return { ok: false, reason: 'Host resolves to a private/reserved address' };
+      try {
+        const result = await dns.promises.lookup(host, { family: 4 });
+        if (result?.address) addresses = [result.address];
+      } catch {
+        return { ok: false, reason: 'Host could not be resolved (IPv4 required for custom DX clusters)' };
       }
     }
+
+    if (!addresses || addresses.length === 0) {
+      return { ok: false, reason: 'Host did not resolve to any IPv4 address' };
+    }
+
     // Return the first resolved IP so callers connect to the validated IP, not the hostname.
     // This prevents DNS rebinding (TOCTOU) where the record changes between validation and connect.
     return { ok: true, resolvedIP: addresses[0] };
@@ -852,6 +1298,9 @@ module.exports = function (app, ctx) {
     const customHost = (req.query.host || CONFIG.dxClusterHost || '').trim();
     const parsedPort = parseInt(req.query.port, 10);
     const customPort = Number.isFinite(parsedPort) ? parsedPort : CONFIG.dxClusterPort;
+    const udpHost = (req.query.udpHost || CONFIG.dxUdpHost || '').trim();
+    const parsedUdpPort = parseInt(req.query.udpPort, 10);
+    const udpPort = Number.isFinite(parsedUdpPort) ? parsedUdpPort : CONFIG.dxUdpPort;
     const userCallsign = (req.query.callsign || CONFIG.dxClusterCallsign || '').trim();
 
     // SECURITY: Validate custom host to prevent SSRF (internal network scanning)
@@ -864,9 +1313,18 @@ module.exports = function (app, ctx) {
         return res.status(400).json({ error: `Custom host rejected: ${hostCheck.reason}` });
       }
       resolvedHost = hostCheck.resolvedIP; // Connect to the validated IP, not the hostname
-      // Restrict port range to common DX Spider/telnet ports
-      if (customPort < 1024 || customPort > 49151) {
-        return res.status(400).json({ error: 'Port must be between 1024 and 49151' });
+      // Basic port range sanity check
+      if (customPort < 1 || customPort > 65535) {
+        return res.status(400).json({ error: 'Port must be between 1 and 65535' });
+      }
+    }
+
+    if (source === 'udp') {
+      if (udpHost && !net.isIP(udpHost)) {
+        return res.status(400).json({ error: 'UDP host must be a valid IPv4/IPv6 address (or blank)' });
+      }
+      if (udpPort < 1 || udpPort > 65535) {
+        return res.status(400).json({ error: 'UDP port must be between 1 and 65535' });
       }
     }
 
@@ -874,11 +1332,18 @@ module.exports = function (app, ctx) {
     const cacheKey =
       source === 'custom'
         ? `custom-${resolvedHost}-${customPort}-${getDxClusterLoginCallsign(userCallsign)}`
-        : `source-${source}`;
+        : source === 'udp'
+          ? `udp-${udpHost || 'any'}-${udpPort}`
+          : `source-${source}`;
     const pathsCache = getDxPathsCache(cacheKey);
 
     // Check cache first (but not for custom sources - they might have different data)
-    if (source !== 'custom' && Date.now() - pathsCache.timestamp < DXPATHS_CACHE_TTL && pathsCache.paths.length > 0) {
+    if (
+      source !== 'custom' &&
+      source !== 'udp' &&
+      Date.now() - pathsCache.timestamp < DXPATHS_CACHE_TTL &&
+      pathsCache.paths.length > 0
+    ) {
       logDebug('[DX Paths] Returning', pathsCache.paths.length, 'cached paths');
       return res.json(pathsCache.paths);
     }
@@ -892,8 +1357,31 @@ module.exports = function (app, ctx) {
       let newSpots = [];
       let usedSource = 'none';
 
+      if (source === 'udp') {
+        const udpSession = getOrCreateDxUdpSession(udpHost, udpPort);
+        udpSession.lastAccess = now;
+        newSpots = (udpSession.spots || []).slice(0, 100).map((s) => ({
+          spotter: s.spotter,
+          spotterGrid: s.spotterGrid || null,
+          dxCall: s.dxCall,
+          dxGrid: s.dxGrid || null,
+          freq: s.freq,
+          comment: s.comment || '',
+          time: s.time || toHHMMz(s.timestamp),
+          timestamp: s.timestamp || now,
+          id: s.id || `${s.dxCall}-${s.freq}-${s.spotter}-${s.timestamp || now}`,
+        }));
+        usedSource = 'udp';
+        if (newSpots.length > 0) {
+          logDebug('[DX Paths] Got', newSpots.length, 'spots from UDP');
+        }
+      }
+
       // Handle custom telnet source (persistent connection, no reconnect-per-poll)
-      if (source === 'custom' && resolvedHost) {
+      if (source === 'custom' && !resolvedHost) {
+        logDebug('[DX Paths] Custom source selected but no host provided — check DX Cluster settings');
+      }
+      if (newSpots.length === 0 && source === 'custom' && resolvedHost) {
         logDebug(
           `[DX Paths] Using custom telnet session: ${resolvedHost}:${customPort} as ${getDxClusterLoginCallsign(userCallsign)}`,
         );
@@ -928,7 +1416,7 @@ module.exports = function (app, ctx) {
       }
 
       // Try proxy if not using custom or custom failed
-      if (newSpots.length === 0 && source !== 'custom') {
+      if (newSpots.length === 0 && source !== 'custom' && source !== 'udp') {
         try {
           const proxyResponse = await fetch(`${DXSPIDER_PROXY_URL}/api/spots?limit=100`, {
             headers: { 'User-Agent': 'OpenHamClock/3.14.11' },
@@ -959,7 +1447,7 @@ module.exports = function (app, ctx) {
       }
 
       // Fallback to HamQTH if proxy failed (never for explicit custom source)
-      if (newSpots.length === 0 && source !== 'custom') {
+      if (newSpots.length === 0 && source !== 'custom' && source !== 'udp') {
         try {
           const response = await fetch('https://www.hamqth.com/dxc_csv.php?limit=50', {
             headers: { 'User-Agent': 'OpenHamClock/3.13.1' },
@@ -1187,6 +1675,16 @@ module.exports = function (app, ctx) {
           let spotterLoc = null;
           let spotterGridSquare = null;
 
+          // Fixed spotter coordinates override (for local skimmer setups)
+          if (CONFIG.dxClusterSpotterLat != null && CONFIG.dxClusterSpotterLon != null) {
+            spotterLoc = {
+              lat: CONFIG.dxClusterSpotterLat,
+              lon: CONFIG.dxClusterSpotterLon,
+              country: '',
+              source: 'env-fixed',
+            };
+          }
+
           // Check if spot already has spotterGrid from proxy
           if (spot.spotterGrid) {
             const gridLoc = maidenheadToLatLon(spot.spotterGrid);
@@ -1254,8 +1752,8 @@ module.exports = function (app, ctx) {
             comment: spot.comment,
             time: spot.time,
             id: spot.id,
-            // Sorting is driven by spot-provided HHMMz time when available.
-            timestamp: parseSpotHHMMzToTimestamp(spot.time, Number.isFinite(spot.timestamp) ? spot.timestamp : now),
+            // Preserve source timestamps for retention; only fall back to HH:MMz parsing when no timestamp exists.
+            timestamp: Number.isFinite(spot.timestamp) ? spot.timestamp : parseSpotHHMMzToTimestamp(spot.time, now),
           };
         })
         .filter(Boolean);
@@ -1266,10 +1764,7 @@ module.exports = function (app, ctx) {
       // Add new paths, avoiding duplicates (same dxCall+freq within 2 minutes)
       const mergedPaths = [...existingValidPaths];
       for (const newPath of newPaths) {
-        const isDuplicate = mergedPaths.some(
-          (existing) =>
-            existing.dxCall === newPath.dxCall && existing.freq === newPath.freq && now - existing.timestamp < 120000, // 2 minute dedup window
-        );
+        const isDuplicate = mergedPaths.some((existing) => areDXPathsDuplicate(existing, newPath, now));
         if (!isDuplicate) {
           mergedPaths.push(newPath);
         }
@@ -1304,5 +1799,5 @@ module.exports = function (app, ctx) {
   });
 
   // Return shared state
-  return { customDxSessions, dxSpotPathsCacheByKey };
+  return { customDxSessions, dxSpotPathsCacheByKey, dxUdpSessions };
 };

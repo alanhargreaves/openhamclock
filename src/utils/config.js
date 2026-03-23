@@ -27,13 +27,17 @@ export const DEFAULT_CONFIG = {
   propagation: {
     mode: 'SSB', // SSB, CW, FT8, FT4, WSPR, JS8, RTTY, PSK31
     power: 100, // TX power in watts
+    antenna: 'isotropic', // Antenna profile key
   },
   theme: 'dark', // 'dark', 'light', 'legacy', or 'retro'
   layout: 'modern', // 'modern' or 'classic'
   mouseZoom: 50, // Factor to affect rate of zooming with scrollwheel (1-100)
   timezone: '', // IANA timezone (e.g. 'America/Regina') — empty = browser default
   use12Hour: true,
+  swapHeaderClocks: false, // false = UTC first, true = Local first
+  showMutualReception: true, // Show gold star on PSK spots with mutual reception
   preventSleep: false, // Keep screen awake while app is open (tablet/kiosk mode)
+  displaySchedule: { enabled: false, sleepTime: '23:00', wakeTime: '07:00' }, // Scheduled display on/off
   showSatellites: true,
   showPota: true,
   showDxPaths: true,
@@ -58,6 +62,10 @@ export const DEFAULT_CONFIG = {
     dxCluster: 30000, // 30 seconds (was 5 sec)
     terminator: 60000, // 1 minute
   },
+  dxClusterSource: 'dxspider-proxy',
+  customDxCluster: { enabled: false, host: '', port: 7300 },
+  udpDxCluster: { host: '', port: 12060 },
+  wsjtxRelayMulticast: { enabled: false, address: '224.0.0.1' },
 };
 
 // Cache for server config
@@ -117,6 +125,11 @@ export const loadConfig = () => {
       showPota: serverConfig.showPota ?? config.showPota,
       showDxPaths: serverConfig.showDxPaths ?? config.showDxPaths,
       panels: { ...config.panels, ...serverConfig.panels },
+      dxClusterSource: serverConfig.dxClusterSource || config.dxClusterSource,
+      udpDxCluster: {
+        host: serverConfig.dxUdpHost || config.udpDxCluster.host,
+        port: parseInt(serverConfig.dxUdpPort, 10) || config.udpDxCluster.port,
+      },
     };
   }
 
@@ -142,6 +155,7 @@ export const loadConfig = () => {
       defaultDX: localConfig.defaultDX || config.defaultDX,
       panels: { ...config.panels, ...localConfig.panels },
       refreshIntervals: { ...config.refreshIntervals, ...localConfig.refreshIntervals },
+      udpDxCluster: localConfig.udpDxCluster || config.udpDxCluster,
     };
   }
 
@@ -181,6 +195,7 @@ export const saveConfig = (config) => {
 const SYNC_KEYS = [
   'openhamclock_config',
   'openhamclock_dockLayout',
+  'openhamclock_dxFavorites',
   'openhamclock_dxFilters',
   'openhamclock_dxLocation',
   'openhamclock_dxLocked',
@@ -394,6 +409,7 @@ export const MAP_STYLES = {
     url: '',
     attribution: 'Azimuthal Equidistant',
     isCanvas: true,
+    legacy: true, // Hidden from dropdown — projection is now a separate toggle
   },
 };
 

@@ -23,7 +23,7 @@ All notable changes to OpenHamClock will be documented in this file.
 - **Startup warning**: Server prints visible warning when `API_WRITE_KEY` is not set.
 - **Rig-bridge CORS**: Restricted to explicit origin allowlist (was wildcard `*`).
 - **Rig-bridge localhost binding**: HTTP server binds to `127.0.0.1` by default (was `0.0.0.0`).
-- **Rig-bridge serial port validation**: Paths validated against OS-specific patterns (COM*, /dev/tty*, /dev/cu.*).
+- **Rig-bridge serial port validation**: Paths validated against OS-specific patterns (COM*, /dev/tty*, /dev/cu.\*).
 - **Rig-bridge relay SSRF**: Relay URL validated to reject private/reserved addresses.
 
 ### Added
@@ -34,6 +34,7 @@ All notable changes to OpenHamClock will be documented in this file.
 - **DX News text scale**: Adjustable font size (0.7x–2.0x) with A-/A+ buttons. Persists in localStorage.
 - **Layout lock border panel**: Lock/unlock toggle in dedicated FlexLayout border tab (Dockable layout).
 - **Rig-bridge multicast**: WSJT-X relay supports UDP multicast for multi-app packet sharing.
+- **WSJT-X relay multicast UI**: Configurable multicast address in Settings → Station. Relay download scripts include the multicast address automatically. macOS `mktemp` compatibility fix. Interim solution — relay functionality will be consolidated into rig-bridge in a future release.
 - **Rig-bridge simulated radio**: Mock plugin for testing without hardware (`radio.type = "mock"`).
 - **DX cluster TCP keepalive**: Persistent telnet sessions use OS-level keepalive and auto-reconnect after 5 min silence.
 - **DX cluster SSID**: Callsign SSID (-56) appended automatically when not provided.

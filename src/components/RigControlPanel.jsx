@@ -46,7 +46,13 @@ const RigControlPanel = () => {
       </div>
 
       <div className="panel-content">
-        {error && <div className="error-banner">{t('app.rigControl.error.daemon')}</div>}
+        {error === 'unauthorized' && <div className="error-banner">{t('app.rigControl.error.unauthorized')}</div>}
+        {error === 'ptt-disabled' && (
+          <div className="error-banner warning">{t('app.rigControl.error.pttDisabled')}</div>
+        )}
+        {error && error !== 'unauthorized' && error !== 'ptt-disabled' && (
+          <div className="error-banner">{t('app.rigControl.error.daemon')}</div>
+        )}
 
         <div className="rig-display">
           <div className={`frequency-readout ${ptt ? 'transmitting' : ''}`}>
@@ -72,13 +78,15 @@ const RigControlPanel = () => {
 
           <div className="ptt-control">
             <button
-              className={`ptt-btn ${ptt ? 'active' : ''}`}
+              className={`ptt-btn ${ptt ? 'active' : ''} ${error === 'ptt-disabled' ? 'ptt-blocked' : ''}`}
               onMouseDown={() => setPTT(true)}
               onMouseUp={() => setPTT(false)}
               onTouchStart={() => setPTT(true)}
               onTouchEnd={() => setPTT(false)}
               disabled={!enabled}
+              title={error === 'ptt-disabled' ? t('app.rigControl.error.pttDisabled') : undefined}
             >
+              {error === 'ptt-disabled' ? '🔒 ' : ''}
               {t('app.rigControl.ptt')}
             </button>
           </div>
@@ -159,6 +167,14 @@ const RigControlPanel = () => {
             text-align: center;
             margin-bottom: 0.5rem;
             font-size: 0.8rem;
+        }
+        .error-banner.warning {
+            background: var(--accent-amber, #f59e0b);
+            color: #000;
+        }
+        .ptt-btn.ptt-blocked {
+            opacity: 0.6;
+            border-style: dashed;
         }
       `}</style>
     </div>

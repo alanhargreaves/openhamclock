@@ -11,7 +11,6 @@
     "stopBits": 2,
     "parity": "none",
     "dtr": true,
-    "rts": true,
     "rtscts": false,
     "icomAddress": "0x94",
     "pollInterval": 500,
@@ -19,7 +18,25 @@
     "rigctldHost": "127.0.0.1",
     "rigctldPort": 4532,
     "flrigHost": "127.0.0.1",
-    "flrigPort": 12345
+    "flrigPort": 12345,
+    "fixSplit": false
+  },
+  "tci": {
+    "host": "localhost",
+    "port": 40001,
+    "trx": 0,
+    "vfo": 0
+  },
+  "smartsdr": {
+    "host": "192.168.1.100",
+    "port": 4992,
+    "sliceIndex": 0
+  },
+  "rtltcp": {
+    "host": "127.0.0.1",
+    "port": 1234,
+    "sampleRate": 2400000,
+    "gain": "auto"
   },
   "wsjtxRelay": {
     "enabled": false,
@@ -31,6 +48,7 @@
     "verbose": false,
     "multicast": false,
     "multicastGroup": "224.0.0.1",
-    "multicastInterface": ""
+    "multicastInterface": "",
+    "udpBindAddress": ""
   }
 }

@@ -22,11 +22,17 @@ Also works with **Elecraft** radios (K3, K4, KX3, KX2) using the Kenwood plugin.
 
 TCI (Transceiver Control Interface) is a WebSocket-based protocol used by modern SDR applications. Unlike serial CAT, TCI **pushes** frequency, mode, and PTT changes in real-time — no polling, no serial port conflicts.
 
-| Application   | Radios                | Default TCI Port |
-| ------------- | --------------------- | ---------------- |
-| **Thetis**    | Hermes Lite 2, ANAN   | 40001            |
-| **ExpertSDR** | SunSDR2               | 40001            |
-| **SmartSDR**  | Flex (via TCI bridge) | varies           |
+| Application   | Radios              | Default TCI Port |
+| ------------- | ------------------- | ---------------- |
+| **Thetis**    | Hermes Lite 2, ANAN | 40001            |
+| **ExpertSDR** | SunSDR2             | 40001            |
+
+### SDR Radios (Native TCP)
+
+| Application  | Radios                         | Default Port |
+| ------------ | ------------------------------ | ------------ |
+| **SmartSDR** | FlexRadio 6000/8000 series     | 4992         |
+| **rtl_tcp**  | RTL-SDR dongles (receive-only) | 1234         |
 
 ### Via Control Software (Legacy)
 
@@ -143,13 +149,123 @@ The bridge auto-reconnects every 5 s if the connection drops — just restart yo
 
 ---
 
-## WSJT-X Relay
+## FlexRadio SmartSDR
 
-The WSJT-X Relay is an **integration plugin** (not a radio plugin) that listens for WSJT-X UDP packets on the local machine and forwards decoded messages to an OpenHamClock server in real-time. This lets OpenHamClock display your FT8/FT4 decodes as DX spots without any manual intervention.
+The SmartSDR plugin connects directly to a FlexRadio 6000 or 8000 series radio via the native SmartSDR TCP API — no rigctld, no SmartSDR CAT, no DAX required. The radio pushes frequency, mode, and slice changes in real-time.
 
 ### Setup
 
 Edit `rig-bridge-config.json`:
+
+```json
+{
+  "radio": { "type": "smartsdr" },
+  "smartsdr": {
+    "host": "192.168.1.100",
+    "port": 4992,
+    "sliceIndex": 0
+  }
+}
+```
+
+| Field        | Description                        | Default         |
+| ------------ | ---------------------------------- | --------------- |
+| `host`       | IP address of the FlexRadio        | `192.168.1.100` |
+| `port`       | SmartSDR TCP API port              | `4992`          |
+| `sliceIndex` | Slice receiver index (0 = Slice A) | `0`             |
+
+You should see:
+
+```
+[SmartSDR] Connecting to 192.168.1.100:4992...
+[SmartSDR] ✅ Connected — Slice A on 14.074 MHz
+```
+
+The bridge auto-reconnects every 5 s if the connection drops.
+
+**Supported modes:** USB, LSB, CW, AM, SAM, FM, DATA-USB (DIGU), DATA-LSB (DIGL), RTTY, FreeDV
+
+---
+
+## RTL-SDR (rtl_tcp)
+
+The RTL-SDR plugin connects to an `rtl_tcp` server for cheap RTL-SDR dongles. It is **receive-only** — frequency tuning works, but mode changes and PTT are no-ops.
+
+### Setup
+
+1. Start `rtl_tcp` on the machine with the dongle:
+
+```bash
+rtl_tcp -a 127.0.0.1 -p 1234
+```
+
+2. Edit `rig-bridge-config.json`:
+
+```json
+{
+  "radio": { "type": "rtl-tcp" },
+  "rtltcp": {
+    "host": "127.0.0.1",
+    "port": 1234,
+    "sampleRate": 2400000,
+    "gain": "auto"
+  }
+}
+```
+
+| Field        | Description                                     | Default     |
+| ------------ | ----------------------------------------------- | ----------- |
+| `host`       | Host running `rtl_tcp`                          | `127.0.0.1` |
+| `port`       | `rtl_tcp` listen port                           | `1234`      |
+| `sampleRate` | IQ sample rate in Hz                            | `2400000`   |
+| `gain`       | Tuner gain in tenths of dB, or `"auto"` for AGC | `"auto"`    |
+
+You should see:
+
+```
+[RTL-TCP] Connecting to 127.0.0.1:1234...
+[RTL-TCP] ✅ Connected — tuner: R820T
+[RTL-TCP] Setting sample rate: 2.4 MS/s
+[RTL-TCP] Gain: auto (AGC)
+```
+
+---
+
+## WSJT-X Relay
+
+The WSJT-X Relay is an **integration plugin** (not a radio plugin) that listens for WSJT-X UDP packets on the local machine and forwards decoded messages to an OpenHamClock server in real-time. This lets OpenHamClock display your FT8/FT4 decodes as DX spots without any manual intervention.
+
+> **⚠️ Startup order matters when running on the same machine as OpenHamClock**
+>
+> Both rig-bridge and a locally-running OpenHamClock instance listen on the same UDP port (default **2237**) for WSJT-X packets. Only one process can hold the port at a time.
+>
+> **Always start rig-bridge first.** It will bind UDP 2237 and relay decoded messages to OHC via HTTP. If OpenHamClock starts first and claims the port, rig-bridge will log `UDP port already in use` and receive nothing — the relay will be silently inactive.
+>
+> If you see that warning in the rig-bridge console log, stop OpenHamClock, restart rig-bridge, then start OpenHamClock again.
+
+### Getting your relay credentials
+
+The relay requires two values from your OpenHamClock server: a **relay key** and a **session ID**. There are two ways to set them up:
+
+#### Option A — Auto-configure from OpenHamClock (recommended)
+
+1. Open **OpenHamClock** → **Settings** → **Station Settings** → **Rig Control**
+2. Make sure Rig Control is enabled and the rig-bridge Host URL/Port are filled in
+3. Scroll to the **WSJT-X Relay** sub-section
+4. Note your **Session ID** (copy it with the 📋 button)
+5. Click **Configure Relay on Rig Bridge** — OpenHamClock fetches the relay key from its own server and pushes both credentials directly to rig-bridge in one step
+
+#### Option B — Fetch from rig-bridge setup UI
+
+1. Open **http://localhost:5555** → **Integrations** tab
+2. Enable the WSJT-X Relay checkbox and enter the OpenHamClock Server URL
+3. Click **🔗 Fetch credentials** — rig-bridge retrieves the relay key automatically
+4. Copy your **Session ID** from OpenHamClock → Settings → Station → Rig Control → WSJT-X Relay and paste it into the Session ID field
+5. Click **Save Integrations**
+
+#### Option C — Manual config
+
+Edit `rig-bridge-config.json` directly:
 
 ```json
 {
@@ -168,11 +284,13 @@ Edit `rig-bridge-config.json`:
 }
 ```
 
+### Config reference
+
 | Field                | Description                                             | Default                    |
 | -------------------- | ------------------------------------------------------- | -------------------------- |
 | `enabled`            | Activate the relay on startup                           | `false`                    |
 | `url`                | OpenHamClock server URL                                 | `https://openhamclock.com` |
-| `key`                | Relay authentication key (from your OHC account)        | —                          |
+| `key`                | Relay authentication key (from your OHC server)         | —                          |
 | `session`            | Browser session ID for per-user isolation               | —                          |
 | `udpPort`            | UDP port WSJT-X is sending to                           | `2237`                     |
 | `batchInterval`      | How often decoded messages are sent (ms)                | `2000`                     |
@@ -245,19 +363,23 @@ Executables are output to the `dist/` folder.
 
 ## Troubleshooting
 
-| Problem                   | Solution                                                                                                                                                    |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No COM ports found        | Install USB driver (Silicon Labs CP210x for Yaesu, FTDI for some Kenwood)                                                                                   |
-| Port opens but no data    | Check baud rate matches radio's CAT Rate setting                                                                                                            |
-| Icom not responding       | Verify CI-V address matches your radio model                                                                                                                |
-| CORS errors in browser    | The bridge allows all origins by default                                                                                                                    |
-| Port already in use       | Close flrig/rigctld if running — you don't need them anymore                                                                                                |
-| PTT not responsive        | Enable **Hardware Flow (RTS/CTS)** (especially for FT-991A/FT-710)                                                                                          |
-| macOS Comms Failure       | The bridge automatically applies a `stty` fix for CP210x drivers.                                                                                           |
-| TCI: Connection refused   | Enable TCI in your SDR app (Thetis → Setup → CAT Control → Enable TCI Server)                                                                               |
-| TCI: No frequency updates | Check `trx` / `vfo` index in config match the active transceiver in your SDR app                                                                            |
-| TCI: Remote SDR           | Set `tci.host` to the IP of the machine running the SDR application                                                                                         |
-| Multicast: no packets     | Verify `multicastGroup` matches what WSJT-X sends to; check OS firewall allows multicast UDP; set `multicastInterface` to the correct NIC IP if multi-homed |
+| Problem                       | Solution                                                                                                                                                    |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No COM ports found            | Install USB driver (Silicon Labs CP210x for Yaesu, FTDI for some Kenwood)                                                                                   |
+| Port opens but no data        | Check baud rate matches radio's CAT Rate setting                                                                                                            |
+| Icom not responding           | Verify CI-V address matches your radio model                                                                                                                |
+| CORS errors in browser        | The bridge allows all origins by default                                                                                                                    |
+| Port already in use           | Close flrig/rigctld if running — you don't need them anymore                                                                                                |
+| PTT not responsive            | Enable **Hardware Flow (RTS/CTS)** (especially for FT-991A/FT-710)                                                                                          |
+| macOS Comms Failure           | The bridge automatically applies a `stty` fix for CP210x drivers.                                                                                           |
+| TCI: Connection refused       | Enable TCI in your SDR app (Thetis → Setup → CAT Control → Enable TCI Server)                                                                               |
+| TCI: No frequency updates     | Check `trx` / `vfo` index in config match the active transceiver in your SDR app                                                                            |
+| TCI: Remote SDR               | Set `tci.host` to the IP of the machine running the SDR application                                                                                         |
+| SmartSDR: Connection refused  | Confirm the radio is powered on and reachable; default API port is 4992                                                                                     |
+| SmartSDR: No slice updates    | Check `sliceIndex` matches the active slice in SmartSDR                                                                                                     |
+| RTL-SDR: Connection refused   | Start `rtl_tcp` first: `rtl_tcp -a 127.0.0.1 -p 1234`; check no other app holds the dongle                                                                  |
+| RTL-SDR: Frequency won't tune | Verify the frequency is within your dongle's supported range (typically 24 MHz–1.7 GHz for R820T)                                                           |
+| Multicast: no packets         | Verify `multicastGroup` matches what WSJT-X sends to; check OS firewall allows multicast UDP; set `multicastInterface` to the correct NIC IP if multi-homed |
 
 ---
 
@@ -299,6 +421,8 @@ rig-bridge/
     │   ├── protocol-kenwood.js # Kenwood ASCII protocol
     │   └── protocol-icom.js    # Icom CI-V binary protocol
     ├── tci.js             # TCI/SDR WebSocket plugin (Thetis, ExpertSDR, etc.)
+    ├── smartsdr.js        # FlexRadio SmartSDR native TCP API plugin
+    ├── rtl-tcp.js         # RTL-SDR via rtl_tcp binary protocol (receive-only)
     ├── rigctld.js         # rigctld TCP plugin
     ├── flrig.js           # flrig XML-RPC plugin
     ├── mock.js            # Simulated radio for testing (no hardware needed)

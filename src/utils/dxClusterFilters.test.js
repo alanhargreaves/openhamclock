@@ -512,7 +512,9 @@ describe('dxClusterFilters', () => {
       expect(applyDXFilters(spot, emptyFilters)).toBe(true);
     });
 
-    it('should handle missing comment', () => {
+    it('should infer mode from frequency when comment is missing', () => {
+      // 14.074 MHz is the official FT8 calling frequency on 20m.
+      // When no comment is provided, detectMode() infers 'FT8' from the frequency.
       const spot = {
         dxCall: 'W1AW',
         spotter: 'K2ABC',
@@ -521,7 +523,7 @@ describe('dxClusterFilters', () => {
       const filters = {
         modes: ['FT8'],
       };
-      expect(applyDXFilters(spot, filters)).toBe(false);
+      expect(applyDXFilters(spot, filters)).toBe(true);
     });
 
     it('should handle missing frequency', () => {

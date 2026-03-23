@@ -45,10 +45,13 @@ The OpenHamClock plugin system allows developers to easily add custom map layers
 ```
 src/plugins/
 ├── layerRegistry.js          # Central plugin registration
-├── layers/                   # Individual plugin implementations
+├── layers/                   # Built-in plugin implementations
 │   ├── useWXRadar.js        # Weather radar example
 │   ├── useEarthquakes.js    # Earthquake data example
-│   └── useYourPlugin.js     # Your custom plugin
+│   └── ...
+├── local/                    # YOUR custom plugins go here (gitignored)
+│   ├── README.md            # Quick-start template
+│   └── useMyLayer.js        # Auto-discovered — no registration needed
 ├── README.md                 # Documentation
 └── QUICKSTART.md            # Quick reference guide
 
@@ -57,6 +60,8 @@ src/components/
 ├── PluginLayer.jsx          # React wrapper for plugin hooks
 └── SettingsPanel.jsx        # UI controls for plugins
 ```
+
+> **Local plugins**: Drop `.js` files into `src/plugins/local/` and they are automatically loaded. This directory is gitignored, so your custom plugins **survive `git pull` updates**. See `src/plugins/local/README.md` for a template.
 
 ### Data Flow
 

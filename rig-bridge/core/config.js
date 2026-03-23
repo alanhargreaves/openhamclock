@@ -5,6 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 // Portable config path (works in pkg snapshots too)
 const CONFIG_DIR = process.pkg ? path.dirname(process.execPath) : path.join(__dirname, '..');
@@ -14,26 +15,38 @@ const DEFAULT_CONFIG = {
   port: 5555,
   bindAddress: '127.0.0.1', // Bind to localhost only; set to '0.0.0.0' for LAN access
   corsOrigins: '', // Extra allowed CORS origins (comma-separated); OHC origins always allowed
-  debug: false, // Centralized verbose CAT logging flag
+  // SECURITY: API token protecting write endpoints (/freq, /mode, /ptt, POST /api/config, etc.)
+  // Auto-generated on first run. Copy from http://localhost:5555 and paste into OHC → Settings →
+  // Rig Control → API Token. Empty string disables enforcement (backwards-compatible).
+  apiToken: '',
+  debug: false, // Verbose CAT logging — also settable via --debug CLI flag
   logging: true, // Enable/disable console log capture & broadcast to UI
+  // Tracks whether the auto-generated token has been shown in the setup UI.
+  // false → first-run banner shown; true → normal login gate shown.
+  tokenDisplayed: false,
   radio: {
     type: 'none', // none | yaesu | kenwood | icom | flrig | rigctld | tci
-    serialPort: '', // COM3, /dev/ttyUSB0, etc.
+    serialPort: '', // COM3, /dev/ttyUSB0, /dev/cu.usbserial-*, etc.
+    // ── Serial line parameters (USB CAT: yaesu / kenwood / icom) ──────────
     baudRate: 38400,
     dataBits: 8,
-    stopBits: 2, // FT-991A and many Yaesu rigs require 2; others work fine with it.
-    parity: 'none',
-    dtr: true, // Assert DTR for level converter power
-    rts: true, // Assert RTS for level converter power
-    rtscts: false, // Hardware flow control — off by default; use manual DTR/RTS instead
-    icomAddress: '0x94', // Default CI-V address for IC-7300
-    pollInterval: 500,
-    pttEnabled: false,
-    // Legacy backend settings
+    stopBits: 2, // FT-991A and many Yaesu rigs require 2; others work fine with it
+    parity: 'none', // none | even | odd | mark | space
+    // ── Hardware signal control ────────────────────────────────────────────
+    dtr: true, // Assert DTR — powers the CAT level-converter; disable if it causes issues
+    rtscts: false, // Hardware flow control — off by default; use dtr for level-converter power
+    // ── Icom CI-V ─────────────────────────────────────────────────────────
+    icomAddress: '0x94', // IC-7300: 0x94 · IC-7610: 0x98 · IC-9700: 0xA2 · IC-705: 0xA4
+    // ── rigctld / Hamlib ──────────────────────────────────────────────────
     rigctldHost: '127.0.0.1',
     rigctldPort: 4532,
+    fixSplit: false, // Send "S 0 VFOA" after each freq change to prevent Hamlib split-mode glitch
+    // ── flrig ─────────────────────────────────────────────────────────────
     flrigHost: '127.0.0.1',
     flrigPort: 12345,
+    // ── Common ────────────────────────────────────────────────────────────
+    pollInterval: 500, // State poll interval in ms (rigctld / flrig / Kenwood / Icom)
+    pttEnabled: false, // Allow rig-bridge to send PTT commands
   },
   tci: {
     host: 'localhost',
@@ -52,6 +65,9 @@ const DEFAULT_CONFIG = {
     multicast: false, // Join a multicast group instead of unicast
     multicastGroup: '224.0.0.1', // WSJT-X conventional multicast group
     multicastInterface: '', // Local NIC IP for multi-homed systems; '' = let OS choose
+    // SECURITY: UDP bind address. Default '127.0.0.1' (localhost-only).
+    // Set to '0.0.0.0' only if WSJT-X runs on a separate machine and multicast is not used.
+    udpBindAddress: '', // '' = use secure default (127.0.0.1, or 0.0.0.0 when multicast enabled)
   },
 };
 
@@ -76,6 +92,8 @@ function loadConfig() {
         radio: { ...DEFAULT_CONFIG.radio, ...(raw.radio || {}) },
         tci: { ...DEFAULT_CONFIG.tci, ...(raw.tci || {}) },
         wsjtxRelay: { ...DEFAULT_CONFIG.wsjtxRelay, ...(raw.wsjtxRelay || {}) },
+        smartsdr: { ...(raw.smartsdr || {}) },
+        rtltcp: { ...(raw.rtltcp || {}) },
         // Coerce logging to boolean in case the stored value is a string
         logging: raw.logging !== undefined ? !!raw.logging : DEFAULT_CONFIG.logging,
       });
@@ -83,6 +101,18 @@ function loadConfig() {
     }
   } catch (e) {
     console.error('[Config] Failed to load:', e.message);
+  }
+
+  // SECURITY: Auto-generate an API token on first run if none is present.
+  // The token is persisted immediately so it survives restarts.
+  // Enforcement is active as soon as the token is non-empty (i.e. right now for
+  // all new installs). Existing installs with no token in their config file
+  // remain unenforced until they explicitly copy the token to OpenHamClock.
+  if (!config.apiToken) {
+    config.apiToken = crypto.randomBytes(16).toString('hex');
+    config.tokenDisplayed = false; // always show first-run banner for a new token
+    saveConfig();
+    console.log('[Config] Generated new API token — copy it from http://localhost:5555');
   }
 }
 

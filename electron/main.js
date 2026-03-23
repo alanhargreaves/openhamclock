@@ -188,7 +188,7 @@ function createMenu() {
             dialog.showMessageBox(mainWindow, {
               type: 'info',
               title: 'About OpenHamClock',
-              message: 'OpenHamClock v3.0.0',
+              message: `OpenHamClock v${require('../package.json').version}`,
               detail:
                 'An open-source amateur radio dashboard.\n\nIn memory of Elwood Downey, WB0OEW, creator of the original HamClock.\n\n73 de the OpenHamClock community!',
             });

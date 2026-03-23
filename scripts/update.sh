@@ -223,8 +223,12 @@ done
 
 echo ""
 echo "📦 Installing dependencies..."
-# --include=dev ensures vite/vitest are installed even if NODE_ENV=production
-npm install --include=dev
+# --include=dev ensures vite is installed even if NODE_ENV=production.
+# --ignore-scripts skips postinstall hooks that fail on Linux/Pi (e.g.
+# electron-winstaller copying Windows-only binaries).
+# ELECTRON_SKIP_BINARY_DOWNLOAD=1 avoids downloading the ~200 MB Electron
+# binary which is not needed for the server/kiosk build.
+ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install --include=dev --ignore-scripts
 
 echo ""
 echo "📦 Downloading vendor assets..."
@@ -236,6 +240,9 @@ echo "🔨 Building frontend..."
 # (browsers may cache old chunks, causing blank screens after update)
 rm -rf dist/
 npm run build
+
+# Remove dev dependencies after build to free disk space
+npm prune --omit=dev
 
 echo ""
 echo "🔄 Restoring configuration..."

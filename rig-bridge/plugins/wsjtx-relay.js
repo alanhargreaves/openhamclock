@@ -401,19 +401,13 @@ const descriptor = {
         return;
       }
 
-      // SECURITY: Validate relay URL to prevent SSRF via config API.
-      // The relay should only POST to legitimate OpenHamClock servers, not internal services.
+      // Validate relay URL — protocol only; host restrictions are unnecessary because
+      // the relay authenticates to the target via key + session, and the config API
+      // is protected by the rig-bridge API token.
       try {
         const parsed = new URL(cfg.url);
         if (!['http:', 'https:'].includes(parsed.protocol)) {
           console.error(`[WsjtxRelay] Blocked: only http/https URLs allowed (got ${parsed.protocol})`);
-          return;
-        }
-        const host = parsed.hostname.toLowerCase();
-        const blockedHosts =
-          /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.|::1|fe80:|fc00:|fd00:)/;
-        if (blockedHosts.test(host)) {
-          console.error(`[WsjtxRelay] Blocked: relay URL must not point to a private/internal address (${host})`);
           return;
         }
       } catch (e) {
@@ -492,7 +486,13 @@ const descriptor = {
         }, 60000);
       });
 
-      socket.bind(udpPort, '0.0.0.0');
+      // SECURITY: Bind to localhost by default to prevent external UDP packet injection.
+      // Multicast requires joining a group on a real (non-loopback) interface, so fall
+      // back to '0.0.0.0' automatically when multicast is enabled. For the rare case
+      // where multicast is disabled but WSJT-X runs on a different machine, set
+      // wsjtxRelay.udpBindAddress to "0.0.0.0" in rig-bridge-config.json.
+      const bindAddr = cfg.multicast ? '0.0.0.0' : cfg.udpBindAddress || '127.0.0.1';
+      socket.bind(udpPort, bindAddr);
     }
 
     function disconnect() {

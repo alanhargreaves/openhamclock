@@ -514,9 +514,9 @@ module.exports = function (app, ctx) {
           // 1. Try dxGrid from WSJT-X (if it knows the DX station's grid)
           if (dxGrid) {
             const coords = gridToLatLon(dxGrid);
-            if (coords) {
-              dxLat = coords.latitude;
-              dxLon = coords.longitude;
+            if (coords !== null) {
+              dxLat = coords.lat;
+              dxLon = coords.lon;
             }
           }
           // 2. Try grid cache (from prior CQ/exchange messages with grids)
@@ -935,9 +935,13 @@ module.exports = function (app, ctx) {
       });
 
       if (WSJTX_MULTICAST_ADDRESS) {
+        // Bind to 0.0.0.0 explicitly — on some Linux systems (especially Pi) omitting
+        // the address can cause the socket to bind to the wrong interface, preventing
+        // multicast group membership from working.
         wsjtxSocket.bind(
           {
             port: WSJTX_UDP_PORT,
+            address: '0.0.0.0',
             exclusive: false,
           },
           () => {
@@ -1074,6 +1078,32 @@ module.exports = function (app, ctx) {
     res.json({ ok: true, processed, timestamp: Date.now() });
   });
 
+  // API endpoint: relay credentials — returns relay key so rig-bridge can auto-configure
+  // CORS is opened for localhost origins only so the rig-bridge setup UI (localhost:5555)
+  // can fetch credentials without requiring the user to copy/paste them manually.
+  function setLocalCors(req, res) {
+    const origin = req.headers.origin || '';
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      res.set('Access-Control-Allow-Origin', origin);
+      res.set('Vary', 'Origin');
+    }
+  }
+
+  app.options('/api/wsjtx/relay-credentials', (req, res) => {
+    setLocalCors(req, res);
+    res.set('Access-Control-Allow-Methods', 'GET');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    res.sendStatus(204);
+  });
+
+  app.get('/api/wsjtx/relay-credentials', (req, res) => {
+    setLocalCors(req, res);
+    if (!WSJTX_RELAY_KEY) {
+      return res.status(503).json({ error: 'Relay not configured on this server — WSJTX_RELAY_KEY not set' });
+    }
+    res.json({ relayKey: WSJTX_RELAY_KEY });
+  });
+
   // API endpoint: serve raw relay.js (used by Windows .bat launcher)
   app.get('/api/wsjtx/relay/agent.js', (req, res) => {
     const relayJsPath = path.join(ROOT_DIR, 'wsjtx-relay', 'relay.js');
@@ -1115,6 +1145,18 @@ module.exports = function (app, ctx) {
         error: 'Session ID required — download from the OpenHamClock dashboard',
       });
     }
+    // Get the multicast address if we were passed one
+    const multicastAddress = req.query.multicast;
+
+    // Check to see if it is valid
+    if (multicastAddress) {
+      const parts = multicastAddress.split('.').map(Number);
+      if (parts.length !== 4 || parts[0] < 224 || parts[0] > 239) {
+        return res.status(400).json({
+          error: `${multicastAddress}: Invalid multicast address (must be 224.0.0.0–239.255.255.255)`,
+        });
+      }
+    }
 
     // SECURITY: Validate platform parameter
     if (!['linux', 'mac', 'windows'].includes(platform)) {
@@ -1129,6 +1171,7 @@ module.exports = function (app, ctx) {
     const safeServerURL = sanitizeForShell(serverURL);
     const safeSessionId = sanitizeForShell(sessionId);
     const safeRelayKey = sanitizeForShell(WSJTX_RELAY_KEY);
+    const safeMulticastAddress = multicastAddress ? sanitizeForShell(multicastAddress) : '';
 
     if (platform === 'linux' || platform === 'mac') {
       // Build bash script with relay.js embedded as heredoc
@@ -1142,7 +1185,7 @@ module.exports = function (app, ctx) {
         '# Requires: Node.js 14+ (https://nodejs.org)',
         '#',
         '# In WSJT-X: Settings > Reporting > UDP Server',
-        '#   Address: 127.0.0.1   Port: 2237',
+        '#   Address: ' + (multicastAddress ? safeMulticastAddress : '127.0.0.1') + '   Port: 2237',
         '',
         'set -e',
         '',
@@ -1160,11 +1203,11 @@ module.exports = function (app, ctx) {
         '    exit 1',
         'fi',
         '',
-        '# Write relay agent to temp file',
-        'RELAY_FILE=$(mktemp /tmp/ohc-relay-XXXXXX.js)',
+        '# Write relay agent to temp file (unfortunately mktemp on macOS does not work the same as on Linux',
+        'RELAY_FILE=$([[ "$(uname -s)" == Linux ]] && mktemp /tmp/ohc-relay-XXXXXX.js || echo /tmp/ohc-relay-$$.js)',
         'trap "rm -f $RELAY_FILE" EXIT',
         '',
-        'cat > "$RELAY_FILE" << \'OPENHAMCLOCK_RELAY_EOF\'',
+        'cat > "${RELAY_FILE}" << \'OPENHAMCLOCK_RELAY_EOF\'',
         relayJs,
         'OPENHAMCLOCK_RELAY_EOF',
         '',
@@ -1172,6 +1215,7 @@ module.exports = function (app, ctx) {
         'exec node "$RELAY_FILE" \\',
         '  --url "' + safeServerURL + '" \\',
         '  --key "' + safeRelayKey + '" \\',
+        multicastAddress ? '  --multicast "' + safeMulticastAddress + '" \\' : '',
         '  --session "' + safeSessionId + '"',
       ];
 
@@ -1272,19 +1316,22 @@ module.exports = function (app, ctx) {
         'echo   Relay agent ready.',
         'echo.',
         'echo   In WSJT-X: Settings ^> Reporting ^> UDP Server',
-        'echo     Address: 127.0.0.1   Port: 2237',
+        'echo     Address: ' + (multicastAddress ? safeMulticastAddress : '127.0.0.1') + '   Port: 2237',
         'echo.',
         'echo   Press Ctrl+C to stop',
         'echo.',
         '',
         ':: Run relay',
         '%NODE_EXE% "%TEMP%\\ohc-relay.js" --url "' +
-          safeServerURL +
-          '" --key "' +
-          safeRelayKey +
-          '" --session "' +
-          safeSessionId +
-          '"',
+        safeServerURL +
+        '" --key "' +
+        safeRelayKey +
+        '" --session "' +
+        safeSessionId +
+        '"' +
+        multicastAddress
+          ? ' --multicast "' + safeMulticastAddress + "'"
+          : '',
         '',
         'echo.',
         'echo   Relay stopped.',

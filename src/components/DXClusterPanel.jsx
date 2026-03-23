@@ -4,6 +4,7 @@
  */
 import { useTranslation } from 'react-i18next';
 import { getBandColor } from '../utils/callsign.js';
+import { matchesDXSpotPath } from '../utils/dxClusterSpotMatcher';
 import { IconSearch, IconMap, IconGlobe } from './Icons.jsx';
 import CallsignLink from './CallsignLink.jsx';
 
@@ -68,12 +69,14 @@ export const DXClusterPanel = ({
     if (filters?.bands?.length) count++;
     if (filters?.modes?.length) count++;
     if (filters?.watchlist?.length) count++;
+    if (filters?.commentText?.length) count++;
     if (filters?.callsign) count++;
     if (filters?.watchlistOnly) count++;
     if (filters?.excludeContinents) count += filters.excludeContinents.length;
     if (filters?.excludeCqZones) count += filters.excludeCqZones.length;
     if (filters?.excludeItuZones) count += filters.excludeItuZones.length;
-    if (filters?.excludeCallList) count += filters.excludeCallList.length;
+    if (filters?.excludeDXCallList) count += filters.excludeDXCallList.length;
+    if (filters?.excludeDECallList) count += filters.excludeDECallList.length;
 
     return count;
   };
@@ -214,7 +217,7 @@ export const DXClusterPanel = ({
             }
 
             const color = getBandColor(freqMHz);
-            const isHovered = hoveredSpot?.call === spot.call;
+            const isHovered = matchesDXSpotPath(hoveredSpot, spot);
 
             return (
               <div

@@ -24,6 +24,41 @@ const { getSerialPort, listPorts } = require('./serial-utils');
 const { state, addSseClient, removeSseClient } = require('./state');
 const { config, saveConfig } = require('./config');
 
+// ─── Security helpers ─────────────────────────────────────────────────────
+
+/**
+ * isValidRemoteHost — reject URL schemes, path separators, and anything that
+ * could be used for SSRF or injection. Allows localhost, IPv4, bracketed IPv6,
+ * and plain hostnames / FQDNs.
+ */
+function isValidRemoteHost(h) {
+  if (!h || typeof h !== 'string') return false;
+  if (/[/:]{2}|[/\\]/.test(h)) return false; // reject URLs and paths
+  return /^(localhost|\d{1,3}(\.\d{1,3}){3}|\[[\da-fA-F:]+\]|[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*)$/.test(
+    h,
+  );
+}
+
+function isValidPort(p) {
+  return Number.isInteger(p) && p >= 1 && p <= 65535;
+}
+
+/** Sliding-window in-memory rate limiter. Returns a middleware factory. */
+function makeRateLimiter(maxRequests, windowMs) {
+  const hits = new Map(); // IP → [timestamps]
+  return (req, res, next) => {
+    const ip = req.ip || 'unknown';
+    const now = Date.now();
+    const window = (hits.get(ip) || []).filter((t) => now - t < windowMs);
+    window.push(now);
+    hits.set(ip, window);
+    if (window.length > maxRequests) {
+      return res.status(429).json({ error: 'Too many requests' });
+    }
+    next();
+  };
+}
+
 // ─── Console log interceptor ───────────────────────────────────────────────
 // Wraps console.log/warn/error so every line is buffered and broadcast
 // to connected SSE log clients in addition to the normal stdout output.
@@ -67,7 +102,7 @@ console.error = (...args) => {
 
 // ──────────────────────────────────────────────────────────────────────────
 
-function buildSetupHtml(version) {
+function buildSetupHtml(version, firstRunToken = null) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -246,6 +281,10 @@ function buildSetupHtml(version) {
     .icom-addr.show { display: block; }
     .tci-opts { display: none; }
     .tci-opts.show { display: block; }
+    .smartsdr-opts { display: none; }
+    .smartsdr-opts.show { display: block; }
+    .rtltcp-opts { display: none; }
+    .rtltcp-opts.show { display: block; }
     .ohc-instructions {
       background: #0f1923;
       border: 1px dashed #2a3040;
@@ -354,13 +393,114 @@ function buildSetupHtml(version) {
     }
     .page-footer a { color: #374151; text-decoration: none; }
     .page-footer a:hover { color: #6b7280; }
+
+    /* ── Security / Auth ── */
+    .login-overlay {
+      position: fixed; inset: 0;
+      background: rgba(10,14,20,0.97);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9999;
+    }
+    .login-box {
+      background: #111620;
+      border: 1px solid #1e2530;
+      border-radius: 12px;
+      padding: 32px;
+      width: 100%;
+      max-width: 380px;
+      text-align: center;
+    }
+    .login-box h2 { color: #00ffcc; margin-bottom: 8px; font-size: 20px; }
+    .login-box p { color: #6b7280; font-size: 13px; margin-bottom: 20px; line-height: 1.5; }
+    .token-input-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .token-input-row input {
+      flex: 1; padding: 10px 12px;
+      background: #0a0e14; border: 1px solid #2a3040;
+      border-radius: 6px; color: #e2e8f0; font-size: 14px;
+      font-family: monospace; outline: none;
+    }
+    .token-input-row input:focus { border-color: #00ffcc; }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%,60% { transform: translateX(-8px); }
+      40%,80% { transform: translateX(8px); }
+    }
+    .shake { animation: shake 0.4s ease; }
+    .welcome-banner {
+      position: fixed; inset: 0;
+      background: rgba(10,14,20,0.97);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9998;
+    }
+    .welcome-box {
+      background: #111620;
+      border: 1px solid #00ffcc44;
+      border-radius: 12px;
+      padding: 32px;
+      width: 100%;
+      max-width: 460px;
+      text-align: center;
+    }
+    .welcome-box h2 { color: #00ffcc; font-size: 22px; margin-bottom: 12px; }
+    .welcome-box p { color: #9ca3af; font-size: 13px; margin-bottom: 16px; line-height: 1.6; }
+    .token-display {
+      display: flex; gap: 8px; align-items: center;
+      background: #0a0e14; border: 1px solid #2a3040;
+      border-radius: 6px; padding: 10px 12px; margin-bottom: 16px;
+    }
+    .token-display input {
+      flex: 1; background: none; border: none; color: #00ffcc;
+      font-family: monospace; font-size: 13px; outline: none;
+    }
+    .copy-btn {
+      padding: 4px 10px; background: #1e2530; border: 1px solid #2a3040;
+      border-radius: 4px; color: #9ca3af; font-size: 11px; cursor: pointer;
+    }
+    .copy-btn:hover { background: #2a3040; }
+    .security-hint {
+      font-size: 11px; color: #4b5563; margin-bottom: 20px; line-height: 1.5;
+    }
+    .logout-link {
+      font-size: 11px; color: #374151; text-decoration: none; cursor: pointer;
+    }
+    .logout-link:hover { color: #6b7280; }
   </style>
 </head>
 <body>
   <div class="container">
+    <!-- Login overlay (shown when token is set and user is not authenticated) -->
+    <div class="login-overlay" id="loginOverlay" style="display:none;">
+      <div class="login-box">
+        <h2>🔒 Rig Bridge</h2>
+        <p>Enter your API token to access the setup UI.</p>
+        <div class="token-input-row" id="loginRow">
+          <input type="password" id="loginToken" placeholder="Paste API token…" onkeydown="if(event.key==='Enter')doLogin()">
+          <button class="btn btn-secondary" onclick="toggleLoginVisible()" style="width:auto;padding:8px 12px;" title="Show/hide">👁</button>
+        </div>
+        <button class="btn btn-primary" onclick="doLogin()" style="margin-top:4px;">Unlock Setup</button>
+      </div>
+    </div>
+
+    <!-- First-run welcome banner (shown once to reveal the generated token) -->
+    <div class="welcome-banner" id="welcomeBanner" style="display:none;">
+      <div class="welcome-box">
+        <h2>🎉 Welcome to Rig Bridge!</h2>
+        <p>A unique API token has been generated to protect your setup. Copy it now and paste it into <strong>OpenHamClock → Settings → Rig Control → API Token</strong>.</p>
+        <div class="token-display">
+          <input type="text" id="welcomeToken" readonly>
+          <button class="copy-btn" onclick="copyToken()">Copy</button>
+        </div>
+        <div class="security-hint">This token will not be shown again. Store it somewhere safe (e.g. your password manager).</div>
+        <button class="btn btn-primary" onclick="dismissBanner()">I've copied it — Continue</button>
+      </div>
+    </div>
+
     <div class="header">
       <h1>📻 OpenHamClock Rig Bridge</h1>
       <div class="subtitle">Direct USB connection to your radio — no flrig or rigctld needed</div>
+      <div id="logoutArea" style="display:none;margin-top:8px;">
+        <span class="logout-link" onclick="doLogout()">🔓 Lock setup</span>
+      </div>
     </div>
 
     <!-- Live Status -->
@@ -391,8 +531,10 @@ function buildSetupHtml(version) {
             <option value="kenwood">Kenwood (TS-890, TS-590, TS-2000, etc.)</option>
             <option value="icom">Icom (IC-7300, IC-7610, IC-9700, IC-705, etc.)</option>
           </optgroup>
-          <optgroup label="SDR Radios (TCI)">
-            <option value="tci">TCI/SDR (Thetis, ExpertSDR, SunSDR2, etc.)</option>
+          <optgroup label="SDR Radios">
+            <option value="tci">TCI/SDR (Thetis, ExpertSDR, SunSDR2)</option>
+            <option value="smartsdr">FlexRadio SmartSDR (Flex 6000/8000)</option>
+            <option value="rtl-tcp">RTL-SDR (via rtl_tcp)</option>
           </optgroup>
           <optgroup label="Via Control Software (Legacy)">
             <option value="flrig">flrig (XML-RPC)</option>
@@ -487,6 +629,84 @@ function buildSetupHtml(version) {
           <div class="help-text">Enable TCI in your SDR app: Thetis → Setup → CAT Control → Enable TCI Server (port 40001)</div>
         </div>
 
+        <!-- SmartSDR options (FlexRadio) -->
+        <div class="smartsdr-opts" id="smartsdrOpts">
+          <div class="row">
+            <div>
+              <label>FlexRadio IP</label>
+              <input type="text" id="smartsdrHost" value="192.168.1.100" placeholder="192.168.1.100">
+            </div>
+            <div>
+              <label>API Port</label>
+              <input type="number" id="smartsdrPort" value="4992" placeholder="4992" min="1" max="65535">
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Slice Index</label>
+              <input type="number" id="smartsdrSlice" value="0" min="0" max="7" placeholder="0">
+            </div>
+            <div></div>
+          </div>
+          <div class="help-text">Connect directly to your FlexRadio via the SmartSDR TCP API (port 4992). No rigctld or SmartSDR CAT needed.</div>
+        </div>
+
+        <!-- RTL-TCP options (RTL-SDR) -->
+        <div class="rtltcp-opts" id="rtltcpOpts">
+          <div class="row">
+            <div>
+              <label>rtl_tcp Host</label>
+              <input type="text" id="rtltcpHost" value="127.0.0.1" placeholder="127.0.0.1">
+            </div>
+            <div>
+              <label>rtl_tcp Port</label>
+              <input type="number" id="rtltcpPort" value="1234" placeholder="1234" min="1" max="65535">
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Sample Rate (Hz)</label>
+              <input type="number" id="rtltcpSampleRate" value="2400000" min="225001" max="3200000" placeholder="2400000">
+            </div>
+            <div>
+              <label>Gain</label>
+              <select id="rtltcpGain">
+                <option value="auto" selected>Auto</option>
+                <option value="0">0 dB</option>
+                <option value="0.9">0.9 dB</option>
+                <option value="1.4">1.4 dB</option>
+                <option value="2.7">2.7 dB</option>
+                <option value="3.7">3.7 dB</option>
+                <option value="7.7">7.7 dB</option>
+                <option value="8.7">8.7 dB</option>
+                <option value="12.5">12.5 dB</option>
+                <option value="14.4">14.4 dB</option>
+                <option value="15.7">15.7 dB</option>
+                <option value="16.6">16.6 dB</option>
+                <option value="19.7">19.7 dB</option>
+                <option value="20.7">20.7 dB</option>
+                <option value="22.9">22.9 dB</option>
+                <option value="25.4">25.4 dB</option>
+                <option value="28.0">28.0 dB</option>
+                <option value="29.7">29.7 dB</option>
+                <option value="32.8">32.8 dB</option>
+                <option value="33.8">33.8 dB</option>
+                <option value="36.4">36.4 dB</option>
+                <option value="37.2">37.2 dB</option>
+                <option value="38.6">38.6 dB</option>
+                <option value="40.2">40.2 dB</option>
+                <option value="42.1">42.1 dB</option>
+                <option value="43.4">43.4 dB</option>
+                <option value="43.9">43.9 dB</option>
+                <option value="44.5">44.5 dB</option>
+                <option value="48.0">48.0 dB</option>
+                <option value="49.6">49.6 dB</option>
+              </select>
+            </div>
+          </div>
+          <div class="help-text">Start rtl_tcp first: <code>rtl_tcp -a 127.0.0.1 -p 1234</code> — Receive-only (no PTT or mode control).</div>
+        </div>
+
         <div class="section-divider"></div>
 
         <div class="row">
@@ -534,14 +754,22 @@ function buildSetupHtml(version) {
 
         <div id="wsjtxOpts" style="display:none;">
           <label>OpenHamClock Server URL</label>
-          <input type="text" id="wsjtxUrl" placeholder="https://openhamclock.com">
+          <div style="display:flex; gap:6px; align-items:center; margin-bottom:4px;">
+            <input type="text" id="wsjtxUrl" placeholder="https://openhamclock.com" style="flex:1; margin-bottom:0;">
+            <button class="btn btn-secondary" onclick="fetchWsjtxCredentials()" id="fetchCredsBtn" style="width:auto; padding:6px 12px; font-size:12px; white-space:nowrap;">🔗 Fetch credentials</button>
+          </div>
+          <div id="fetchCredsStatus" class="help-text" style="margin-bottom:10px;"></div>
 
           <label>Relay Key</label>
           <input type="text" id="wsjtxKey" placeholder="Your relay authentication key">
 
           <label>Session ID</label>
           <input type="text" id="wsjtxSession" placeholder="Your browser session ID">
-          <div class="help-text">The session ID links your relayed decodes to your OpenHamClock dashboard.</div>
+          <div class="help-text">
+            The session ID links your relayed decodes to your OpenHamClock dashboard.
+            Find it in OpenHamClock → Settings → Station → Rig Control → WSJT-X Relay,
+            or click <strong>Fetch credentials</strong> above to fill both fields automatically.
+          </div>
 
           <div class="row">
             <div>
@@ -626,6 +854,9 @@ function buildSetupHtml(version) {
   </footer>
 
   <script>
+    // Server-injected on first run — used by doAutoLogin() for seamless first-run auth
+    var __FIRST_RUN_TOKEN__ = ${firstRunToken ? JSON.stringify(firstRunToken) : 'null'};
+
     // ── Tab switching ──────────────────────────────────────────────────────
     function switchTab(name, btn) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -656,6 +887,39 @@ function buildSetupHtml(version) {
       document.getElementById('wsjtxOpts').style.display = enabled ? 'block' : 'none';
     }
 
+    async function fetchWsjtxCredentials() {
+      const url = document.getElementById('wsjtxUrl').value.trim();
+      const statusEl = document.getElementById('fetchCredsStatus');
+      const btn = document.getElementById('fetchCredsBtn');
+      if (!url) {
+        statusEl.style.color = '#f87171';
+        statusEl.textContent = '❌ Enter the OpenHamClock Server URL first.';
+        return;
+      }
+      btn.disabled = true;
+      statusEl.style.color = '#9ca3af';
+      statusEl.textContent = 'Fetching credentials…';
+      try {
+        const res = await fetch(url.replace(/[/]$/, '') + '/api/wsjtx/relay-credentials');
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          statusEl.style.color = '#f87171';
+          statusEl.textContent = '❌ ' + (body.error || 'Server returned ' + res.status);
+          return;
+        }
+        const { relayKey } = await res.json();
+        document.getElementById('wsjtxKey').value = relayKey;
+        statusEl.style.color = '#4ade80';
+        statusEl.textContent =
+          '✅ Relay key fetched. Now copy your Session ID from OpenHamClock → Settings → Station → Rig Control → WSJT-X Relay and paste it below.';
+      } catch (e) {
+        statusEl.style.color = '#f87171';
+        statusEl.textContent = '❌ Could not reach ' + url + ' — is OpenHamClock running?';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
     function toggleWsjtxMulticastOpts() {
       const on = document.getElementById('wsjtxMulticast').checked;
       document.getElementById('wsjtxMulticastOpts').style.display = on ? 'block' : 'none';
@@ -676,7 +940,7 @@ function buildSetupHtml(version) {
       try {
         const res = await fetch('/api/config', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders(),
           body: JSON.stringify({ wsjtxRelay }),
         });
         const data = await res.json();
@@ -718,9 +982,123 @@ function buildSetupHtml(version) {
     let currentConfig = null;
     let statusInterval = null;
 
-    async function init() {
+    // ── Auth helpers ───────────────────────────────────────────────────────
+
+    let _sessionToken = null; // token for this browser session
+
+    function authHeaders() {
+      return _sessionToken
+        ? { 'Content-Type': 'application/json', 'X-RigBridge-Token': _sessionToken }
+        : { 'Content-Type': 'application/json' };
+    }
+
+    function setLoggedIn(token) {
+      _sessionToken = token;
+      if (token) {
+        try { localStorage.setItem('rb_token', token); } catch (e) {}
+      }
+      const overlay = document.getElementById('loginOverlay');
+      const logoutArea = document.getElementById('logoutArea');
+      if (overlay) overlay.style.display = 'none';
+      if (logoutArea) logoutArea.style.display = 'block';
+      loadApp();
+    }
+
+    function showLoginForm() {
+      const overlay = document.getElementById('loginOverlay');
+      if (overlay) overlay.style.display = 'flex';
+    }
+
+    function doLogout() {
+      _sessionToken = null;
+      try { localStorage.removeItem('rb_token'); } catch (e) {}
+      const logoutArea = document.getElementById('logoutArea');
+      if (logoutArea) logoutArea.style.display = 'none';
+      showLoginForm();
+    }
+
+    function toggleLoginVisible() {
+      const inp = document.getElementById('loginToken');
+      if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+    }
+
+    async function doLogin() {
+      const inp = document.getElementById('loginToken');
+      const token = inp ? inp.value.trim() : '';
+      if (!token) return;
       try {
-        const [cfgRes, logRes] = await Promise.all([fetch('/api/config'), fetch('/api/logging')]);
+        const res = await fetch('/api/auth/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token }),
+        });
+        if (res.ok) {
+          setLoggedIn(token);
+        } else {
+          const row = document.getElementById('loginRow');
+          if (row) { row.classList.remove('shake'); void row.offsetWidth; row.classList.add('shake'); }
+        }
+      } catch (e) {
+        showToast('Login failed: ' + e.message, 'error');
+      }
+    }
+
+    async function doAutoLogin() {
+      // 1. Try stored token
+      let stored = null;
+      try { stored = localStorage.getItem('rb_token'); } catch (e) {}
+      if (stored) {
+        const res = await fetch('/api/auth/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: stored }),
+        }).catch(() => null);
+        if (res && res.ok) { setLoggedIn(stored); return; }
+        try { localStorage.removeItem('rb_token'); } catch (e) {}
+      }
+
+      // 2. First-run: token injected server-side — auto-login and show welcome banner
+      if (typeof __FIRST_RUN_TOKEN__ !== 'undefined' && __FIRST_RUN_TOKEN__) {
+        setLoggedIn(__FIRST_RUN_TOKEN__);
+        const banner = document.getElementById('welcomeBanner');
+        const tokenInp = document.getElementById('welcomeToken');
+        if (tokenInp) tokenInp.value = __FIRST_RUN_TOKEN__;
+        if (banner) banner.style.display = 'flex';
+        return;
+      }
+
+      // 3. No token configured — auth disabled, just load
+      const probeRes = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: '' }),
+      }).catch(() => null);
+      if (probeRes && probeRes.ok) { setLoggedIn(''); return; }
+
+      // 4. Show login form
+      showLoginForm();
+    }
+
+    function copyToken() {
+      const inp = document.getElementById('welcomeToken');
+      if (!inp) return;
+      inp.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      showToast('✅ Token copied!', 'success');
+    }
+
+    async function dismissBanner() {
+      await fetch('/api/setup/token-seen', { method: 'POST', headers: authHeaders() }).catch(() => {});
+      const banner = document.getElementById('welcomeBanner');
+      if (banner) banner.style.display = 'none';
+    }
+
+    async function loadApp() {
+      try {
+        const [cfgRes, logRes] = await Promise.all([
+          fetch('/api/config', { headers: authHeaders() }),
+          fetch('/api/logging', { headers: authHeaders() }),
+        ]);
         currentConfig = await cfgRes.json();
         const logData = await logRes.json();
         populateForm(currentConfig);
@@ -753,6 +1131,15 @@ function buildSetupHtml(version) {
       document.getElementById('tciPort').value = tci.port || 40001;
       document.getElementById('tciTrx').value = tci.trx ?? 0;
       document.getElementById('tciVfo').value = tci.vfo ?? 0;
+      const sdr = cfg.smartsdr || {};
+      document.getElementById('smartsdrHost').value = sdr.host || '192.168.1.100';
+      document.getElementById('smartsdrPort').value = sdr.port || 4992;
+      document.getElementById('smartsdrSlice').value = sdr.sliceIndex ?? 0;
+      const rtl = cfg.rtltcp || {};
+      document.getElementById('rtltcpHost').value = rtl.host || '127.0.0.1';
+      document.getElementById('rtltcpPort').value = rtl.port || 1234;
+      document.getElementById('rtltcpSampleRate').value = rtl.sampleRate || 2400000;
+      document.getElementById('rtltcpGain').value = rtl.gain ?? 'auto';
       onTypeChange(true); // Don't overwrite loaded values with model defaults
     }
 
@@ -761,11 +1148,15 @@ function buildSetupHtml(version) {
       const isDirect = ['yaesu', 'kenwood', 'icom'].includes(type);
       const isLegacy = ['flrig', 'rigctld'].includes(type);
       const isTci = type === 'tci';
+      const isSmartSDR = type === 'smartsdr';
+      const isRtlTcp = type === 'rtl-tcp';
 
       document.getElementById('serialOpts').className = 'serial-opts' + (isDirect ? ' show' : '');
       document.getElementById('legacyOpts').className = 'legacy-opts' + (isLegacy ? ' show' : '');
       document.getElementById('icomAddr').className = 'icom-addr' + (type === 'icom' ? ' show' : '');
       document.getElementById('tciOpts').className = 'tci-opts' + (isTci ? ' show' : '');
+      document.getElementById('smartsdrOpts').className = 'smartsdr-opts' + (isSmartSDR ? ' show' : '');
+      document.getElementById('rtltcpOpts').className = 'rtltcp-opts' + (isRtlTcp ? ' show' : '');
 
       if (!skipDefaults) {
         if (type === 'yaesu') {
@@ -788,7 +1179,7 @@ function buildSetupHtml(version) {
       const sel = document.getElementById('serialPort');
       sel.innerHTML = '<option value="">Scanning...</option>';
       try {
-        const res = await fetch('/api/ports');
+        const res = await fetch('/api/ports', { headers: authHeaders() });
         const ports = await res.json();
         sel.innerHTML = '<option value="">— Select port —</option>';
         if (ports.length === 0) {
@@ -821,7 +1212,7 @@ function buildSetupHtml(version) {
         try {
           const res = await fetch('/api/test', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders(),
             body: JSON.stringify({ serialPort, baudRate, stopBits, rtscts }),
           });
           const data = await res.json();
@@ -865,16 +1256,37 @@ function buildSetupHtml(version) {
         vfo: Math.max(0, parseInt(document.getElementById('tciVfo').value) || 0),
       };
 
+      const smartsdr = {
+        host: document.getElementById('smartsdrHost').value.trim() || '192.168.1.100',
+        port: parseInt(document.getElementById('smartsdrPort').value) || 4992,
+        sliceIndex: Math.max(0, parseInt(document.getElementById('smartsdrSlice').value) || 0),
+      };
+
+      const rtltcp = {
+        host: document.getElementById('rtltcpHost').value.trim() || '127.0.0.1',
+        port: parseInt(document.getElementById('rtltcpPort').value) || 1234,
+        sampleRate: parseInt(document.getElementById('rtltcpSampleRate').value) || 2400000,
+        gain: document.getElementById('rtltcpGain').value,
+      };
+
       if (type === 'tci') {
         if (!tci.host) return showToast('TCI host cannot be empty', 'error');
         if (tci.port < 1 || tci.port > 65535) return showToast('TCI port must be 1–65535', 'error');
+      }
+      if (type === 'smartsdr') {
+        if (!smartsdr.host) return showToast('FlexRadio IP cannot be empty', 'error');
+        if (smartsdr.port < 1 || smartsdr.port > 65535) return showToast('SmartSDR port must be 1–65535', 'error');
+      }
+      if (type === 'rtl-tcp') {
+        if (!rtltcp.host) return showToast('rtl_tcp host cannot be empty', 'error');
+        if (rtltcp.port < 1 || rtltcp.port > 65535) return showToast('rtl_tcp port must be 1–65535', 'error');
       }
 
       try {
         const res = await fetch('/api/config', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ radio, tci }),
+          headers: authHeaders(),
+          body: JSON.stringify({ radio, tci, smartsdr, rtltcp }),
         });
         const data = await res.json();
         if (data.success) {
@@ -950,7 +1362,7 @@ function buildSetupHtml(version) {
       try {
         const res = await fetch('/api/logging', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders(),
           body: JSON.stringify({ logging: !loggingEnabled }),
         });
         const data = await res.json();
@@ -1039,7 +1451,8 @@ function buildSetupHtml(version) {
       let es;
 
       function connect() {
-        es = new EventSource('/api/log/stream');
+        const tokenParam = _sessionToken ? '?token=' + encodeURIComponent(_sessionToken) : '';
+        es = new EventSource('/api/log/stream' + tokenParam);
 
         es.onopen = () => setLogStatus(true);
 
@@ -1064,7 +1477,7 @@ function buildSetupHtml(version) {
       connect();
     }
 
-    init();
+    doAutoLogin();
   </script>
 </body>
 </html>`;
@@ -1105,6 +1518,24 @@ function createServer(registry, version) {
   );
   app.use(express.json());
 
+  // ─── Auth middleware ───────────────────────────────────────────────────
+  // When apiToken is set (non-empty), all write endpoints require the token
+  // in the X-RigBridge-Token header. Reads and SSE streams are not gated so
+  // that the setup UI status bar and log stream keep working on the login screen.
+  function requireAuth(req, res, next) {
+    if (!config.apiToken) return next(); // auth disabled — backwards-compatible
+    const provided = req.headers['x-rigbridge-token'] || '';
+    if (provided === config.apiToken) return next();
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  // Rate limiters — per IP, sliding window
+  const freqLimiter = makeRateLimiter(20, 1000); // 20/s
+  const modeLimiter = makeRateLimiter(10, 1000); // 10/s
+  const pttLimiter = makeRateLimiter(5, 1000); // 5/s
+  const cfgLimiter = makeRateLimiter(10, 60000); // 10/min
+  const tokenLimiter = makeRateLimiter(3, 60000); // 3/min
+
   // Allow plugins to register their own routes
   registry.registerRoutes(app);
 
@@ -1113,16 +1544,31 @@ function createServer(registry, version) {
     if (!req.headers.accept || !req.headers.accept.includes('text/html')) {
       return res.json({ status: 'ok', connected: state.connected, version });
     }
-    res.send(buildSetupHtml(version));
+    // SECURITY: On first run (token not yet displayed), embed the token once so
+    // doAutoLogin() can authenticate without the user needing to type it.
+    // Flip tokenDisplayed immediately so subsequent page loads show the login gate.
+    const isFirstRun = config.apiToken && !config.tokenDisplayed;
+    if (isFirstRun) {
+      config.tokenDisplayed = true;
+      saveConfig();
+    }
+    res.send(buildSetupHtml(version, isFirstRun ? config.apiToken : null));
   });
 
   // ─── API: Live console log stream (SSE) ───
   app.get('/api/log/stream', (req, res) => {
+    // Auth via query param — EventSource cannot set custom headers
+    if (config.apiToken) {
+      const token = req.query.token || '';
+      if (token !== config.apiToken) {
+        res.status(401).end();
+        return;
+      }
+    }
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
     });
 
     // Send buffered history so a freshly opened tab sees recent output
@@ -1141,7 +1587,7 @@ function createServer(registry, version) {
     res.json({ logging: config.logging });
   });
 
-  app.post('/api/logging', (req, res) => {
+  app.post('/api/logging', requireAuth, (req, res) => {
     const { logging } = req.body;
     if (typeof logging !== 'boolean') return res.status(400).json({ error: 'logging must be a boolean' });
     config.logging = logging;
@@ -1151,7 +1597,7 @@ function createServer(registry, version) {
   });
 
   // ─── API: List serial ports ───
-  app.get('/api/ports', async (req, res) => {
+  app.get('/api/ports', requireAuth, async (req, res) => {
     const ports = await listPorts();
     res.json(ports);
   });
@@ -1171,16 +1617,38 @@ function createServer(registry, version) {
   };
 
   app.get('/api/config', (req, res) => {
-    res.json(config);
+    // Strip the API token from the response — it must not be readable via GET
+    const { apiToken: _omit, ...safeConfig } = config;
+    res.json(safeConfig);
   });
 
-  app.post('/api/config', (req, res) => {
+  app.post('/api/config', requireAuth, cfgLimiter, (req, res) => {
     const newConfig = req.body;
     if (newConfig.port) config.port = newConfig.port;
     if (newConfig.radio) {
       // Validate serial port path if provided
       if (newConfig.radio.serialPort && !isValidSerialPort(newConfig.radio.serialPort)) {
         return res.status(400).json({ success: false, error: 'Invalid serial port path' });
+      }
+      // SECURITY: Validate remote host fields to prevent SSRF
+      const hostFields = [
+        ['flrigHost', newConfig.radio.flrigHost],
+        ['rigctldHost', newConfig.radio.rigctldHost],
+      ];
+      for (const [field, val] of hostFields) {
+        if (val !== undefined && !isValidRemoteHost(val)) {
+          return res.status(400).json({ success: false, error: `Invalid host value for ${field}` });
+        }
+      }
+      // Validate port fields
+      const portFields = [
+        ['flrigPort', newConfig.radio.flrigPort],
+        ['rigctldPort', newConfig.radio.rigctldPort],
+      ];
+      for (const [field, val] of portFields) {
+        if (val !== undefined && !isValidPort(val)) {
+          return res.status(400).json({ success: false, error: `Invalid port value for ${field}` });
+        }
       }
       config.radio = { ...config.radio, ...newConfig.radio };
     }
@@ -1191,7 +1659,31 @@ function createServer(registry, version) {
       config.wsjtxRelay = { ...config.wsjtxRelay, ...newConfig.wsjtxRelay };
     }
     if (newConfig.tci) {
+      if (newConfig.tci.host !== undefined && !isValidRemoteHost(newConfig.tci.host)) {
+        return res.status(400).json({ success: false, error: 'Invalid host value for tci.host' });
+      }
+      if (newConfig.tci.port !== undefined && !isValidPort(newConfig.tci.port)) {
+        return res.status(400).json({ success: false, error: 'Invalid port value for tci.port' });
+      }
       config.tci = { ...config.tci, ...newConfig.tci };
+    }
+    if (newConfig.smartsdr) {
+      if (newConfig.smartsdr.host !== undefined && !isValidRemoteHost(newConfig.smartsdr.host)) {
+        return res.status(400).json({ success: false, error: 'Invalid host value for smartsdr.host' });
+      }
+      if (newConfig.smartsdr.port !== undefined && !isValidPort(newConfig.smartsdr.port)) {
+        return res.status(400).json({ success: false, error: 'Invalid port value for smartsdr.port' });
+      }
+      config.smartsdr = { ...config.smartsdr, ...newConfig.smartsdr };
+    }
+    if (newConfig.rtltcp) {
+      if (newConfig.rtltcp.host !== undefined && !isValidRemoteHost(newConfig.rtltcp.host)) {
+        return res.status(400).json({ success: false, error: 'Invalid host value for rtltcp.host' });
+      }
+      if (newConfig.rtltcp.port !== undefined && !isValidPort(newConfig.rtltcp.port)) {
+        return res.status(400).json({ success: false, error: 'Invalid port value for rtltcp.port' });
+      }
+      config.rtltcp = { ...config.rtltcp, ...newConfig.rtltcp };
     }
     // macOS: tty.* (dial-in) blocks open() — silently upgrade to cu.* (call-out)
     if (process.platform === 'darwin' && config.radio.serialPort?.startsWith('/dev/tty.')) {
@@ -1213,7 +1705,7 @@ function createServer(registry, version) {
   });
 
   // ─── API: Test serial port connection ───
-  app.post('/api/test', async (req, res) => {
+  app.post('/api/test', requireAuth, async (req, res) => {
     const testPort = req.body.serialPort || config.radio.serialPort;
     if (!isValidSerialPort(testPort)) {
       return res.json({ success: false, error: 'Invalid serial port path' });
@@ -1251,6 +1743,38 @@ function createServer(registry, version) {
     } catch (e) {
       res.json({ success: false, error: e.message });
     }
+  });
+
+  // ─── API: Auth & token management ─────────────────────────────────────
+
+  // Verify a token — used by the setup UI login form (not protected by requireAuth)
+  app.post('/api/auth/verify', (req, res) => {
+    const { token } = req.body || {};
+    if (!config.apiToken) return res.json({ success: true }); // auth disabled
+    if (token === config.apiToken) return res.json({ success: true });
+    return res.status(401).json({ success: false, error: 'Invalid token' });
+  });
+
+  // Return current token (requireAuth — only already-authenticated callers)
+  app.get('/api/token', requireAuth, (req, res) => {
+    res.json({ tokenSet: !!config.apiToken, apiToken: config.apiToken });
+  });
+
+  // Regenerate the API token
+  app.post('/api/token/regenerate', requireAuth, tokenLimiter, (req, res) => {
+    const crypto = require('crypto');
+    config.apiToken = crypto.randomBytes(16).toString('hex');
+    config.tokenDisplayed = false;
+    saveConfig();
+    console.log('[Server] API token regenerated');
+    res.json({ success: true, apiToken: config.apiToken });
+  });
+
+  // Mark that the setup UI has shown the first-run token banner
+  app.post('/api/setup/token-seen', (req, res) => {
+    config.tokenDisplayed = true;
+    saveConfig();
+    res.json({ success: true });
   });
 
   // ─── OHC-compatible API ───
@@ -1291,21 +1815,28 @@ function createServer(registry, version) {
     });
   });
 
-  app.post('/freq', (req, res) => {
+  app.post('/freq', requireAuth, freqLimiter, (req, res) => {
     const { freq } = req.body;
     if (!freq) return res.status(400).json({ error: 'Missing freq' });
-    registry.dispatch('setFreq', freq);
+    const hz = Number(freq);
+    if (!Number.isFinite(hz) || hz < 1000 || hz > 75e9) {
+      return res.status(400).json({ error: 'Frequency out of range (1 kHz–75 GHz)' });
+    }
+    registry.dispatch('setFreq', hz);
     res.json({ success: true });
   });
 
-  app.post('/mode', (req, res) => {
+  app.post('/mode', requireAuth, modeLimiter, (req, res) => {
     const { mode } = req.body;
     if (!mode) return res.status(400).json({ error: 'Missing mode' });
+    if (typeof mode !== 'string' || !/^[A-Za-z0-9-]{1,20}$/.test(mode)) {
+      return res.status(400).json({ error: 'Invalid mode value' });
+    }
     registry.dispatch('setMode', mode);
     res.json({ success: true });
   });
 
-  app.post('/ptt', (req, res) => {
+  app.post('/ptt', requireAuth, pttLimiter, (req, res) => {
     const { ptt } = req.body;
     if (ptt && !config.radio.pttEnabled) {
       return res.status(403).json({ error: 'PTT disabled in configuration' });

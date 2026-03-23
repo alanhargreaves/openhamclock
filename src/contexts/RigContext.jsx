@@ -42,6 +42,13 @@ export const RigProvider = ({ children, rigConfig }) => {
   // Construct URL from config or default
   const rigUrl = buildRigUrl(rigConfig);
 
+  // Build auth headers — only set when a token is configured
+  const apiToken = rigConfig?.apiToken?.trim() || '';
+  const rigHeaders = {
+    'Content-Type': 'application/json',
+    ...(apiToken ? { 'X-RigBridge-Token': apiToken } : {}),
+  };
+
   // Connect to SSE Stream
   useEffect(() => {
     if (rigConfig && !rigConfig.enabled) {
@@ -125,17 +132,21 @@ export const RigProvider = ({ children, rigConfig }) => {
     async (freq) => {
       if (!rigConfig?.enabled) return;
       try {
-        await fetch(`${rigUrl}/freq`, {
+        const res = await fetch(`${rigUrl}/freq`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: rigHeaders,
           body: JSON.stringify({ freq, tune: rigConfig.tuneEnabled }),
         });
+        if (res.status === 401) {
+          setError('unauthorized');
+          return;
+        }
         // No need to poll, SSE will push update
       } catch (err) {
         console.error('Failed to set freq:', err);
       }
     },
-    [rigUrl, rigConfig],
+    [rigUrl, rigConfig, rigHeaders],
   );
 
   // Command: Set Mode
@@ -143,17 +154,21 @@ export const RigProvider = ({ children, rigConfig }) => {
     async (mode) => {
       if (!rigConfig?.enabled) return;
       try {
-        await fetch(`${rigUrl}/mode`, {
+        const res = await fetch(`${rigUrl}/mode`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: rigHeaders,
           body: JSON.stringify({ mode }),
         });
+        if (res.status === 401) {
+          setError('unauthorized');
+          return;
+        }
         // SSE will push update
       } catch (err) {
         console.error('Failed to set mode:', err);
       }
     },
-    [rigUrl, rigConfig],
+    [rigUrl, rigConfig, rigHeaders],
   );
 
   // Command: PTT
@@ -164,19 +179,29 @@ export const RigProvider = ({ children, rigConfig }) => {
       setRigState((prev) => ({ ...prev, ptt: enabled }));
 
       try {
-        await fetch(`${rigUrl}/ptt`, {
+        const res = await fetch(`${rigUrl}/ptt`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: rigHeaders,
           body: JSON.stringify({ ptt: enabled }),
         });
-        // SSE will push update
+        if (res.status === 401) {
+          setError('unauthorized');
+          setRigState((prev) => ({ ...prev, ptt: !enabled }));
+          return;
+        }
+        if (res.status === 403) {
+          // PTT is disabled on rig-bridge (pttEnabled: false in its config)
+          setError('ptt-disabled');
+          setRigState((prev) => ({ ...prev, ptt: !enabled }));
+          return;
+        }
+        // Success — clear any previous PTT-related error
+        if (error === 'ptt-disabled') setError(null);
       } catch (err) {
         console.error('Failed to set PTT:', err);
-        // Revert optimistic update?
-        // setRigState(prev => ({ ...prev, ptt: !enabled }));
       }
     },
-    [rigUrl, rigConfig],
+    [rigUrl, rigConfig, rigHeaders, error],
   );
 
   // Helper: Tune To Frequency (Centralized Logic)

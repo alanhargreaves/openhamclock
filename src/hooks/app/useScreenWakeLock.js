@@ -23,9 +23,10 @@ import { useEffect, useRef, useState, useCallback } from 'react';
  *   'electron'    – running in Electron (handled by powerSaveBlocker, no web sentinel)
  *
  * @param {object} config - app config object; reads config.preventSleep (boolean)
+ * @param {boolean} [displaySleeping=false] - when true, release wake lock (display schedule override)
  * @returns {{ wakeLockStatus: { active: boolean, reason: string|null } }}
  */
-export default function useScreenWakeLock(config) {
+export default function useScreenWakeLock(config, displaySleeping = false) {
   const wakeLockRef = useRef(null);
   const [wakeLockStatus, setWakeLockStatus] = useState({ active: false, reason: 'disabled' });
 
@@ -73,7 +74,7 @@ export default function useScreenWakeLock(config) {
   }, []);
 
   useEffect(() => {
-    if (!config.preventSleep) {
+    if (!config.preventSleep || displaySleeping) {
       // Release web wake lock if currently held
       if (wakeLockRef.current) {
         wakeLockRef.current.release().catch(() => {});
@@ -110,7 +111,7 @@ export default function useScreenWakeLock(config) {
         wakeLockRef.current = null;
       }
     };
-  }, [config.preventSleep, acquire]);
+  }, [config.preventSleep, displaySleeping, acquire]);
 
   return { wakeLockStatus };
 }

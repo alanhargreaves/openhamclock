@@ -8,6 +8,12 @@ class UpstreamManager {
   constructor() {
     this.inFlight = new Map();
     this.backoffs = new Map();
+    // Per-service max backoff overrides (ms). Default: 30 minutes.
+    this.maxBackoffs = new Map();
+  }
+
+  setMaxBackoff(service, ms) {
+    this.maxBackoffs.set(service, ms);
   }
 
   isBackedOff(service) {
@@ -25,7 +31,7 @@ class UpstreamManager {
     const prev = this.backoffs.get(service) || { consecutive: 0 };
     const consecutive = prev.consecutive + 1;
     const baseDelay = statusCode === 429 ? 60000 : statusCode === 503 ? 30000 : 15000;
-    const maxBackoff = 30 * 60 * 1000;
+    const maxBackoff = this.maxBackoffs.get(service) || 30 * 60 * 1000;
     const delay = Math.min(maxBackoff, baseDelay * Math.pow(2, Math.min(consecutive - 1, 8)));
     const jitter = Math.random() * 15000;
 
@@ -34,6 +40,10 @@ class UpstreamManager {
   }
 
   recordSuccess(service) {
+    this.backoffs.delete(service);
+  }
+
+  resetBackoff(service) {
     this.backoffs.delete(service);
   }
 

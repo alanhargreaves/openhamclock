@@ -22,7 +22,7 @@ const MODES = {
   0x08: 'RTTY-R',
   0x11: 'DATA-LSB',
   0x12: 'DATA-USB',
-  0x17: 'DATA-FM',
+  0x17: 'DV',
 };
 
 const MODE_REVERSE = {};
@@ -87,6 +87,8 @@ function poll(serialWrite, rigAddress) {
   serialWrite(buildCmd(rigAddress, 0x03));
   // Read mode (cmd 0x04)
   setTimeout(() => serialWrite(buildCmd(rigAddress, 0x04)), 50);
+  // Read PTT state (cmd 0x1c sub 0x00)
+  setTimeout(() => serialWrite(buildCmd(rigAddress, 0x1c, 0x00)), 100);
 }
 
 /**
@@ -139,6 +141,13 @@ function handleData(data, rxBuf, updateState, getState, debug) {
           if (frame.length >= 8) {
             updateState('width', frame[6]); // Filter width index
           }
+        }
+        break;
+      }
+      case 0x1c: {
+        // PTT / transceive state response (sub 0x00 = TX)
+        if (frame.length >= 8 && frame[5] === 0x00) {
+          updateState('ptt', frame[6] === 0x01);
         }
         break;
       }

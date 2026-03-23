@@ -337,6 +337,14 @@ body::before {
   font-size: 11px !important;
 }
 
+/* Azimuthal projection Leaflet overlay — transparent background */
+.azimuthal-leaflet-overlay .leaflet-container {
+  background: transparent !important;
+}
+.azimuthal-leaflet-overlay .leaflet-tile-pane {
+  display: none;
+}
+
 .leaflet-control-attribution a {
   color: var(--text-secondary) !important;
 }
@@ -421,18 +429,16 @@ body::before {
   height: 32px;
 }
 
-.sun-marker {
-  background: radial-gradient(circle, #ffdd00 0%, #ff8800 100%);
-  width: 24px;
-  height: 24px;
-  border: 2px solid #ffaa00;
-}
-
-.moon-marker {
-  background: radial-gradient(circle, #e8e8f0 0%, #8888aa 100%);
-  width: 24px;
-  height: 24px;
-  border: 2px solid #aaaacc;
+.sun-marker-icon,
+.moon-marker-icon {
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.6));
 }
 
 /* Classic theme markers - square */
@@ -1164,6 +1170,7 @@ body::before {
 .terminator-path {
   pointer-events: none;
   z-index: 400 !important; /* Sit behind the city lights but in front of the map */
+  filter: blur(8px); /* Smooth gradient at the day/night boundary */
 }
 
 /* Hide city lights completely in 'Countries' or high-contrast modes */

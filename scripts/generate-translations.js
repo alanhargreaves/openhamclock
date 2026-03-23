@@ -261,7 +261,7 @@ const translations = {
     'station.settings.tab2.title': '⊞ Kartenebenen',
     'station.settings.tab3.title': '⛊ Satelliten',
     'station.settings.timezone.auto': 'Auto (Browser-Standard)',
-    'station.settings.timezone.currentDefault': ' Aktuell wird der Browser-Standard verwendet.',
+    'station.settings.timezone.currentDefault': 'Aktuell wird der Browser-Standard verwendet.',
     'station.settings.timezone.describe':
       'Setzen Sie dies, wenn Ihre Ortszeit falsch angezeigt wird (z.B. gleich wie UTC). Datenschutzbrowser wie Librewolf können Ihre Zeitzone verschleiern.',
     'station.settings.timezone.group.africa': 'Afrika',

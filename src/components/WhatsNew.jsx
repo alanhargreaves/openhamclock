@@ -18,7 +18,129 @@ const ANNOUNCEMENT = {
 // ─── Changelog ──────────────────────────────────────────────
 // Add new versions at the TOP of this array.
 // Each entry: { version, date, heading, features: [...] }
+// ─── Versioning ─────────────────────────────────────────────
+// Starting with v26.1.1 we adopted a year-based versioning scheme:
+//   X.Y.Z  →  X = current year, Y = visual/UI changes, Z = backend changes
+//
+// Historical note: prior version numbers (v1 through v15) got out of sync at
+// one point — we simply continued with the existing numbering rather than
+// correcting it mid-stream.
+// The jump to v26 resets the scheme to something meaningful going forward.
+
 const CHANGELOG = [
+  {
+    version: '26.1.1',
+    date: '2026-03-20',
+    heading:
+      'EmComm layout with APRS resource tracking, redesigned Classic layout, new versioning scheme, SDR integration, DX cluster text filter, RBN spotter filter, DX favorites, mutual reception indicator, UDP spot listener, WSJT-X multicast, swappable header clocks, Classic VOACAP heatmap, and bug fixes.',
+    features: [
+      {
+        icon: '🚨',
+        title: 'EmComm Layout — Emergency Communications Dashboard',
+        desc: 'New dedicated layout for ARES/RACES and emergency communications. Full-screen map with range rings, NWS weather alerts, FEMA disaster declarations, nearby shelters with capacity bars, and filtered APRS stations showing only emergency symbols (EOC, Shelter, ARES, Skywarn, Red Cross). Designed for served agency operations and SKYWARN nets.',
+      },
+      {
+        icon: '📦',
+        title: 'APRS Resource Tokens — Structured Emergency Data',
+        desc: 'EmComm APRS stations can now encode structured resource data in their beacon comments using bracket notation (e.g. [Beds 30/100][Water -50][Power OK]). OpenHamClock parses these into visual resource cards with progress bars, need indicators, and a summary dashboard aggregating data across all stations. Supports capacity, quantity, need, status, and critical alert token types.',
+      },
+      {
+        icon: '🏛️',
+        title: 'Classic Layout — Redesigned',
+        desc: 'The Classic layout has been refreshed with a cleaner look while keeping the spirit of the original HamClock by WB0OEW. Improved spacing, updated color palette, and better readability on dedicated displays and Raspberry Pi kiosk setups.',
+      },
+      {
+        icon: '👥',
+        title: 'Active Users Map Layer',
+        desc: 'See other OpenHamClock operators on the map in real time. Every configured user automatically reports their presence — enable the Active Users layer in Map Layers to see who else is online. Your own callsign shows in green, others in purple. Found under the new Community category in Settings.',
+      },
+      {
+        icon: '🔔',
+        title: 'Audio Alerts for New Spots',
+        desc: 'Get audible notifications when new items appear in POTA, SOTA, WWFF, WWBOTA, DX Cluster, DXpeditions, or Contests. Each feed gets its own configurable tone from 9 Web Audio presets (Ping, Chirp, Two-Tone, etc.). All off by default — enable per feed in Settings → Alerts tab. Includes master volume control and a preview button to hear each tone.',
+      },
+      {
+        icon: '📻',
+        title: 'SDR Integration — FlexRadio SmartSDR & RTL-SDR',
+        desc: 'Rig-bridge now supports FlexRadio 6000/8000 series via native SmartSDR TCP API (port 4992) and cheap RTL-SDR dongles via rtl_tcp. No rigctld or Windows-only software needed.',
+      },
+      {
+        icon: '🔍',
+        title: 'DX Cluster — Comment Text Filter',
+        desc: 'New "Text" tab in DX Cluster filters lets you search spot comments for contest and event keywords like TEST, SSS, SKCC. Multiple keywords use OR logic — great for finding short-duration events quickly.',
+      },
+      {
+        icon: '📡',
+        title: 'RBN — Filter by Spotter',
+        desc: 'The RBN panel now has a spotter filter field. Enter one or more skimmer callsigns (e.g. NU4F, W3LPL) to see only spots from nearby stations — useful for monitoring local propagation.',
+      },
+      {
+        icon: '⭐',
+        title: 'DX Favorites',
+        desc: 'Save up to 10 DX target grid squares as favorites for quick switching. Star button next to the grid input lets you add, rename, and recall saved locations with a single click. Syncs across devices.',
+      },
+      {
+        icon: '🎯',
+        title: 'DX Target Panel Toggle',
+        desc: 'You can now independently show or hide the DX target info panel (grid, bearing, sun times) via Settings → Layers, separate from the DE/DX map markers.',
+      },
+      {
+        icon: '🎨',
+        title: 'Activation Panel — Shape & Color Icons',
+        desc: 'POTA, WWFF, SOTA, and WWBOTA tabs and panel headers now show their actual map marker shape and color (▲ ▼ ◆ ■) instead of generic icons. Removed from the band legend to reduce clutter.',
+      },
+      {
+        icon: '🛰️',
+        title: 'Satellite — PO-101 Restored',
+        desc: 'PO-101 (DIWATA-2B) has been restored to the satellite list — it is still active with FM downlink on 145.900 MHz.',
+      },
+      {
+        icon: '🐛',
+        title: 'Bug Fixes',
+        desc: 'Fixed SOTA labels toggle crash (default value on wrong prop), DX cluster filter badge count not reflecting exclude filters, and activation panel border divider crash when using filtered data.',
+      },
+      {
+        icon: '🗺️',
+        title: 'Azimuthal Projection — All Map Styles',
+        desc: 'Azimuthal projection now supports all tile map styles (satellite, terrain, dark, streets, etc.) — projection is a separate toggle from style.',
+      },
+      {
+        icon: '🔄',
+        title: 'Swap Header Clocks',
+        desc: 'New toggle in Settings → Display to show Local Time before UTC in the header. Useful for operators who primarily reference local time.',
+      },
+      {
+        icon: '★',
+        title: 'Mutual Reception Indicator',
+        desc: 'PSK Reporter spots now show a gold star when a station hears you AND you hear them on the same band — indicating a QSO is likely possible. Gold ring on map markers too. Toggle on/off in Settings → Display.',
+      },
+      {
+        icon: '📻',
+        title: 'UDP Spot Listener',
+        desc: 'DX Cluster now supports UDP as a native data source. Receive spots from local network apps like MacLoggerDX without internet telnet access. Supports JSON, XML, ADIF, and delimited text formats. Configure in Settings → Station.',
+      },
+      {
+        icon: '📊',
+        title: 'Classic Layout — VOACAP Heatmap',
+        desc: 'The Classic layout auto-rotating center pane now includes a compact VOACAP propagation heatmap showing 24-hour band reliability predictions alongside the existing SSN/SFI and propagation views.',
+      },
+      {
+        icon: '🖥️',
+        title: 'Classic Layout — UI Improvements',
+        desc: 'Layer toggle buttons (DX, POTA, SOTA, etc.) moved from top-right to bottom-right of the map to avoid overlapping other controls. Band legend enlarged for better readability.',
+      },
+      {
+        icon: '🎨',
+        title: 'Activation Panel Consolidation',
+        desc: 'POTA, SOTA, WWFF, and WWBOTA panels now share a unified map marker definition system, reducing code duplication and ensuring consistent styling across all activation types.',
+      },
+      {
+        icon: '📡',
+        title: 'WSJT-X Relay — Multicast Support',
+        desc: 'The WSJT-X relay now supports UDP multicast, allowing multiple applications (WSJT-X, GridTracker, JTAlert, etc.) to receive the same UDP stream without port conflicts. Configure a multicast address in Settings → Station, and the relay download scripts include it automatically. Note: multicast support in the standalone relay is an interim solution — the longer-term plan is to consolidate relay functionality into rig-bridge.',
+      },
+    ],
+  },
   {
     version: '15.7.3',
     date: '2026-03-17',

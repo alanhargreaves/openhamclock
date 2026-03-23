@@ -4,7 +4,7 @@
  * Express server that:
  * 1. Serves the static web application
  * 2. Proxies API requests to avoid CORS issues
- * 3. Provides hybrid HF propagation predictions (ITURHFProp + real-time ionosonde)
+ * 3. Provides HF propagation predictions via ITU-R P.533-14 (ITURHFProp)
  * 4. Provides WebSocket support for future real-time features
  *
  * Configuration:
@@ -82,6 +82,7 @@ installRateLimiter();
 // ── Upstream request manager ──
 const UpstreamManager = require('./server/utils/upstream-manager');
 const upstream = new UpstreamManager();
+upstream.setMaxBackoff('wspr', 5 * 60 * 1000); // WSPR: 5 min max (PSKReporter rate limits are transient)
 
 // ── Express app ──
 const app = express();
@@ -200,7 +201,10 @@ const VENDOR_CDN_MAP = {
 };
 
 app.use('/vendor', (req, res, next) => {
-  const localPath = path.join(publicDir, 'vendor', req.path);
+  const vendorDir = path.join(publicDir, 'vendor');
+  const localPath = path.resolve(vendorDir, req.path.replace(/^\//, ''));
+  // Prevent path traversal — resolved path must stay inside vendor directory
+  if (!localPath.startsWith(vendorDir)) return next();
   if (fs.existsSync(localPath)) return next();
   const cdnUrl = VENDOR_CDN_MAP['/vendor' + req.path];
   if (cdnUrl) return res.redirect(302, cdnUrl);
@@ -231,6 +235,7 @@ Object.assign(ctx, spaceWeatherExports);
 // 3. Remaining routes (can use callsign + space-weather exports)
 require('./server/routes/rotator')(app, ctx);
 require('./server/routes/spots')(app, ctx);
+require('./server/routes/emcomm')(app, ctx);
 require('./server/routes/dxpeditions')(app, ctx);
 
 const dxclusterExports = require('./server/routes/dxcluster')(app, ctx);
@@ -252,6 +257,7 @@ require('./server/routes/aprs')(app, ctx);
 require('./server/routes/wsjtx')(app, ctx);
 require('./server/routes/n1mm')(app, ctx);
 require('./server/routes/meshtastic')(app, ctx);
+require('./server/routes/presence')(app, ctx);
 require('./server/routes/config-routes')(app, ctx);
 require('./server/routes/admin')(app, ctx);
 

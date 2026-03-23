@@ -187,9 +187,14 @@ setup_repository() {
     # Prevent file permission changes from blocking future updates
     git config core.fileMode false 2>/dev/null
 
-    # Install dependencies (including devDependencies for Vite build)
+    # Install dependencies (including devDependencies for Vite build).
+    # --ignore-scripts skips lifecycle hooks (postinstall, prepare, etc.) that can
+    # fail on Linux — most notably electron-builder/electron-winstaller trying to
+    # copy Windows-only binaries, and Husky git-hooks which are unnecessary here.
+    # ELECTRON_SKIP_BINARY_DOWNLOAD=1 prevents the ~200 MB Electron binary download
+    # since we only need Vite/React from devDependencies to build the frontend.
     echo -e "${BLUE}>>> Installing npm dependencies...${NC}"
-    npm install --include=dev
+    ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install --include=dev --ignore-scripts
 
     # Download vendor assets (fonts, Leaflet) for self-hosting — no external CDN requests
     echo -e "${BLUE}>>> Downloading vendor assets for privacy...${NC}"
@@ -198,6 +203,10 @@ setup_repository() {
     # Build frontend for production
     echo -e "${BLUE}>>> Building frontend...${NC}"
     npm run build
+
+    # Remove dev dependencies (electron, electron-builder, playwright, etc.) after
+    # the build. These are only needed for the Vite build step and waste disk space.
+    npm prune --omit=dev
 
     # Make update script executable
     chmod +x scripts/update.sh 2>/dev/null || true

@@ -69,6 +69,17 @@ module.exports = {
         const xmlrpc = require('xmlrpc');
         const host = config.radio.flrigHost || '127.0.0.1';
         const port = config.radio.flrigPort || 12345;
+        // SECURITY: Defensive host check — primary validation is in POST /api/config,
+        // but guard here too in case config is edited manually.
+        if (
+          !/^(localhost|\d{1,3}(\.\d{1,3}){3}|\[[\da-fA-F:]+\]|[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*)$/.test(
+            host,
+          ) ||
+          /[/:]{2}|[/\\]/.test(host)
+        ) {
+          console.error(`[Flrig] Refused to connect: invalid host value "${host}"`);
+          return;
+        }
         client = xmlrpc.createClient({ host, port, path: '/' });
         updateState('connected', true);
         console.log(`[Flrig] Connecting to ${host}:${port}…`);

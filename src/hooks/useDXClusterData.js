@@ -19,6 +19,11 @@ export const useDXClusterData = (filters = {}, config = {}) => {
 
   const spotRetentionMs = (filters?.spotRetentionMinutes || 30) * 60 * 1000;
   const pollInterval = config.lowMemoryMode ? 120000 : 60000; // 120s in low memory, 60s otherwise
+  const source = config.dxClusterSource || 'dxspider-proxy';
+  // Always respect the user's configured retention time, regardless of source.
+  // If UDP sources benefit from longer retention, that should be surfaced as a UI suggestion,
+  // not forced as an override of the user's explicit preference.
+  const effectiveRetentionMs = spotRetentionMs;
 
   // Build query params for custom cluster settings
   const buildQueryParams = useCallback(() => {
@@ -38,13 +43,22 @@ export const useDXClusterData = (filters = {}, config = {}) => {
       }
     }
 
+    if (source === 'udp' && config.udpDxCluster) {
+      if (config.udpDxCluster.host) {
+        params.append('udpHost', config.udpDxCluster.host);
+      }
+      if (config.udpDxCluster.port) {
+        params.append('udpPort', config.udpDxCluster.port);
+      }
+    }
+
     // Always send callsign for login (with SSID)
     if (config.callsign && config.callsign !== 'N0CALL') {
       params.append('callsign', config.callsign);
     }
 
     return params.toString();
-  }, [config.dxClusterSource, config.customDxCluster, config.callsign]);
+  }, [config.dxClusterSource, config.customDxCluster, config.udpDxCluster, config.callsign]);
 
   // Apply filters using the consolidated filter function from callsign.js
   const applyFilters = useCallback((data, filters) => {
@@ -74,7 +88,7 @@ export const useDXClusterData = (filters = {}, config = {}) => {
 
             // Filter out items older than retention time
             const validItems = Array.from(existingMap.values()).filter(
-              (item) => now - (item.timestamp || now) < spotRetentionMs,
+              (item) => now - (item.timestamp || now) < effectiveRetentionMs,
             );
 
             // Sort by timestamp (newest first) and limit
@@ -94,7 +108,7 @@ export const useDXClusterData = (filters = {}, config = {}) => {
     const interval = setInterval(fetchData, pollInterval);
     fetchRef.current = fetchData;
     return () => clearInterval(interval);
-  }, [spotRetentionMs, buildQueryParams]);
+  }, [effectiveRetentionMs, buildQueryParams]);
 
   // Refresh immediately when tab becomes visible (handles browser throttling)
   useVisibilityRefresh(() => fetchRef.current?.(), pollInterval);
@@ -103,13 +117,17 @@ export const useDXClusterData = (filters = {}, config = {}) => {
   useEffect(() => {
     setAllData((prev) => {
       const now = Date.now();
-      return prev.filter((item) => now - (item.timestamp || now) < spotRetentionMs);
+      return prev.filter((item) => now - (item.timestamp || now) < effectiveRetentionMs);
     });
-  }, [spotRetentionMs]);
+  }, [effectiveRetentionMs]);
 
   // Apply filters and split into spots (for list) and paths (for map)
   useEffect(() => {
     const filtered = applyFilters(allData, filters);
+    // Always respect user filters — even if UDP returns no matching spots.
+    // If a user filters to "FT8 only," showing all spots as a fallback violates that preference.
+    // An empty list is correct behavior and respects the user's intent.
+    const effectiveFiltered = filtered;
 
     // Low memory mode limits
     const lowMemoryMode = config.lowMemoryMode || false;
@@ -117,7 +135,8 @@ export const useDXClusterData = (filters = {}, config = {}) => {
     const MAX_PATHS = lowMemoryMode ? 25 : 200;
 
     // Format for list display (matches old useDXCluster format)
-    const spotList = filtered.slice(0, MAX_SPOTS).map((item) => ({
+    const spotList = effectiveFiltered.slice(0, MAX_SPOTS).map((item) => ({
+      id: item.id,
       call: item.dxCall,
       freq: item.freq,
       comment: item.comment || '',
@@ -133,13 +152,13 @@ export const useDXClusterData = (filters = {}, config = {}) => {
 
     // Format for map display (matches old useDXPaths format)
     // Only include items that have valid coordinates
-    const pathList = filtered
+    const pathList = effectiveFiltered
       .filter((item) => item.spotterLat != null && item.spotterLon != null && item.dxLat != null && item.dxLon != null)
       .slice(0, MAX_PATHS);
 
     setSpots(spotList);
     setPaths(pathList);
-  }, [allData, filters, applyFilters, config.lowMemoryMode]);
+  }, [allData, filters, applyFilters, config.lowMemoryMode, source]);
 
   return {
     spots, // For DXClusterPanel list
