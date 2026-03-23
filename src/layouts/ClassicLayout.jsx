@@ -956,7 +956,7 @@ export default function ClassicLayout(props) {
                 borderRadius: '2px',
               }}
             >
-              {t('app.settings')}
+              ⚙ {t('app.settings.title')}
             </button>
             <button
               onClick={handleToggleDxLock}

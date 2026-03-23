@@ -520,9 +520,13 @@ export const SettingsPanel = ({
     dockable: t('station.settings.layout.dockable.describe'),
     emcomm: t('station.settings.layout.emcomm.describe'),
   };
+
   const unitString = (t) => {
-    return t == 'imperial' ? '🇺🇸 Imperial' : '🌍 Metric';
+    // Use "US Customary" instead of "Imperial" to avoid confusion with UK Imperial units which are different,
+    // for instance pressure 'inHg' is not a UK Imperial unit but is used in USA.
+    return t == 'imperial' ? 'US Customary' : 'Metric';
   };
+
   return (
     <div
       onClick={onClose}
@@ -760,7 +764,8 @@ export const SettingsPanel = ({
                 color: 'var(--text-secondary)',
               }}
             >
-              Looking for Rotator / N3FJP / other add-ons? See <b>Settings → Integrations</b>.
+              Looking for Rotator / N3FJP / other add-ons? See{' '}
+              <b>Settings → {t('station.settings.tab.title.integrations')}</b>.
             </div>
 
             {/* Callsign */}
@@ -910,7 +915,7 @@ export const SettingsPanel = ({
                 marginBottom: '20px',
               }}
             >
-              {t('station.settings.useLocation')}
+              📍 {t('station.settings.useLocation')}
             </button>
 
             {/* Mouse wheel zoom factor */}
@@ -958,7 +963,7 @@ export const SettingsPanel = ({
                   letterSpacing: '1px',
                 }}
               >
-                {t('station.settings.timezone')}
+                🕐 {t('station.settings.timezone')}
               </label>
               <select
                 value={timezone}
@@ -1057,7 +1062,7 @@ export const SettingsPanel = ({
               </select>
               <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
                 {t('station.settings.timezone.describe')}
-                {timezone ? '' : t('station.settings.timezone.currentDefault')}
+                {timezone ? '' : ' ' + t('station.settings.timezone.currentDefault')}
               </div>
             </div>
 
@@ -1073,7 +1078,7 @@ export const SettingsPanel = ({
                   letterSpacing: '1px',
                 }}
               >
-                📏 Units
+                📏 {t('station.settings.units.title')}
               </label>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
@@ -1090,7 +1095,7 @@ export const SettingsPanel = ({
                     fontWeight: '600',
                   }}
                 >
-                  {`distance: ${unitString(distUnits)}`}
+                  {t('station.settings.units.distance')}: {unitString(distUnits)}
                 </button>
                 <button
                   onClick={() => toggleTempUnits()}
@@ -1106,7 +1111,7 @@ export const SettingsPanel = ({
                     fontWeight: '600',
                   }}
                 >
-                  {`Temperature: ${unitString(tempUnits)}`}
+                  {t('station.settings.units.temperature')}: {unitString(tempUnits)}
                 </button>
                 <button
                   onClick={() => togglePressUnits()}
@@ -1122,7 +1127,7 @@ export const SettingsPanel = ({
                     fontWeight: '600',
                   }}
                 >
-                  {`Pressure: ${unitString(pressUnits)}`}
+                  {t('station.settings.units.pressure')}: {unitString(pressUnits)}
                 </button>
               </div>
             </div>
@@ -1558,12 +1563,14 @@ export const SettingsPanel = ({
                   letterSpacing: '1px',
                 }}
               >
-                ⌇ Propagation Mode & Power
+                ⌇ {t('station.settings.operatingMode.title')}
               </label>
 
               {/* Mode */}
               <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Operating Mode</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  {t('station.settings.operatingMode')}
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
                   {[
                     { id: 'SSB', label: 'SSB', desc: 'Voice' },
@@ -1601,7 +1608,9 @@ export const SettingsPanel = ({
 
               {/* Power */}
               <div style={{ marginBottom: '6px' }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>TX Power</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  {t('station.settings.operatingMode.txPower')}
+                </div>
                 <div
                   style={{
                     display: 'grid',
