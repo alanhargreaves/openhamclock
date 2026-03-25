@@ -44,7 +44,7 @@ export const useWWFFSpots = () => {
           const validSpots = spots
             .filter((s) => {
               // Filter out QRT (operator signed off)
-              if (/\bQRT\b/.test((s.comments || '').toUpperCase().trim())) return false;
+              if (/\bQRT\b/.test((s.remarks || '').toUpperCase().trim())) return false;
               // We should also time it out if it's more than 60 minutes old
               if (Math.floor(Date.now() / 1000) - s.spot_time > 3600) return false;
 
