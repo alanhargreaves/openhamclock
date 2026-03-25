@@ -72,8 +72,7 @@ export const usePOTASpots = () => {
           const validSpots = spots
             .filter((s) => {
               // Filter out QRT (operator signed off)
-              const comments = (s.comments || '').toUpperCase().trim();
-              if (comments === 'QRT' || comments.startsWith('QRT ') || comments.startsWith('QRT,')) return false;
+              if (/\bQRT\b/.test((s.comments || '').toUpperCase().trim())) return false;
 
               // Filter out spots expiring within 60 seconds
               if (typeof s.expire === 'number' && s.expire < 60) return false;
