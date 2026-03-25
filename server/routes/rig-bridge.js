@@ -115,11 +115,22 @@ module.exports = function (app, ctx) {
       if (session.decodes.length > 500) session.decodes = session.decodes.slice(-500);
     }
 
-    // Store any batched APRS packets
+    // Store and forward APRS packets to the APRS station cache
     if (Array.isArray(req.body.aprsPackets) && req.body.aprsPackets.length > 0) {
       if (!session.aprsPackets) session.aprsPackets = [];
       session.aprsPackets.push(...req.body.aprsPackets);
       if (session.aprsPackets.length > 500) session.aprsPackets = session.aprsPackets.slice(-500);
+
+      // Forward to /api/aprs/local so packets merge into the APRS station cache
+      try {
+        ctx
+          .fetch(`http://localhost:${ctx.PORT}/api/aprs/local`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ packets: req.body.aprsPackets }),
+          })
+          .catch(() => {});
+      } catch (e) {}
     }
 
     res.json({ ok: true });

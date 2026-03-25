@@ -278,4 +278,48 @@ module.exports = function (app, ctx) {
       stations: stations.sort((a, b) => b.timestamp - a.timestamp),
     });
   });
+
+  // REST endpoint: POST /api/aprs/local — inject local TNC packets (from cloud relay)
+  // Accepts raw APRS info strings and parses them into station objects.
+  app.post('/api/aprs/local', (req, res) => {
+    const packets = req.body.packets;
+    if (!Array.isArray(packets)) {
+      return res.status(400).json({ error: 'Missing packets array' });
+    }
+
+    let added = 0;
+    for (const pkt of packets) {
+      if (!pkt.source || !pkt.info) continue;
+
+      // Reconstruct a raw APRS line so parseAprsPacket can handle it
+      const rawLine = `${pkt.source}>${pkt.destination || 'APRS'}:${pkt.info}`;
+      const station = parseAprsPacket(rawLine);
+      if (!station) continue;
+
+      station.source = 'local-tnc'; // Tag so UI can distinguish RF from internet
+      station.timestamp = pkt.timestamp || Date.now();
+
+      const key = station.call;
+      const existing = aprsStations.get(key);
+      if (!existing || station.timestamp > existing.timestamp) {
+        if (!existing && aprsStations.size >= APRS_MAX_STATIONS) {
+          // Evict oldest
+          let oldestKey = null;
+          let oldestTime = Infinity;
+          for (const [k, v] of aprsStations) {
+            if (v.timestamp < oldestTime) {
+              oldestTime = v.timestamp;
+              oldestKey = k;
+            }
+          }
+          if (oldestKey) aprsStations.delete(oldestKey);
+        }
+        aprsStations.set(key, station);
+        added++;
+      }
+    }
+
+    logDebug(`[APRS] Ingested ${added} local TNC packets (${packets.length} received)`);
+    res.json({ ok: true, added });
+  });
 };
