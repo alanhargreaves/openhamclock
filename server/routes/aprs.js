@@ -21,6 +21,9 @@ module.exports = function (app, ctx) {
 
   // In-memory station cache: callsign → { call, lat, lon, symbol, comment, speed, course, altitude, timestamp, raw }
   const aprsStations = new Map();
+  // APRS message store for EmComm (messages, bulletins, shelter reports)
+  const aprsMessages = [];
+  const APRS_MAX_MESSAGES = 200;
   let aprsSocket = null;
   let aprsReconnectTimer = null;
   let aprsConnected = false;
@@ -72,6 +75,59 @@ module.exports = function (app, ctx) {
     }
     const cleanComment = comment.replace(regex, '').trim();
     return { tokens, cleanComment };
+  }
+
+  // Parse APRS message packets (addressed messages + bulletins)
+  // Format: :ADDRESSEE:message text{msgid
+  // Bulletins: :BLN1     :bulletin text
+  function parseAprsMessage(line) {
+    try {
+      const headerEnd = line.indexOf(':');
+      if (headerEnd < 0) return null;
+
+      const header = line.substring(0, headerEnd);
+      const payload = line.substring(headerEnd + 1);
+      const from = header.split('>')[0].trim();
+
+      // APRS message format: :ADDRESSEE:message{id
+      if (payload.charAt(0) !== ':') return null;
+      const addrEnd = payload.indexOf(':', 1);
+      if (addrEnd < 0) return null;
+
+      const to = payload.substring(1, addrEnd).trim();
+      const body = payload.substring(addrEnd + 1);
+
+      // Extract message ID if present
+      const idMatch = body.match(/\{(\w+)$/);
+      const msgId = idMatch ? idMatch[1] : null;
+      const text = idMatch ? body.substring(0, body.lastIndexOf('{')).trim() : body.trim();
+
+      // Skip acks/rejs
+      if (text.startsWith('ack') || text.startsWith('rej')) return null;
+
+      const isBulletin = to.startsWith('BLN');
+      const { tokens, cleanComment } = parseResourceTokens(text);
+
+      // Detect shelter-related content
+      const isShelterReport =
+        /shelter|evacuate|refuge|beds|capacity|open|closed|accepting/i.test(text) ||
+        tokens.some((t) => ['Beds', 'Capacity', 'Shelter', 'Evacuees'].includes(t.key));
+
+      return {
+        type: isBulletin ? 'bulletin' : 'message',
+        from,
+        to,
+        text,
+        cleanText: cleanComment,
+        tokens,
+        msgId,
+        isShelterReport,
+        timestamp: Date.now(),
+        raw: line,
+      };
+    } catch (e) {
+      return null;
+    }
   }
 
   // Parse a raw APRS packet into a position object (or null if not a position packet)
@@ -210,6 +266,16 @@ module.exports = function (app, ctx) {
               }
             }
           }
+        } else {
+          // Try parsing as a message (addressed message or bulletin)
+          const msg = parseAprsMessage(trimmed);
+          if (msg) {
+            aprsMessages.push(msg);
+            if (aprsMessages.length > APRS_MAX_MESSAGES) aprsMessages.shift();
+            if (msg.isShelterReport) {
+              logDebug(`[APRS] Shelter report from ${msg.from}: ${msg.text}`);
+            }
+          }
         }
       }
     });
@@ -279,6 +345,35 @@ module.exports = function (app, ctx) {
     });
   });
 
+  // REST endpoint: GET /api/aprs/messages — APRS messages and bulletins
+  app.get('/api/aprs/messages', (req, res) => {
+    const since = parseInt(req.query.since) || 0;
+    const shelterOnly = req.query.shelter === 'true';
+    let msgs = aprsMessages.filter((m) => m.timestamp > since);
+    if (shelterOnly) msgs = msgs.filter((m) => m.isShelterReport);
+    res.json({
+      count: msgs.length,
+      messages: msgs,
+    });
+  });
+
+  // REST endpoint: GET /api/aprs/shelters — shelter reports extracted from APRS
+  app.get('/api/aprs/shelters', (req, res) => {
+    const shelterReports = aprsMessages
+      .filter((m) => m.isShelterReport)
+      .map((m) => ({
+        from: m.from,
+        text: m.cleanText || m.text,
+        tokens: m.tokens,
+        timestamp: m.timestamp,
+        type: m.type,
+      }));
+    res.json({
+      count: shelterReports.length,
+      shelters: shelterReports,
+    });
+  });
+
   // REST endpoint: POST /api/aprs/local — inject local TNC packets (from cloud relay)
   // Accepts raw APRS info strings and parses them into station objects.
   app.post('/api/aprs/local', (req, res) => {
@@ -294,7 +389,16 @@ module.exports = function (app, ctx) {
       // Reconstruct a raw APRS line so parseAprsPacket can handle it
       const rawLine = `${pkt.source}>${pkt.destination || 'APRS'}:${pkt.info}`;
       const station = parseAprsPacket(rawLine);
-      if (!station) continue;
+      if (!station) {
+        // Try as message
+        const msg = parseAprsMessage(rawLine);
+        if (msg) {
+          msg.source = 'local-tnc';
+          aprsMessages.push(msg);
+          if (aprsMessages.length > APRS_MAX_MESSAGES) aprsMessages.shift();
+        }
+        continue;
+      }
 
       station.source = 'local-tnc'; // Tag so UI can distinguish RF from internet
       station.timestamp = pkt.timestamp || Date.now();
