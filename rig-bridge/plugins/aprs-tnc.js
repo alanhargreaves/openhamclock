@@ -27,6 +27,9 @@
  */
 
 const net = require('net');
+const http = require('http');
+const https = require('https');
+const { URL } = require('url');
 const {
   decodeKissFrame,
   encodeKissFrame,
@@ -139,6 +142,36 @@ const descriptor = {
       }
     }
 
+    // Forward a batch of packets to the local OHC server's /api/aprs/local.
+    // Fire-and-forget — errors are silently ignored so a down OHC server
+    // never stalls the TNC receive loop.
+    function forwardToLocal(packets) {
+      if (cfg.localForward === false) return;
+      const ohcUrl = (cfg.ohcUrl || 'http://localhost:8080').replace(/\/$/, '');
+      let parsed;
+      try {
+        parsed = new URL(`${ohcUrl}/api/aprs/local`);
+      } catch (e) {
+        return;
+      }
+      const body = JSON.stringify({ packets });
+      const mod = parsed.protocol === 'https:' ? https : http;
+      const req = mod.request(
+        {
+          hostname: parsed.hostname,
+          port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+          path: parsed.pathname,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+        },
+        () => {},
+      );
+      req.on('error', () => {}); // swallow errors
+      req.setTimeout(3000, () => req.destroy());
+      req.write(body);
+      req.end();
+    }
+
     // Format latitude for APRS: DDMM.MMN
     function formatAprsLat(lat) {
       const hemi = lat >= 0 ? 'N' : 'S';
@@ -174,16 +207,21 @@ const descriptor = {
           console.log(`[APRS-TNC] RX: ${packet.source}>${packet.destination}: ${packet.info}`);
         }
 
+        const aprsPacket = {
+          source: packet.source,
+          destination: packet.destination,
+          digipeaters: packet.digipeaters,
+          info: packet.info,
+          timestamp: Date.now(),
+        };
+
         // Emit on shared bus for cloud relay
         if (bus) {
-          bus.emit('aprs', {
-            source: packet.source,
-            destination: packet.destination,
-            digipeaters: packet.digipeaters,
-            info: packet.info,
-            timestamp: Date.now(),
-          });
+          bus.emit('aprs', aprsPacket);
         }
+
+        // Forward directly to the local OHC server (for non-cloud / self-hosted installs)
+        forwardToLocal([aprsPacket]);
 
         // Notify SSE listeners
         notifyListeners({

@@ -1765,7 +1765,9 @@ export const WorldMap = ({
         if (isNaN(lat) || isNaN(lon)) return;
 
         const isWatched = watchSet.has?.(station.call) || watchSet.has?.(station.ssid);
-        const color = isWatched ? '#f59e0b' : '#22d3ee'; // amber for watched, cyan for regular
+        const isRF = station.source === 'local-tnc';
+        // amber for watched, green for local RF, cyan for internet
+        const color = isWatched ? '#f59e0b' : isRF ? '#4ade80' : '#22d3ee';
         const size = isWatched ? 7 : 5;
 
         try {
@@ -1799,7 +1801,8 @@ export const WorldMap = ({
               .bindPopup(
                 `
                 <b data-qrz-call="${esc(station.call)}" style="cursor:pointer">${esc(station.ssid || station.call)}</b>
-                ${isWatched ? ' <span style="color:#f59e0b">★</span>' : ''}<br>
+                ${isWatched ? ' <span style="color:#f59e0b">★</span>' : ''}
+                ${isRF ? ' <span style="color:#4ade80;font-size:10px">RF</span>' : ''}<br>
                 <span style="color:#888;font-size:11px">${ageStr}</span><br>
                 ${station.speed > 0 ? `Speed: ${station.speed} kt<br>` : ''}
                 ${station.altitude ? `Alt: ${station.altitude} ft<br>` : ''}

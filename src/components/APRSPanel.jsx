@@ -20,6 +20,10 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
     addCallToGroup,
     removeCallFromGroup,
     setActiveGroup,
+    sourceFilter = 'all',
+    setSourceFilter,
+    tncConnected = false,
+    hasRFStations = false,
   } = aprsData || {};
 
   const [search, setSearch] = useState('');
@@ -107,6 +111,16 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
           />
           <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
             {displayStations.length}/{stations.length}
+            {sourceFilter !== 'all' && (
+              <span
+                style={{
+                  color: sourceFilter === 'rf' ? 'var(--accent-green)' : 'var(--accent-cyan)',
+                  marginLeft: '3px',
+                }}
+              >
+                {sourceFilter === 'rf' ? '📡' : '🌐'}
+              </span>
+            )}
           </span>
         </div>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -142,6 +156,63 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
             {showOnMap ? 'ON' : 'OFF'}
           </button>
         </div>
+      </div>
+
+      {/* Source selector — All / Internet / Local RF */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '3px',
+          padding: '4px 8px',
+          borderBottom: '1px solid var(--border-color)',
+          background: 'var(--bg-tertiary)',
+          alignItems: 'center',
+        }}
+      >
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginRight: '4px' }}>Source:</span>
+        {[
+          { key: 'all', label: 'All' },
+          { key: 'internet', label: '🌐 Internet' },
+          { key: 'rf', label: '📡 Local RF' },
+        ].map((opt) => {
+          const isRF = opt.key === 'rf';
+          const isActive = sourceFilter === opt.key;
+          const rfDisabled = isRF && !hasRFStations;
+          return (
+            <button
+              key={opt.key}
+              onClick={() => !rfDisabled && setSourceFilter?.(opt.key)}
+              title={isRF && tncConnected ? 'TNC connected' : isRF ? 'No local RF data yet' : undefined}
+              style={{
+                padding: '2px 7px',
+                fontSize: '10px',
+                borderRadius: '3px',
+                border: isActive ? '1px solid var(--accent-green)' : '1px solid var(--border-color)',
+                background: isActive ? 'var(--accent-green)' : 'transparent',
+                color: isActive ? '#000' : rfDisabled ? 'var(--text-muted)' : 'var(--text-secondary)',
+                cursor: rfDisabled ? 'default' : 'pointer',
+                fontFamily: 'inherit',
+                fontWeight: isActive ? '600' : '400',
+                opacity: rfDisabled ? 0.5 : 1,
+              }}
+            >
+              {opt.label}
+              {isRF && tncConnected && (
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: '5px',
+                    height: '5px',
+                    borderRadius: '50%',
+                    background: '#22c55e',
+                    marginLeft: '4px',
+                    verticalAlign: 'middle',
+                  }}
+                />
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Group filter tabs */}
@@ -415,6 +486,23 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     {isWatched && <span style={{ fontSize: '10px' }}>★</span>}
                     <CallsignLink call={station.ssid || station.call} color="var(--text-primary)" fontWeight="700" />
+                    {station.source === 'local-tnc' && (
+                      <span
+                        title="Heard locally over RF"
+                        style={{
+                          fontSize: '9px',
+                          padding: '1px 4px',
+                          borderRadius: '2px',
+                          background: 'rgba(74,222,128,0.15)',
+                          border: '1px solid rgba(74,222,128,0.4)',
+                          color: '#4ade80',
+                          fontWeight: '600',
+                          letterSpacing: '0.02em',
+                        }}
+                      >
+                        RF
+                      </span>
+                    )}
                   </div>
                   {station.comment && (
                     <div
