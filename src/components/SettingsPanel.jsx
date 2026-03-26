@@ -73,6 +73,7 @@ export const SettingsPanel = ({
   const [tuneEnabled, setTuneEnabled] = useState(config?.rigControl?.tuneEnabled || false);
   const [autoMode, setAutoMode] = useState(config?.rigControl?.autoMode !== false);
   const [rigApiToken, setRigApiToken] = useState(config?.rigControl?.apiToken || '');
+  const [cloudRelaySession, setCloudRelaySession] = useState(config?.rigControl?.cloudRelaySession || '');
   const [showRigToken, setShowRigToken] = useState(false);
   const [wsjtxRelayStatus, setWsjtxRelayStatus] = useState(null); // null | 'pushing' | 'ok' | 'error'
   const [wsjtxRelayMsg, setWsjtxRelayMsg] = useState('');
@@ -440,6 +441,7 @@ export const SettingsPanel = ({
         tuneEnabled,
         autoMode,
         apiToken: rigApiToken.trim(),
+        cloudRelaySession: cloudRelaySession.trim(),
       },
     });
   };
@@ -724,6 +726,24 @@ export const SettingsPanel = ({
             }}
           >
             🔔 {t('station.settings.tab.title.alerts')}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('rig-bridge')}
+            style={{
+              flex: 1,
+              padding: '10px',
+              background: activeTab === 'rig-bridge' ? 'var(--accent-amber)' : 'transparent',
+              border: 'none',
+              borderRadius: '6px 6px 0 0',
+              color: activeTab === 'rig-bridge' ? '#000' : 'var(--text-secondary)',
+              fontSize: '13px',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'rig-bridge' ? '700' : '400',
+              fontFamily: 'JetBrains Mono, monospace',
+            }}
+          >
+            📻 Rig Bridge
           </button>
         </div>
 
@@ -4471,6 +4491,391 @@ export const SettingsPanel = ({
 
         {/* Audio Alerts Tab */}
         {activeTab === 'alerts' && <AudioAlertsTab />}
+
+        {/* Rig Bridge Tab */}
+        {activeTab === 'rig-bridge' && (
+          <div>
+            <div
+              style={{
+                background: 'var(--bg-tertiary)',
+                padding: '12px',
+                borderRadius: '6px',
+                border: '1px solid var(--border-color)',
+                marginBottom: '16px',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '11px',
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '1px',
+                  marginBottom: '10px',
+                }}
+              >
+                Connection
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
+                <input
+                  type="checkbox"
+                  checked={rigEnabled}
+                  onChange={(e) => setRigEnabled(e.target.checked)}
+                  style={{ marginRight: '8px' }}
+                />
+                <span style={{ color: 'var(--text-primary)', fontSize: '14px' }}>Enable Rig Bridge</span>
+              </div>
+
+              {rigEnabled && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                    <div>
+                      <label
+                        style={{ display: 'block', marginBottom: '4px', color: 'var(--text-muted)', fontSize: '10px' }}
+                      >
+                        {t('station.settings.rigControl.host')}
+                      </label>
+                      <input
+                        type="text"
+                        value={rigHost}
+                        onChange={(e) => setRigHost(e.target.value)}
+                        placeholder="http://localhost"
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          background: 'var(--bg-primary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '4px',
+                          color: 'var(--accent-cyan)',
+                          fontSize: '13px',
+                          fontFamily: 'JetBrains Mono',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label
+                        style={{ display: 'block', marginBottom: '4px', color: 'var(--text-muted)', fontSize: '10px' }}
+                      >
+                        {t('station.settings.rigControl.port')}
+                      </label>
+                      <input
+                        type="number"
+                        value={rigPort}
+                        onChange={(e) => setRigPort(e.target.value)}
+                        placeholder="5555"
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          background: 'var(--bg-primary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '4px',
+                          color: 'var(--accent-cyan)',
+                          fontSize: '13px',
+                          fontFamily: 'JetBrains Mono',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '10px' }}>
+                    <label
+                      style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}
+                    >
+                      {t('station.settings.rigControl.apiToken')}
+                    </label>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <input
+                        type={showRigToken ? 'text' : 'password'}
+                        value={rigApiToken}
+                        onChange={(e) => setRigApiToken(e.target.value)}
+                        placeholder={t('station.settings.rigControl.apiToken.placeholder')}
+                        style={{
+                          flex: 1,
+                          padding: '6px 10px',
+                          background: 'var(--bg-primary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '4px',
+                          color: 'var(--text-primary)',
+                          fontSize: '12px',
+                          fontFamily: 'monospace',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowRigToken((v) => !v)}
+                        style={{
+                          padding: '6px 10px',
+                          background: 'var(--bg-tertiary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '4px',
+                          color: 'var(--text-secondary)',
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {showRigToken ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px', lineHeight: 1.4 }}>
+                      {t('station.settings.rigControl.apiToken.hint')}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        color: 'var(--text-primary)',
+                        fontSize: '13px',
+                      }}
+                    >
+                      <input type="checkbox" checked={tuneEnabled} onChange={(e) => setTuneEnabled(e.target.checked)} />
+                      Click-to-tune
+                    </label>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        color: 'var(--text-primary)',
+                        fontSize: '13px',
+                      }}
+                    >
+                      <input type="checkbox" checked={autoMode} onChange={(e) => setAutoMode(e.target.checked)} />
+                      Auto-mode from band plan
+                    </label>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {rigEnabled && (
+              <>
+                {/* Setup UI Link */}
+                <div
+                  style={{
+                    background: 'rgba(99,102,241,0.08)',
+                    border: '1px solid rgba(99,102,241,0.2)',
+                    borderRadius: '6px',
+                    padding: '12px',
+                    marginBottom: '16px',
+                  }}
+                >
+                  <div
+                    style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '10px', lineHeight: 1.4 }}
+                  >
+                    Download and run Rig Bridge on your local computer. Configure your radio, digital modes, APRS TNC,
+                    rotator, and cloud relay in its setup UI.
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                    <a
+                      href="/api/rig-bridge/download/windows"
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        background: 'rgba(99,102,241,0.15)',
+                        border: '1px solid rgba(99,102,241,0.3)',
+                        color: '#818cf8',
+                        textDecoration: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Windows
+                    </a>
+                    <a
+                      href="/api/rig-bridge/download/mac"
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        background: 'rgba(99,102,241,0.15)',
+                        border: '1px solid rgba(99,102,241,0.3)',
+                        color: '#818cf8',
+                        textDecoration: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Mac
+                    </a>
+                    <a
+                      href="/api/rig-bridge/download/linux"
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        background: 'rgba(99,102,241,0.15)',
+                        border: '1px solid rgba(99,102,241,0.3)',
+                        color: '#818cf8',
+                        textDecoration: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Linux
+                    </a>
+                    <a
+                      href={`${rigHost.replace(/\/$/, '')}:${rigPort}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        background: 'rgba(99,102,241,0.15)',
+                        border: '1px solid rgba(99,102,241,0.3)',
+                        color: '#818cf8',
+                        textDecoration: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Open Setup UI
+                    </a>
+                  </div>
+                  <div style={{ fontSize: '9px', color: 'var(--text-muted)', opacity: 0.7 }}>
+                    Requires Node.js and git. The installer downloads rig-bridge and starts it automatically.
+                  </div>
+                </div>
+
+                {/* Plugin Status */}
+                <div
+                  style={{
+                    background: 'var(--bg-tertiary)',
+                    padding: '12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    marginBottom: '16px',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      color: 'var(--text-muted)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '1px',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Available Plugins
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+                    <div>
+                      <strong>Radio:</strong> Yaesu, Kenwood, Icom (USB) | rigctld, flrig, TCI, SmartSDR, RTL-TCP
+                    </div>
+                    <div>
+                      <strong>Digital:</strong> WSJT-X, MSHV, JTDX, JS8Call (bidirectional)
+                    </div>
+                    <div>
+                      <strong>Packet:</strong> APRS TNC (KISS/Direwolf), Winlink (Pat client)
+                    </div>
+                    <div>
+                      <strong>Hardware:</strong> Rotator (rotctld)
+                    </div>
+                    <div>
+                      <strong>Cloud:</strong> Cloud Relay (proxy rig features to cloud-hosted OHC)
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cloud Relay Setup */}
+                <div
+                  style={{
+                    background: 'rgba(34, 197, 94, 0.08)',
+                    border: '1px solid rgba(34, 197, 94, 0.2)',
+                    borderRadius: '6px',
+                    padding: '12px',
+                    marginBottom: '16px',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      color: 'var(--text-muted)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '1px',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Cloud Relay
+                  </div>
+                  <div
+                    style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '10px', lineHeight: 1.4 }}
+                  >
+                    Running OpenHamClock in the cloud? The Cloud Relay connects your local rig-bridge to this server,
+                    enabling click-to-tune, PTT, WSJT-X decodes, and APRS from anywhere.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const credRes = await fetch('/api/rig-bridge/relay/configure', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({}),
+                        });
+                        const credData = await credRes.json();
+                        if (!credRes.ok) {
+                          alert(`Error: ${credData.error}`);
+                          return;
+                        }
+
+                        setCloudRelaySession(credData.session);
+
+                        // Copy config to clipboard for easy paste into rig-bridge
+                        const configText = JSON.stringify(credData.configPayload, null, 2);
+                        try {
+                          await navigator.clipboard.writeText(configText);
+                        } catch (e) {}
+
+                        alert(
+                          `Cloud Relay credentials generated!\n\n` +
+                            `Session: ${credData.session}\n` +
+                            `Server: ${credData.serverUrl}\n\n` +
+                            `Next steps:\n` +
+                            `1. Open Rig Bridge setup UI at http://localhost:5555\n` +
+                            `2. Go to the Plugins tab\n` +
+                            `3. Enable "Cloud Relay"\n` +
+                            `4. Paste these settings:\n` +
+                            `   Server URL: ${credData.serverUrl}\n` +
+                            `   API Key: ${credData.relayKey}\n` +
+                            `   Session: ${credData.session}\n` +
+                            `5. Restart rig-bridge\n` +
+                            `6. Click Save below in OHC settings\n\n` +
+                            `(Config copied to clipboard)`,
+                        );
+                      } catch (e) {
+                        alert(`Failed to get relay credentials: ${e.message}`);
+                      }
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      background: 'rgba(34, 197, 94, 0.15)',
+                      border: '1px solid rgba(34, 197, 94, 0.3)',
+                      color: '#22c55e',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Connect Cloud Relay
+                  </button>
+                  <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '6px', opacity: 0.7 }}>
+                    Requires rig-bridge running locally and RIG_BRIDGE_RELAY_KEY set on this server.
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Buttons */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '24px' }}>

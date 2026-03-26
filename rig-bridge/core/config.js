@@ -5,13 +5,60 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const crypto = require('crypto');
 
-// Portable config path (works in pkg snapshots too)
-const CONFIG_DIR = process.pkg ? path.dirname(process.execPath) : path.join(__dirname, '..');
-const CONFIG_PATH = path.join(CONFIG_DIR, 'rig-bridge-config.json');
+// Config path resolution — prefer external user directory so updates never overwrite config.
+// Fallback: alongside the executable (pkg) or in the rig-bridge directory (node).
+function resolveConfigPath() {
+  // 1. External platform-appropriate directory (survives updates)
+  let externalDir;
+  if (process.platform === 'win32') {
+    externalDir = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'openhamclock');
+  } else {
+    externalDir = path.join(os.homedir(), '.config', 'openhamclock');
+  }
+  const externalPath = path.join(externalDir, 'rig-bridge-config.json');
+
+  // If external config exists, use it
+  if (fs.existsSync(externalPath)) return { dir: externalDir, path: externalPath };
+
+  // 2. Legacy location (alongside executable or in rig-bridge dir)
+  const legacyDir = process.pkg ? path.dirname(process.execPath) : path.join(__dirname, '..');
+  const legacyPath = path.join(legacyDir, 'rig-bridge-config.json');
+
+  // If legacy config exists, migrate it to external dir
+  if (fs.existsSync(legacyPath)) {
+    try {
+      if (!fs.existsSync(externalDir)) fs.mkdirSync(externalDir, { recursive: true });
+      fs.copyFileSync(legacyPath, externalPath);
+      console.log(`[Config] Migrated config from ${legacyPath} → ${externalPath}`);
+      // Rename legacy file so it's not loaded again on downgrade
+      fs.renameSync(legacyPath, legacyPath + '.migrated');
+      return { dir: externalDir, path: externalPath };
+    } catch (e) {
+      console.warn(`[Config] Migration failed (${e.message}), using legacy path`);
+      return { dir: legacyDir, path: legacyPath };
+    }
+  }
+
+  // 3. Fresh install — create in external dir
+  try {
+    if (!fs.existsSync(externalDir)) fs.mkdirSync(externalDir, { recursive: true });
+  } catch (e) {
+    console.warn(`[Config] Cannot create ${externalDir} (${e.message}), using legacy path`);
+    return { dir: legacyDir, path: legacyPath };
+  }
+  return { dir: externalDir, path: externalPath };
+}
+
+const { dir: CONFIG_DIR, path: CONFIG_PATH } = resolveConfigPath();
+
+// Increment when DEFAULT_CONFIG structure changes (new keys, renamed keys, etc.)
+const CONFIG_VERSION = 6;
 
 const DEFAULT_CONFIG = {
+  configVersion: CONFIG_VERSION,
   port: 5555,
   bindAddress: '127.0.0.1', // Bind to localhost only; set to '0.0.0.0' for LAN access
   corsOrigins: '', // Extra allowed CORS origins (comma-separated); OHC origins always allowed
@@ -69,34 +116,145 @@ const DEFAULT_CONFIG = {
     // Set to '0.0.0.0' only if WSJT-X runs on a separate machine and multicast is not used.
     udpBindAddress: '', // '' = use secure default (127.0.0.1, or 0.0.0.0 when multicast enabled)
   },
+  // Digital mode software plugins — bidirectional UDP control
+  mshv: {
+    enabled: false,
+    udpPort: 2239,
+    bindAddress: '127.0.0.1',
+    verbose: false,
+  },
+  jtdx: {
+    enabled: false,
+    udpPort: 2238,
+    bindAddress: '127.0.0.1',
+    verbose: false,
+  },
+  js8call: {
+    enabled: false,
+    udpPort: 2242,
+    bindAddress: '127.0.0.1',
+    verbose: false,
+  },
+  // APRS local TNC — connect to Direwolf or hardware TNC via KISS
+  aprs: {
+    enabled: false,
+    protocol: 'kiss-tcp', // kiss-tcp | kiss-serial
+    host: '127.0.0.1', // Direwolf KISS TCP host
+    port: 8001, // Direwolf KISS TCP port
+    serialPort: '', // Serial port for hardware TNC (e.g. /dev/ttyUSB0)
+    baudRate: 9600,
+    callsign: '', // Your callsign (required for TX)
+    ssid: 0,
+    path: ['WIDE1-1', 'WIDE2-1'],
+    destination: 'APOHC1', // APRS tocall
+    beaconInterval: 600, // Seconds between position beacons (0 = disabled)
+    symbol: '/-', // APRS symbol (/-  = house)
+    verbose: false,
+  },
+  // Rotator control via rotctld (Hamlib)
+  rotator: {
+    enabled: false,
+    host: '127.0.0.1',
+    port: 4533,
+    pollInterval: 1000,
+    verbose: false,
+  },
+  // Cloud Relay — proxy all rig-bridge features to a cloud-hosted OHC
+  cloudRelay: {
+    enabled: false,
+    url: '', // Cloud OHC URL (e.g. https://openhamclock.com)
+    apiKey: '', // Relay authentication key
+    session: '', // Browser session ID for per-user isolation
+    pushInterval: 2000, // State push interval in ms
+    pollInterval: 1000, // Command poll interval in ms
+    verbose: false,
+  },
+  // Winlink gateway discovery + Pat client integration
+  winlink: {
+    enabled: false,
+    apiKey: '', // Winlink API key from winlink.org admin
+    refreshInterval: 3600, // Gateway list refresh in seconds
+    pat: {
+      enabled: false,
+      host: '127.0.0.1',
+      port: 8080,
+    },
+  },
 };
 
 let config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 
-const CONFIG_EXAMPLE_PATH = path.join(CONFIG_DIR, 'rig-bridge-config.example.json');
-
 function loadConfig() {
   try {
-    // If config doesn't exist, try to copy it from the example
-    if (!fs.existsSync(CONFIG_PATH) && fs.existsSync(CONFIG_EXAMPLE_PATH)) {
-      fs.copyFileSync(CONFIG_EXAMPLE_PATH, CONFIG_PATH);
+    // If config doesn't exist, try to copy from the example (located in the rig-bridge dir)
+    const legacyDir = process.pkg ? path.dirname(process.execPath) : path.join(__dirname, '..');
+    const examplePath = path.join(legacyDir, 'rig-bridge-config.example.json');
+    if (!fs.existsSync(CONFIG_PATH) && fs.existsSync(examplePath)) {
+      fs.copyFileSync(examplePath, CONFIG_PATH);
       console.log(`[Config] Created ${CONFIG_PATH} from example`);
     }
 
     if (fs.existsSync(CONFIG_PATH)) {
       const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      const savedVersion = raw.configVersion || 1;
+
       // Update the existing config object in place so references in other modules remain valid
       Object.assign(config, {
         ...DEFAULT_CONFIG,
         ...raw,
+        configVersion: CONFIG_VERSION, // Always use current version
         radio: { ...DEFAULT_CONFIG.radio, ...(raw.radio || {}) },
         tci: { ...DEFAULT_CONFIG.tci, ...(raw.tci || {}) },
         wsjtxRelay: { ...DEFAULT_CONFIG.wsjtxRelay, ...(raw.wsjtxRelay || {}) },
         smartsdr: { ...(raw.smartsdr || {}) },
         rtltcp: { ...(raw.rtltcp || {}) },
+        mshv: { ...DEFAULT_CONFIG.mshv, ...(raw.mshv || {}) },
+        jtdx: { ...DEFAULT_CONFIG.jtdx, ...(raw.jtdx || {}) },
+        js8call: { ...DEFAULT_CONFIG.js8call, ...(raw.js8call || {}) },
+        aprs: { ...DEFAULT_CONFIG.aprs, ...(raw.aprs || {}) },
+        rotator: { ...DEFAULT_CONFIG.rotator, ...(raw.rotator || {}) },
+        cloudRelay: { ...DEFAULT_CONFIG.cloudRelay, ...(raw.cloudRelay || {}) },
+        winlink: {
+          ...DEFAULT_CONFIG.winlink,
+          ...(raw.winlink || {}),
+          pat: { ...DEFAULT_CONFIG.winlink.pat, ...((raw.winlink || {}).pat || {}) },
+        },
         // Coerce logging to boolean in case the stored value is a string
         logging: raw.logging !== undefined ? !!raw.logging : DEFAULT_CONFIG.logging,
       });
+
+      // Log new keys added by the merge so users can see what changed
+      if (savedVersion < CONFIG_VERSION) {
+        const newKeys = [];
+        for (const key of Object.keys(DEFAULT_CONFIG)) {
+          if (!(key in raw)) newKeys.push(key);
+        }
+        for (const section of [
+          'radio',
+          'tci',
+          'wsjtxRelay',
+          'mshv',
+          'jtdx',
+          'js8call',
+          'aprs',
+          'rotator',
+          'cloudRelay',
+          'winlink',
+        ]) {
+          if (DEFAULT_CONFIG[section] && raw[section]) {
+            for (const key of Object.keys(DEFAULT_CONFIG[section])) {
+              if (!(key in raw[section])) newKeys.push(`${section}.${key}`);
+            }
+          }
+        }
+        if (newKeys.length > 0) {
+          console.log(`[Config] Schema migrated v${savedVersion} → v${CONFIG_VERSION}: added ${newKeys.join(', ')}`);
+        } else {
+          console.log(`[Config] Schema upgraded v${savedVersion} → v${CONFIG_VERSION}`);
+        }
+        saveConfig(); // Persist the upgraded config
+      }
+
       console.log(`[Config] Loaded from ${CONFIG_PATH}`);
     }
   } catch (e) {
@@ -134,4 +292,4 @@ function applyCliArgs() {
   }
 }
 
-module.exports = { config, loadConfig, saveConfig, applyCliArgs };
+module.exports = { config, loadConfig, saveConfig, applyCliArgs, CONFIG_PATH };

@@ -19,10 +19,10 @@
 
 'use strict';
 
-const VERSION = '1.2.0';
+const VERSION = '2.0.0';
 
 const { config, loadConfig, applyCliArgs } = require('./core/config');
-const { updateState, state } = require('./core/state');
+const { updateState, state, onStateChange, removeStateChangeListener } = require('./core/state');
 const PluginRegistry = require('./core/plugin-registry');
 const { startServer } = require('./core/server');
 
@@ -59,15 +59,29 @@ Examples:
   process.exit(0);
 }
 
-// 4. Create plugin registry, wire shared services, register all built-in plugins
-const registry = new PluginRegistry(config, { updateState, state });
+// 4. Initialize shared services
+const { MessageLog } = require('./lib/message-log');
+const EventEmitter = require('events');
+
+const messageLog = new MessageLog({ maxAgeDays: config.messageLogRetentionDays || 7 });
+const pluginBus = new EventEmitter(); // Shared event bus for inter-plugin communication
+
+// 5. Create plugin registry, wire shared services, register all built-in plugins
+const registry = new PluginRegistry(config, {
+  updateState,
+  state,
+  messageLog,
+  pluginBus,
+  onStateChange,
+  removeStateChangeListener,
+});
 registry.registerBuiltins();
 
-// 5. Start HTTP server (passes registry for route dispatch and plugin route registration)
+// 6. Start HTTP server (passes registry for route dispatch and plugin route registration)
 startServer(config.port, registry, VERSION);
 
-// 6. Auto-connect to configured radio (if any)
+// 7. Auto-connect to configured radio (if any)
 registry.connectActive();
 
-// 7. Start all enabled integration plugins (e.g. WSJT-X relay)
+// 8. Start all enabled integration plugins (e.g. WSJT-X relay)
 registry.connectIntegrations();

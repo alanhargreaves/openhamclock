@@ -47,11 +47,13 @@ const RigControlPanel = () => {
 
       <div className="panel-content">
         {error === 'unauthorized' && <div className="error-banner">{t('app.rigControl.error.unauthorized')}</div>}
+        {error === 'needs-token' && <div className="error-banner warning">{t('app.rigControl.error.needsToken')}</div>}
         {error === 'ptt-disabled' && (
           <div className="error-banner warning">{t('app.rigControl.error.pttDisabled')}</div>
         )}
         {error === 'no-plugin' && <div className="error-banner warning">{t('app.rigControl.error.noPlugin')}</div>}
-        {error && error !== 'unauthorized' && error !== 'ptt-disabled' && error !== 'no-plugin' && (
+        {error === 'not-reachable' && <div className="error-banner">{t('app.rigControl.error.notReachable')}</div>}
+        {error && !['unauthorized', 'needs-token', 'ptt-disabled', 'no-plugin', 'not-reachable'].includes(error) && (
           <div className="error-banner">{t('app.rigControl.error.daemon')}</div>
         )}
 

@@ -57,7 +57,16 @@ class PluginRegistry {
     }
 
     // Integration plugins (non-rig, run in parallel alongside the rig plugin)
-    for (const file of ['wsjtx-relay']) {
+    for (const file of [
+      'wsjtx-relay',
+      'mshv',
+      'jtdx',
+      'js8call',
+      'aprs-tnc',
+      'winlink-gateway',
+      'rotator',
+      'cloud-relay',
+    ]) {
       try {
         const p = require(`../plugins/${file}`);
         this._descriptors.set(p.id, p);
@@ -216,6 +225,20 @@ class PluginRegistry {
 
   get activeId() {
     return this._activeId;
+  }
+
+  /**
+   * Get the running integration plugins map (for health reporting).
+   */
+  getIntegrations() {
+    return this._integrations;
+  }
+
+  /**
+   * Get shared services (messageLog, state, etc.).
+   */
+  get services() {
+    return this._services;
   }
 }
 

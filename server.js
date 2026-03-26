@@ -49,6 +49,7 @@ const {
   N1MM_QSO_MAX_AGE,
   WSJTX_MULTICAST_ADDRESS,
   WSJTX_RELAY_KEY: WSJTX_RELAY_KEY_CFG,
+  RIG_BRIDGE_RELAY_KEY,
   ROTATOR_PROVIDER,
   ROTATOR_HOST,
   ROTATOR_PORT,
@@ -123,6 +124,7 @@ const ctx = {
   APRS_ENABLED,
   APRS_CALLSIGN_FILTER,
   N3FJP_QSO_RETENTION_MINUTES,
+  RIG_BRIDGE_RELAY_KEY,
   ROTATOR_PROVIDER,
   ROTATOR_HOST,
   ROTATOR_PORT,
@@ -257,6 +259,7 @@ require('./server/routes/wsjtx')(app, ctx);
 require('./server/routes/n1mm')(app, ctx);
 require('./server/routes/meshtastic')(app, ctx);
 require('./server/routes/presence')(app, ctx);
+require('./server/routes/rig-bridge')(app, ctx);
 require('./server/routes/config-routes')(app, ctx);
 require('./server/routes/admin')(app, ctx);
 

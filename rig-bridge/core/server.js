@@ -23,7 +23,7 @@ const express = require('express');
 const cors = require('cors');
 const { getSerialPort, listPorts } = require('./serial-utils');
 const { state, addSseClient, removeSseClient } = require('./state');
-const { config, saveConfig } = require('./config');
+const { config, saveConfig, CONFIG_PATH } = require('./config');
 
 // ─── Security helpers ─────────────────────────────────────────────────────
 
@@ -515,8 +515,9 @@ function buildSetupHtml(version, firstRunToken = null) {
     <!-- Tabs -->
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab('radio', this)">📻 Radio</button>
-      <button class="tab-btn" onclick="switchTab('integrations', this)">🔌 Integrations</button>
-      <button class="tab-btn" onclick="switchTab('log', this)">🖥️ Console Log</button>
+      <button class="tab-btn" onclick="switchTab('plugins', this)">🧩 Plugins</button>
+      <button class="tab-btn" onclick="switchTab('integrations', this)">🔌 WSJT-X</button>
+      <button class="tab-btn" onclick="switchTab('log', this)">🖥️ Log</button>
     </div>
 
     <!-- ══ Tab: Radio ══ -->
@@ -740,6 +741,19 @@ function buildSetupHtml(version, firstRunToken = null) {
     </div>
 
     <!-- ══ Tab: Integrations ══ -->
+    <!-- ══ Tab: Plugins ══ -->
+    <div class="tab-panel" id="tab-plugins">
+      <div class="card">
+        <div class="card-title">🧩 Plugin Manager</div>
+        <p class="help-text" style="margin-bottom:14px; color:#6b7280;">
+          Enable or disable plugins and configure their settings. Changes are saved immediately.
+        </p>
+        <div id="pluginList" style="display:flex; flex-direction:column; gap:12px;">
+          <div style="color:#6b7280; font-size:12px;">Loading plugins...</div>
+        </div>
+      </div>
+    </div>
+
     <div class="tab-panel" id="tab-integrations">
       <div class="card">
         <div class="card-title">📡 WSJT-X Relay</div>
@@ -864,6 +878,158 @@ function buildSetupHtml(version, firstRunToken = null) {
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('tab-' + name).classList.add('active');
+    }
+
+    // ── Plugin Manager ────────────────────────────────────────────────────
+
+    const PLUGIN_DEFS = [
+      { key: 'mshv', name: 'MSHV', desc: 'Multi-stream digital mode software (MSK144, Q65, etc.)', fields: [
+        { id: 'udpPort', label: 'UDP Port', type: 'number', default: 2239 },
+        { id: 'verbose', label: 'Verbose logging', type: 'checkbox', default: false },
+      ]},
+      { key: 'jtdx', name: 'JTDX', desc: 'Enhanced JT65/JT9/FT8 decoding (WSJT-X fork)', fields: [
+        { id: 'udpPort', label: 'UDP Port', type: 'number', default: 2238 },
+        { id: 'verbose', label: 'Verbose logging', type: 'checkbox', default: false },
+      ]},
+      { key: 'js8call', name: 'JS8Call', desc: 'JS8 messaging protocol for keyboard-to-keyboard QSOs', fields: [
+        { id: 'udpPort', label: 'UDP Port', type: 'number', default: 2242 },
+        { id: 'verbose', label: 'Verbose logging', type: 'checkbox', default: false },
+      ]},
+      { key: 'aprs', name: 'APRS TNC', desc: 'Local APRS via Direwolf or hardware TNC (KISS protocol)', fields: [
+        { id: 'protocol', label: 'Protocol', type: 'select', options: ['kiss-tcp', 'kiss-serial'], default: 'kiss-tcp' },
+        { id: 'host', label: 'TNC Host', type: 'text', default: '127.0.0.1' },
+        { id: 'port', label: 'TNC Port', type: 'number', default: 8001 },
+        { id: 'callsign', label: 'Your Callsign', type: 'text', default: '' },
+        { id: 'ssid', label: 'SSID', type: 'number', default: 0 },
+        { id: 'beaconInterval', label: 'Beacon Interval (sec)', type: 'number', default: 600 },
+        { id: 'verbose', label: 'Verbose logging', type: 'checkbox', default: false },
+      ]},
+      { key: 'rotator', name: 'Rotator (rotctld)', desc: 'Antenna rotator control via Hamlib rotctld', fields: [
+        { id: 'host', label: 'rotctld Host', type: 'text', default: '127.0.0.1' },
+        { id: 'port', label: 'rotctld Port', type: 'number', default: 4533 },
+        { id: 'pollInterval', label: 'Poll Interval (ms)', type: 'number', default: 1000 },
+      ]},
+      { key: 'winlink', name: 'Winlink', desc: 'Gateway discovery + Pat client for Winlink messaging', fields: [
+        { id: 'apiKey', label: 'Winlink API Key', type: 'text', default: '' },
+        { id: 'pat.enabled', label: 'Enable Pat Client', type: 'checkbox', default: false },
+        { id: 'pat.host', label: 'Pat Host', type: 'text', default: '127.0.0.1' },
+        { id: 'pat.port', label: 'Pat Port', type: 'number', default: 8080 },
+      ]},
+      { key: 'cloudRelay', name: 'Cloud Relay', desc: 'Proxy rig features to cloud-hosted OpenHamClock', fields: [
+        { id: 'url', label: 'OHC Server URL', type: 'text', default: '' },
+        { id: 'apiKey', label: 'Relay API Key', type: 'text', default: '' },
+        { id: 'session', label: 'Session ID', type: 'text', default: '' },
+        { id: 'pushInterval', label: 'Push Interval (ms)', type: 'number', default: 2000 },
+        { id: 'pollInterval', label: 'Poll Interval (ms)', type: 'number', default: 1000 },
+      ]},
+    ];
+
+    function renderPlugins(cfg) {
+      const container = document.getElementById('pluginList');
+      container.innerHTML = '';
+
+      PLUGIN_DEFS.forEach(plugin => {
+        const pcfg = cfg[plugin.key] || {};
+        const enabled = !!pcfg.enabled;
+
+        const card = document.createElement('div');
+        card.style.cssText = 'background:#0d1117; border:1px solid #1e2530; border-radius:8px; padding:14px;';
+        card.innerHTML =
+          '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">' +
+            '<div>' +
+              '<strong style="color:#c4c9d4; font-size:13px;">' + plugin.name + '</strong>' +
+              '<div style="font-size:11px; color:#6b7280; margin-top:2px;">' + plugin.desc + '</div>' +
+            '</div>' +
+            '<label style="position:relative; display:inline-block; width:44px; height:24px; margin:0;">' +
+              '<input type="checkbox" ' + (enabled ? 'checked' : '') +
+              ' onchange="togglePlugin(\\''+plugin.key+'\\', this.checked)"' +
+              ' style="opacity:0; width:0; height:0;">' +
+              '<span style="position:absolute; cursor:pointer; inset:0; background:' + (enabled ? '#22c55e' : '#374151') +
+              '; border-radius:24px; transition:0.2s;"></span>' +
+              '<span style="position:absolute; left:' + (enabled ? '22px' : '3px') +
+              '; top:3px; width:18px; height:18px; background:#fff; border-radius:50%; transition:0.2s;"></span>' +
+            '</label>' +
+          '</div>';
+
+        // Settings fields (shown when enabled)
+        if (enabled && plugin.fields.length > 0) {
+          const fields = document.createElement('div');
+          fields.style.cssText = 'border-top:1px solid #1e2530; padding-top:10px; margin-top:8px; display:grid; grid-template-columns:1fr 1fr; gap:8px;';
+
+          plugin.fields.forEach(f => {
+            const val = f.id.includes('.') ? (pcfg[f.id.split('.')[0]] || {})[f.id.split('.')[1]] : pcfg[f.id];
+            const div = document.createElement('div');
+
+            if (f.type === 'checkbox') {
+              div.innerHTML =
+                '<label style="display:flex; align-items:center; gap:6px; font-size:11px; color:#8b95a5; margin:0;">' +
+                  '<input type="checkbox" ' + (val ? 'checked' : '') +
+                  ' onchange="setPluginField(\\''+plugin.key+'\\', \\''+f.id+'\\', this.checked)">' +
+                  f.label +
+                '</label>';
+              div.style.gridColumn = 'span 2';
+            } else if (f.type === 'select') {
+              div.innerHTML =
+                '<label style="font-size:10px; color:#6b7280; margin-bottom:3px; display:block;">' + f.label + '</label>' +
+                '<select onchange="setPluginField(\\''+plugin.key+'\\', \\''+f.id+'\\', this.value)"' +
+                ' style="width:100%; padding:6px; background:#0a0e14; border:1px solid #1e2530; border-radius:4px; color:#c4c9d4; font-size:12px;">' +
+                f.options.map(o => '<option value="'+o+'" '+(val===o?'selected':'')+'>'+o+'</option>').join('') +
+                '</select>';
+            } else {
+              div.innerHTML =
+                '<label style="font-size:10px; color:#6b7280; margin-bottom:3px; display:block;">' + f.label + '</label>' +
+                '<input type="' + f.type + '" value="' + (val != null ? val : f.default) + '"' +
+                ' onchange="setPluginField(\\''+plugin.key+'\\', \\''+f.id+'\\', this.value)"' +
+                ' style="width:100%; padding:6px; background:#0a0e14; border:1px solid #1e2530; border-radius:4px; color:#c4c9d4; font-size:12px; box-sizing:border-box;">';
+            }
+            fields.appendChild(div);
+          });
+
+          card.appendChild(fields);
+        }
+
+        container.appendChild(card);
+      });
+    }
+
+    async function togglePlugin(key, enabled) {
+      const update = {};
+      update[key] = { enabled };
+      try {
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-RigBridge-Token': _sessionToken },
+          body: JSON.stringify(update),
+        });
+        if (res.ok) {
+          showToast(enabled ? 'Plugin enabled — restart rig-bridge to activate' : 'Plugin disabled');
+          loadApp(); // Refresh UI
+        } else {
+          showToast('Failed to save', true);
+        }
+      } catch (e) {
+        showToast('Error: ' + e.message, true);
+      }
+    }
+
+    async function setPluginField(key, field, value) {
+      const update = {};
+      if (field.includes('.')) {
+        const [section, subkey] = field.split('.');
+        update[key] = {};
+        update[key][section] = {};
+        update[key][section][subkey] = value;
+      } else {
+        update[key] = {};
+        update[key][field] = typeof value === 'string' && /^\\d+$/.test(value) ? parseInt(value) : value;
+      }
+      try {
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-RigBridge-Token': _sessionToken },
+          body: JSON.stringify(update),
+        });
+      } catch (e) {}
     }
 
     // ── Integrations tab ───────────────────────────────────────────────────
@@ -1104,6 +1270,7 @@ function buildSetupHtml(version, firstRunToken = null) {
         const logData = await logRes.json();
         populateForm(currentConfig);
         populateIntegrations(currentConfig);
+        renderPlugins(currentConfig);
         setLoggingBtn(logData.logging !== false); // default true
         refreshPorts();
         startStatusPoll();
@@ -1696,6 +1863,17 @@ function createServer(registry, version) {
       }
       config.rtltcp = { ...config.rtltcp, ...newConfig.rtltcp };
     }
+    // Deep-merge plugin config sections
+    for (const key of ['mshv', 'jtdx', 'js8call', 'aprs', 'rotator', 'cloudRelay', 'winlink']) {
+      if (newConfig[key]) {
+        config[key] = { ...(config[key] || {}), ...newConfig[key] };
+        // Handle nested objects (e.g. winlink.pat)
+        if (newConfig[key].pat && config[key].pat) {
+          config[key].pat = { ...config[key].pat, ...newConfig[key].pat };
+        }
+      }
+    }
+
     // macOS: tty.* (dial-in) blocks open() — silently upgrade to cu.* (call-out)
     if (process.platform === 'darwin' && config.radio.serialPort?.startsWith('/dev/tty.')) {
       config.radio.serialPort = config.radio.serialPort.replace('/dev/tty.', '/dev/cu.');
@@ -1789,13 +1967,67 @@ function createServer(registry, version) {
   });
 
   // ─── OHC-compatible API ───
+  // ─── Message Log API ─────────────────────────────────────────────────
+  app.get('/api/messages', (req, res) => {
+    const log = registry.services?.messageLog;
+    if (!log) return res.json({ entries: [] });
+    const { callsign, type, since, until, limit } = req.query;
+    const entries = log.query({
+      callsign,
+      type,
+      since: since ? parseInt(since) : undefined,
+      until: until ? parseInt(until) : undefined,
+      limit: limit ? parseInt(limit) : 200,
+    });
+    res.json({ count: entries.length, entries });
+  });
+
+  app.get('/api/messages/export', (req, res) => {
+    const log = registry.services?.messageLog;
+    if (!log) return res.status(503).json({ error: 'Message log not available' });
+    const format = req.query.format || 'csv';
+    const filters = {
+      callsign: req.query.callsign,
+      type: req.query.type,
+      since: req.query.since ? parseInt(req.query.since) : undefined,
+    };
+    if (format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="messages.csv"');
+      res.send(log.exportCSV(filters));
+    } else {
+      res.setHeader('Content-Type', 'text/plain');
+      res.setHeader('Content-Disposition', 'attachment; filename="messages.txt"');
+      res.send(log.exportText(filters));
+    }
+  });
+
+  app.get('/api/messages/stats', (req, res) => {
+    const log = registry.services?.messageLog;
+    if (!log) return res.json({ total: 0 });
+    res.json(log.stats());
+  });
+
   // Diagnostic endpoint — no auth required, designed for troubleshooting
   app.get('/health', (req, res) => {
+    // Collect integration plugin status
+    const integrations = {};
+    for (const [id, instance] of registry.getIntegrations()) {
+      if (typeof instance.getStatus === 'function') {
+        integrations[id] = instance.getStatus();
+      }
+    }
+
     res.json({
       auth: config.apiToken ? 'enabled' : 'disabled',
       plugin: registry.activeId || 'none',
       connected: state.connected,
+      freq: state.freq,
+      mode: state.mode,
+      ptt: state.ptt,
       pttEnabled: !!(config.radio && config.radio.pttEnabled),
+      integrations,
+      configPath: CONFIG_PATH,
       uptime: Math.floor(process.uptime()),
     });
   });
@@ -1896,6 +2128,7 @@ function startServer(port, registry, version) {
       console.log(`  ║   ⚠ Bound to ${bindAddress.padEnd(33)}║`);
     }
     console.log('  ╚══════════════════════════════════════════════╝');
+    console.log(`  Config: ${CONFIG_PATH}`);
     console.log('');
   });
 

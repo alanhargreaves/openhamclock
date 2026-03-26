@@ -224,6 +224,9 @@ const ROTATOR_PROVIDER = process.env.ROTATOR_PROVIDER || 'none';
 const ROTATOR_HOST = process.env.ROTATOR_HOST || '127.0.0.1';
 const ROTATOR_PORT = parseInt(process.env.ROTATOR_PORT || '12000', 10);
 
+// Rig Bridge Cloud Relay
+const RIG_BRIDGE_RELAY_KEY = process.env.RIG_BRIDGE_RELAY_KEY || process.env.WSJTX_RELAY_KEY || '';
+
 // DX Spider Proxy URL
 const DXSPIDER_PROXY_URL = process.env.DXSPIDER_PROXY_URL || 'https://spider-production-1ec7.up.railway.app';
 
@@ -258,6 +261,7 @@ module.exports = {
   ROTATOR_PROVIDER,
   ROTATOR_HOST,
   ROTATOR_PORT,
+  RIG_BRIDGE_RELAY_KEY,
   DXSPIDER_PROXY_URL,
   CORS_ORIGINS,
   SETTINGS_SYNC,

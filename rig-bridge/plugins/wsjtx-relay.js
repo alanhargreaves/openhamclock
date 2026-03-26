@@ -22,205 +22,16 @@ const dgram = require('dgram');
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
+const {
+  WSJTX_MSG,
+  parseMessage,
+  buildReply,
+  buildHaltTx,
+  buildFreeText,
+  buildHighlightCallsign,
+} = require('../lib/wsjtx-protocol');
 
 const RELAY_VERSION = require('../package.json').version;
-
-// ──────────────────────────────────────────────────────────────────────────────
-// WSJT-X binary protocol parser
-// ──────────────────────────────────────────────────────────────────────────────
-
-const WSJTX_MAGIC = 0xadbccbda;
-
-const WSJTX_MSG = {
-  HEARTBEAT: 0,
-  STATUS: 1,
-  DECODE: 2,
-  CLEAR: 3,
-  REPLY: 4,
-  QSO_LOGGED: 5,
-  CLOSE: 6,
-  REPLAY: 7,
-  HALT_TX: 8,
-  FREE_TEXT: 9,
-  WSPR_DECODE: 10,
-  LOCATION: 11,
-  LOGGED_ADIF: 12,
-};
-
-class WSJTXReader {
-  constructor(buffer) {
-    this.buf = buffer;
-    this.offset = 0;
-  }
-  remaining() {
-    return this.buf.length - this.offset;
-  }
-  readUInt8() {
-    if (this.remaining() < 1) return null;
-    return this.buf.readUInt8(this.offset++);
-  }
-  readInt32() {
-    if (this.remaining() < 4) return null;
-    const v = this.buf.readInt32BE(this.offset);
-    this.offset += 4;
-    return v;
-  }
-  readUInt32() {
-    if (this.remaining() < 4) return null;
-    const v = this.buf.readUInt32BE(this.offset);
-    this.offset += 4;
-    return v;
-  }
-  readUInt64() {
-    if (this.remaining() < 8) return null;
-    const hi = this.buf.readUInt32BE(this.offset);
-    const lo = this.buf.readUInt32BE(this.offset + 4);
-    this.offset += 8;
-    return hi * 0x100000000 + lo;
-  }
-  readBool() {
-    const v = this.readUInt8();
-    return v === null ? null : v !== 0;
-  }
-  readDouble() {
-    if (this.remaining() < 8) return null;
-    const v = this.buf.readDoubleBE(this.offset);
-    this.offset += 8;
-    return v;
-  }
-  readUtf8() {
-    const len = this.readUInt32();
-    if (len === null || len === 0xffffffff) return null;
-    if (len === 0) return '';
-    if (this.remaining() < len) return null;
-    const str = this.buf.toString('utf8', this.offset, this.offset + len);
-    this.offset += len;
-    return str;
-  }
-  readQTime() {
-    const ms = this.readUInt32();
-    if (ms === null) return null;
-    const h = Math.floor(ms / 3600000);
-    const m = Math.floor((ms % 3600000) / 60000);
-    const s = Math.floor((ms % 60000) / 1000);
-    return {
-      ms,
-      hours: h,
-      minutes: m,
-      seconds: s,
-      formatted: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`,
-    };
-  }
-  readQDateTime() {
-    const julianDay = this.readUInt64();
-    const time = this.readQTime();
-    const timeSpec = this.readUInt8();
-    if (timeSpec === 2) this.readInt32();
-    return { julianDay, time, timeSpec };
-  }
-}
-
-function parseWSJTXMessage(buffer) {
-  const reader = new WSJTXReader(buffer);
-  const magic = reader.readUInt32();
-  if (magic !== WSJTX_MAGIC) return null;
-
-  const schema = reader.readUInt32();
-  const type = reader.readUInt32();
-  const id = reader.readUtf8();
-  if (type === null || id === null) return null;
-
-  const msg = { type, id, schema, timestamp: Date.now() };
-
-  try {
-    switch (type) {
-      case WSJTX_MSG.HEARTBEAT:
-        msg.maxSchema = reader.readUInt32();
-        msg.version = reader.readUtf8();
-        msg.revision = reader.readUtf8();
-        break;
-      case WSJTX_MSG.STATUS:
-        msg.dialFrequency = reader.readUInt64();
-        msg.mode = reader.readUtf8();
-        msg.dxCall = reader.readUtf8();
-        msg.report = reader.readUtf8();
-        msg.txMode = reader.readUtf8();
-        msg.txEnabled = reader.readBool();
-        msg.transmitting = reader.readBool();
-        msg.decoding = reader.readBool();
-        msg.rxDF = reader.readUInt32();
-        msg.txDF = reader.readUInt32();
-        msg.deCall = reader.readUtf8();
-        msg.deGrid = reader.readUtf8();
-        msg.dxGrid = reader.readUtf8();
-        msg.txWatchdog = reader.readBool();
-        msg.subMode = reader.readUtf8();
-        msg.fastMode = reader.readBool();
-        msg.specialOp = reader.readUInt8();
-        msg.freqTolerance = reader.readUInt32();
-        msg.trPeriod = reader.readUInt32();
-        msg.configName = reader.readUtf8();
-        msg.txMessage = reader.readUtf8();
-        break;
-      case WSJTX_MSG.DECODE:
-        msg.isNew = reader.readBool();
-        msg.time = reader.readQTime();
-        msg.snr = reader.readInt32();
-        msg.deltaTime = reader.readDouble();
-        msg.deltaFreq = reader.readUInt32();
-        msg.mode = reader.readUtf8();
-        msg.message = reader.readUtf8();
-        msg.lowConfidence = reader.readBool();
-        msg.offAir = reader.readBool();
-        break;
-      case WSJTX_MSG.CLEAR:
-        msg.window = reader.readUInt8();
-        break;
-      case WSJTX_MSG.QSO_LOGGED:
-        msg.dateTimeOff = reader.readQDateTime();
-        msg.dxCall = reader.readUtf8();
-        msg.dxGrid = reader.readUtf8();
-        msg.txFrequency = reader.readUInt64();
-        msg.mode = reader.readUtf8();
-        msg.reportSent = reader.readUtf8();
-        msg.reportRecv = reader.readUtf8();
-        msg.txPower = reader.readUtf8();
-        msg.comments = reader.readUtf8();
-        msg.name = reader.readUtf8();
-        msg.dateTimeOn = reader.readQDateTime();
-        msg.operatorCall = reader.readUtf8();
-        msg.myCall = reader.readUtf8();
-        msg.myGrid = reader.readUtf8();
-        msg.exchangeSent = reader.readUtf8();
-        msg.exchangeRecv = reader.readUtf8();
-        msg.adifPropMode = reader.readUtf8();
-        break;
-      case WSJTX_MSG.WSPR_DECODE:
-        msg.isNew = reader.readBool();
-        msg.time = reader.readQTime();
-        msg.snr = reader.readInt32();
-        msg.deltaTime = reader.readDouble();
-        msg.frequency = reader.readUInt64();
-        msg.drift = reader.readInt32();
-        msg.callsign = reader.readUtf8();
-        msg.grid = reader.readUtf8();
-        msg.power = reader.readInt32();
-        msg.offAir = reader.readBool();
-        break;
-      case WSJTX_MSG.LOGGED_ADIF:
-        msg.adif = reader.readUtf8();
-        break;
-      case WSJTX_MSG.CLOSE:
-        break;
-      default:
-        return null;
-    }
-  } catch (e) {
-    return null;
-  }
-
-  return msg;
-}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Plugin descriptor
@@ -245,12 +56,86 @@ const descriptor = {
       }
       res.json(_currentInstance.getStatus());
     });
+
+    // Bidirectional control endpoints — send commands TO WSJT-X
+    app.post('/wsjtx/reply', (req, res) => {
+      if (!_currentInstance) return res.status(503).json({ error: 'WSJT-X relay not running' });
+      const { time, snr, deltaTime, deltaFreq, mode, message, lowConfidence, modifiers } = req.body;
+      if (!message) return res.status(400).json({ error: 'Missing message (decoded text)' });
+      if (
+        !_currentInstance.send(
+          buildReply(
+            _currentInstance.getAppId(),
+            time || 0,
+            snr || 0,
+            deltaTime || 0,
+            deltaFreq || 0,
+            mode || '',
+            message,
+            lowConfidence,
+            modifiers,
+          ),
+        )
+      ) {
+        return res.status(503).json({ error: 'No WSJT-X instance connected (no packets received yet)' });
+      }
+      res.json({ success: true });
+    });
+
+    app.post('/wsjtx/halt', (req, res) => {
+      if (!_currentInstance) return res.status(503).json({ error: 'WSJT-X relay not running' });
+      const { autoTxOnly } = req.body || {};
+      if (!_currentInstance.send(buildHaltTx(_currentInstance.getAppId(), autoTxOnly))) {
+        return res.status(503).json({ error: 'No WSJT-X instance connected' });
+      }
+      console.log('[WsjtxRelay] Sent HALT_TX');
+      res.json({ success: true });
+    });
+
+    app.post('/wsjtx/freetext', (req, res) => {
+      if (!_currentInstance) return res.status(503).json({ error: 'WSJT-X relay not running' });
+      const { text, send } = req.body;
+      if (!text) return res.status(400).json({ error: 'Missing text' });
+      if (!_currentInstance.send(buildFreeText(_currentInstance.getAppId(), text, send))) {
+        return res.status(503).json({ error: 'No WSJT-X instance connected' });
+      }
+      console.log(`[WsjtxRelay] Sent FREE_TEXT: "${text}" (send=${!!send})`);
+      res.json({ success: true });
+    });
+
+    app.post('/wsjtx/highlight', (req, res) => {
+      if (!_currentInstance) return res.status(503).json({ error: 'WSJT-X relay not running' });
+      const { callsign, bgColor, fgColor, highlight } = req.body;
+      if (!callsign) return res.status(400).json({ error: 'Missing callsign' });
+      const bg = bgColor || { r: 255, g: 255, b: 0 };
+      const fg = fgColor || { r: 0, g: 0, b: 0 };
+      if (
+        !_currentInstance.send(
+          buildHighlightCallsign(
+            _currentInstance.getAppId(),
+            callsign,
+            bg.r,
+            bg.g,
+            bg.b,
+            fg.r,
+            fg.g,
+            fg.b,
+            highlight !== false,
+          ),
+        )
+      ) {
+        return res.status(503).json({ error: 'No WSJT-X instance connected' });
+      }
+      console.log(`[WsjtxRelay] Sent HIGHLIGHT: ${callsign} (${highlight !== false ? 'on' : 'off'})`);
+      res.json({ success: true });
+    });
   },
 
-  create(config) {
+  create(config, services) {
     const cfg = config.wsjtxRelay || {};
     const serverUrl = (cfg.url || '').replace(/\/$/, '');
     const relayEndpoint = `${serverUrl}/api/wsjtx/relay`;
+    const bus = services?.pluginBus;
 
     const mcEnabled = !!cfg.multicast;
     const mcGroup = cfg.multicastGroup || '224.0.0.1';
@@ -266,6 +151,11 @@ const descriptor = {
     let totalDecodes = 0;
     let totalRelayed = 0;
     let serverReachable = false;
+
+    // Track the remote WSJT-X address for bidirectional communication
+    let remoteAddress = null;
+    let remotePort = null;
+    let appId = 'WSJT-X'; // Updated from heartbeat/status messages
 
     function getInterval() {
       if (consecutiveErrors === 0) return cfg.batchInterval || 2000;
@@ -418,10 +308,19 @@ const descriptor = {
       const udpPort = cfg.udpPort || 2237;
       socket = dgram.createSocket('udp4');
 
-      socket.on('message', (buf) => {
-        const msg = parseWSJTXMessage(buf);
+      socket.on('message', (buf, rinfo) => {
+        const msg = parseMessage(buf);
         if (!msg) return;
-        if (msg.type === WSJTX_MSG.DECODE && msg.isNew) totalDecodes++;
+        // Track sender for bidirectional communication
+        remoteAddress = rinfo.address;
+        remotePort = rinfo.port;
+        if (msg.id) appId = msg.id;
+        if (msg.type === WSJTX_MSG.DECODE && msg.isNew) {
+          totalDecodes++;
+          if (bus) bus.emit('decode', { source: 'wsjtx-relay', ...msg });
+        }
+        if (msg.type === WSJTX_MSG.STATUS && bus) bus.emit('status', { source: 'wsjtx-relay', ...msg });
+        if (msg.type === WSJTX_MSG.QSO_LOGGED && bus) bus.emit('qso', { source: 'wsjtx-relay', ...msg });
         if (msg.type !== WSJTX_MSG.REPLAY) {
           messageQueue.push(msg);
           if (cfg.verbose && msg.type === WSJTX_MSG.DECODE) {
@@ -542,7 +441,19 @@ const descriptor = {
       };
     }
 
-    const instance = { connect, disconnect, getStatus };
+    function send(buffer) {
+      if (!socket || !remoteAddress || !remotePort) return false;
+      socket.send(buffer, 0, buffer.length, remotePort, remoteAddress, (err) => {
+        if (err) console.error(`[WsjtxRelay] Send error: ${err.message}`);
+      });
+      return true;
+    }
+
+    function getAppId() {
+      return appId;
+    }
+
+    const instance = { connect, disconnect, getStatus, send, getAppId };
     _currentInstance = instance;
     return instance;
   },

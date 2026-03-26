@@ -339,7 +339,7 @@ export const applyTheme = (theme) => {
 export const MAP_STYLES = {
   dark: {
     name: 'Dark',
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?language={lang}',
     attribution:
       '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
   },
@@ -365,7 +365,7 @@ export const MAP_STYLES = {
   },
   streets: {
     name: 'Streets',
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?language={lang}',
     attribution:
       '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
   },
@@ -381,7 +381,7 @@ export const MAP_STYLES = {
   },
   hybrid: {
     name: 'Hybrid',
-    url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+    url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl={lang}',
     attribution: '&copy; Google',
   },
   gray: {
