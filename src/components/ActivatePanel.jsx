@@ -218,10 +218,10 @@ export const ActivatePanel = ({
                   <span style={{ color: 'var(--text-muted)', textAlign: 'right', fontSize: '9px' }}>{spot.time}</span>
                 </div>
                 {spot.comments?.length > 0 && (
-                  <div>
-                    <center>
-                      <i>{spot.comments}</i>
-                    </center>
+                  <div
+                    style={{ textAlign: 'center', fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '11px' }}
+                  >
+                    {spot.comments}
                   </div>
                 )}
               </div>
