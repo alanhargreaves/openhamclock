@@ -4,6 +4,7 @@
  * Supports tagging callsigns into named groups for EmComm and public service tracking.
  */
 import { useState, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import CallsignLink from './CallsignLink.jsx';
 
 const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot }) => {
@@ -20,7 +21,13 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
     addCallToGroup,
     removeCallFromGroup,
     setActiveGroup,
+    sourceFilter = 'all',
+    setSourceFilter,
+    tncConnected = false,
+    hasRFStations = false,
   } = aprsData || {};
+
+  const { t } = useTranslation();
 
   const [search, setSearch] = useState('');
   const [showGroupManager, setShowGroupManager] = useState(false);
@@ -62,20 +69,27 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
         style={{ padding: '20px', color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center' }}
       >
         <div style={{ fontSize: '24px', marginBottom: '10px' }}>📍</div>
-        <div style={{ fontWeight: '600', color: 'var(--text-primary)', marginBottom: '8px' }}>APRS Not Enabled</div>
+        <div style={{ fontWeight: '600', color: 'var(--text-primary)', marginBottom: '8px' }}>
+          {t('aprsPanel.disabled.title')}
+        </div>
         <div>
-          Add{' '}
+          {t('aprsPanel.disabled.internetBefore')}{' '}
           <code style={{ background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '3px' }}>
             APRS_ENABLED=true
           </code>{' '}
-          to your .env file and restart the server.
+          {t('aprsPanel.disabled.internetAfter')}
+        </div>
+        <div style={{ marginTop: '8px' }}>
+          {t('aprsPanel.disabled.rfBefore')}{' '}
+          <code style={{ background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '3px' }}>aprs-tnc</code>{' '}
+          {t('aprsPanel.disabled.rfAfter')}
         </div>
         <div style={{ marginTop: '10px', fontSize: '11px' }}>
-          Optional: Set{' '}
+          {t('aprsPanel.disabled.filterBefore')}{' '}
           <code style={{ background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '3px' }}>
             APRS_FILTER=r/{'{lat}'}/{'{lon}'}/500
           </code>{' '}
-          to limit to 500km radius around your station.
+          {t('aprsPanel.disabled.filterAfter')}
         </div>
       </div>
     );
@@ -107,12 +121,22 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
           />
           <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
             {displayStations.length}/{stations.length}
+            {sourceFilter !== 'all' && (
+              <span
+                style={{
+                  color: sourceFilter === 'rf' ? 'var(--accent-green)' : 'var(--accent-cyan)',
+                  marginLeft: '3px',
+                }}
+              >
+                {sourceFilter === 'rf' ? '📡' : '🌐'}
+              </span>
+            )}
           </span>
         </div>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
           <button
             onClick={() => setShowGroupManager(!showGroupManager)}
-            title="Manage watchlist groups"
+            title={t('aprsPanel.groupsButtonTitle')}
             style={{
               background: showGroupManager ? 'var(--accent-amber)' : 'var(--bg-tertiary)',
               border: '1px solid var(--border-color)',
@@ -124,7 +148,7 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
               fontFamily: 'inherit',
             }}
           >
-            👥 Groups
+            {t('aprsPanel.groupsButton')}
           </button>
           <button
             onClick={onToggleMap}
@@ -139,9 +163,74 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
               fontFamily: 'inherit',
             }}
           >
-            {showOnMap ? 'ON' : 'OFF'}
+            {showOnMap ? t('aprsPanel.mapOn') : t('aprsPanel.mapOff')}
           </button>
         </div>
+      </div>
+
+      {/* Source selector — All / Internet / Local RF */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '3px',
+          padding: '4px 8px',
+          borderBottom: '1px solid var(--border-color)',
+          background: 'var(--bg-tertiary)',
+          alignItems: 'center',
+        }}
+      >
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginRight: '4px' }}>
+          {t('aprsPanel.source.label')}
+        </span>
+        {[
+          { key: 'all', label: t('aprsPanel.source.all') },
+          { key: 'internet', label: t('aprsPanel.source.internet') },
+          { key: 'rf', label: t('aprsPanel.source.rf') },
+        ].map((opt) => {
+          const isRF = opt.key === 'rf';
+          const isActive = sourceFilter === opt.key;
+          const rfDisabled = isRF && !hasRFStations;
+          return (
+            <button
+              key={opt.key}
+              onClick={() => !rfDisabled && setSourceFilter?.(opt.key)}
+              title={
+                isRF && tncConnected
+                  ? t('aprsPanel.source.tncConnected')
+                  : isRF
+                    ? t('aprsPanel.source.noRfData')
+                    : undefined
+              }
+              style={{
+                padding: '2px 7px',
+                fontSize: '10px',
+                borderRadius: '3px',
+                border: isActive ? '1px solid var(--accent-green)' : '1px solid var(--border-color)',
+                background: isActive ? 'var(--accent-green)' : 'transparent',
+                color: isActive ? '#000' : rfDisabled ? 'var(--text-muted)' : 'var(--text-secondary)',
+                cursor: rfDisabled ? 'default' : 'pointer',
+                fontFamily: 'inherit',
+                fontWeight: isActive ? '600' : '400',
+                opacity: rfDisabled ? 0.5 : 1,
+              }}
+            >
+              {opt.label}
+              {isRF && tncConnected && (
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: '5px',
+                    height: '5px',
+                    borderRadius: '50%',
+                    background: '#22c55e',
+                    marginLeft: '4px',
+                    verticalAlign: 'middle',
+                  }}
+                />
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Group filter tabs */}
@@ -156,8 +245,8 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
         }}
       >
         {[
-          { key: 'all', label: `All (${stations.length})` },
-          ...(allWatchlistCalls.size > 0 ? [{ key: 'watchlist', label: `★ Watchlist` }] : []),
+          { key: 'all', label: t('aprsPanel.groupTab.all', { count: stations.length }) },
+          ...(allWatchlistCalls.size > 0 ? [{ key: 'watchlist', label: t('aprsPanel.groupTab.watchlist') }] : []),
           ...groupNames.map((g) => ({ key: g, label: `${g} (${watchlist.groups[g].length})` })),
         ].map((tab) => (
           <button
@@ -191,10 +280,10 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
           }}
         >
           <div style={{ fontWeight: '600', color: 'var(--text-primary)', marginBottom: '6px', fontSize: '11px' }}>
-            Watchlist Groups
+            {t('aprsPanel.groups.title')}
           </div>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-            Tag callsigns into groups for EmComm, nets, or public service events.
+            {t('aprsPanel.groups.description')}
           </div>
 
           {/* Create group */}
@@ -203,7 +292,7 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
               value={newGroupName}
               onChange={(e) => setNewGroupName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddGroup()}
-              placeholder="New group name..."
+              placeholder={t('aprsPanel.groups.newGroupPlaceholder')}
               style={{
                 flex: 1,
                 padding: '4px 6px',
@@ -229,7 +318,7 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
                 fontWeight: '600',
               }}
             >
-              + Create
+              {t('aprsPanel.groups.createButton')}
             </button>
           </div>
 
@@ -240,7 +329,7 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
                 value={addCallInput}
                 onChange={(e) => setAddCallInput(e.target.value.toUpperCase())}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddCall()}
-                placeholder="Callsign..."
+                placeholder={t('aprsPanel.groups.callsignPlaceholder')}
                 style={{
                   width: '90px',
                   padding: '4px 6px',
@@ -266,7 +355,7 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
                   fontFamily: 'inherit',
                 }}
               >
-                <option value="">Select group...</option>
+                <option value="">{t('aprsPanel.groups.selectGroup')}</option>
                 {groupNames.map((g) => (
                   <option key={g} value={g}>
                     {g}
@@ -288,7 +377,7 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
                   fontWeight: '600',
                 }}
               >
-                + Add
+                {t('aprsPanel.groups.addButton')}
               </button>
             </div>
           )}
@@ -320,7 +409,7 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
                     fontFamily: 'inherit',
                   }}
                 >
-                  Delete
+                  {t('aprsPanel.groups.deleteButton')}
                 </button>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
@@ -351,7 +440,7 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
                 ))}
                 {(watchlist.groups[g] || []).length === 0 && (
                   <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                    No callsigns yet
+                    {t('aprsPanel.groups.noCallsigns')}
                   </span>
                 )}
               </div>
@@ -365,7 +454,7 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Quick search..."
+          placeholder={t('aprsPanel.quickSearch')}
           style={{
             width: '100%',
             padding: '5px 8px',
@@ -383,10 +472,12 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
       {/* Station list */}
       <div style={{ flex: 1, overflow: 'auto', padding: '4px' }}>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>Loading...</div>
+          <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
+            {t('aprsPanel.loading')}
+          </div>
         ) : displayStations.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
-            {stations.length === 0 ? 'No APRS stations heard yet' : 'No stations match filter'}
+            {stations.length === 0 ? t('aprsPanel.noStations') : t('aprsPanel.noStationsFiltered')}
           </div>
         ) : (
           displayStations.map((station, i) => {
@@ -415,6 +506,23 @@ const APRSPanel = ({ aprsData, showOnMap, onToggleMap, onSpotClick, onHoverSpot 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     {isWatched && <span style={{ fontSize: '10px' }}>★</span>}
                     <CallsignLink call={station.ssid || station.call} color="var(--text-primary)" fontWeight="700" />
+                    {station.source === 'local-tnc' && (
+                      <span
+                        title={t('aprsPanel.rfBadgeTitle')}
+                        style={{
+                          fontSize: '9px',
+                          padding: '1px 4px',
+                          borderRadius: '2px',
+                          background: 'rgba(74,222,128,0.15)',
+                          border: '1px solid rgba(74,222,128,0.4)',
+                          color: '#4ade80',
+                          fontWeight: '600',
+                          letterSpacing: '0.02em',
+                        }}
+                      >
+                        RF
+                      </span>
+                    )}
                   </div>
                   {station.comment && (
                     <div

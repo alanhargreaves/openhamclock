@@ -17,6 +17,9 @@ export const useAPRS = (options = {}) => {
   const [aprsEnabled, setAprsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
+  const [tncConnected, setTncConnected] = useState(false);
+  // sourceFilter: 'all' | 'internet' | 'rf'
+  const [sourceFilter, setSourceFilter] = useState('all');
 
   // Watchlist: { groups: { 'Group Name': ['CALL1', 'CALL2'], ... }, activeGroup: 'all' | 'Group Name' }
   const [watchlist, setWatchlist] = useState(() => {
@@ -44,7 +47,10 @@ export const useAPRS = (options = {}) => {
         const data = await res.json();
         setStations(data.stations || []);
         setConnected(data.connected || false);
-        setAprsEnabled(data.enabled || false);
+        // Panel is "enabled" when APRS-IS is configured OR when the local TNC
+        // has delivered at least one station — so RF-only setups work without
+        // needing APRS_ENABLED=true in .env.
+        setAprsEnabled(data.enabled || data.tncActive || false);
         setLastUpdate(new Date());
         setLoading(false);
       }
@@ -54,13 +60,35 @@ export const useAPRS = (options = {}) => {
     }
   }, [enabled]);
 
-  // Poll
+  // Poll TNC connection status from rig-bridge (via server proxy)
+  const fetchTncStatus = useCallback(async () => {
+    if (!enabled) return;
+    try {
+      const res = await apiFetch('/api/aprs/tnc-status', { cache: 'no-store' });
+      if (res?.ok) {
+        const data = await res.json();
+        setTncConnected(data.connected ?? false);
+      }
+    } catch {
+      setTncConnected(false);
+    }
+  }, [enabled]);
+
+  // Poll stations
   useEffect(() => {
     if (!enabled) return;
     fetchStations();
     const interval = setInterval(fetchStations, POLL_INTERVAL);
     return () => clearInterval(interval);
   }, [enabled, fetchStations]);
+
+  // Poll TNC status every 10 seconds (less frequent than stations)
+  useEffect(() => {
+    if (!enabled) return;
+    fetchTncStatus();
+    const interval = setInterval(fetchTncStatus, 10000);
+    return () => clearInterval(interval);
+  }, [enabled, fetchTncStatus]);
 
   // Watchlist helpers
   const addGroup = useCallback((name) => {
@@ -117,16 +145,27 @@ export const useAPRS = (options = {}) => {
     return calls;
   }, [watchlist.groups]);
 
-  // Filtered stations based on active group
+  // Stations filtered by source (all / internet / rf)
+  const sourceFilteredStations = useMemo(() => {
+    if (sourceFilter === 'rf') return stations.filter((s) => s.source === 'local-tnc');
+    if (sourceFilter === 'internet') return stations.filter((s) => s.source !== 'local-tnc');
+    return stations;
+  }, [stations, sourceFilter]);
+
+  // Filtered stations: source filter applied first, then group/watchlist filter
   const filteredStations = useMemo(() => {
-    if (watchlist.activeGroup === 'all') return stations;
+    const base = sourceFilteredStations;
+    if (watchlist.activeGroup === 'all') return base;
     if (watchlist.activeGroup === 'watchlist') {
-      return stations.filter((s) => allWatchlistCalls.has(s.call) || allWatchlistCalls.has(s.ssid));
+      return base.filter((s) => allWatchlistCalls.has(s.call) || allWatchlistCalls.has(s.ssid));
     }
     const groupCalls = new Set(watchlist.groups[watchlist.activeGroup] || []);
-    if (groupCalls.size === 0) return stations;
-    return stations.filter((s) => groupCalls.has(s.call) || groupCalls.has(s.ssid));
-  }, [stations, watchlist.activeGroup, watchlist.groups, allWatchlistCalls]);
+    if (groupCalls.size === 0) return base;
+    return base.filter((s) => groupCalls.has(s.call) || groupCalls.has(s.ssid));
+  }, [sourceFilteredStations, watchlist.activeGroup, watchlist.groups, allWatchlistCalls]);
+
+  // Whether any RF (local-tnc) station is currently in the cache
+  const hasRFStations = useMemo(() => stations.some((s) => s.source === 'local-tnc'), [stations]);
 
   return {
     stations,
@@ -142,6 +181,10 @@ export const useAPRS = (options = {}) => {
     addCallToGroup,
     removeCallFromGroup,
     setActiveGroup,
+    sourceFilter,
+    setSourceFilter,
+    tncConnected,
+    hasRFStations,
     refresh: fetchStations,
   };
 };

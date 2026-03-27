@@ -1366,11 +1366,16 @@ export const WorldMap = ({
           if (!bandPassesMapFilter(band)) return;
 
           replicatePoint(spot.lat, spot.lon).forEach(([lat, lon]) => {
+            const grid = spot.grid6 ? spot.grid6 : spot.grid ? spot.grid : null;
             const marker = L.marker([lat, lon], { icon: mapDefaults.icon })
               .bindPopup(
                 `<span style="color:${mapDefaults.color};background:#000">
-                  ${mapDefaults.shape} ${mapDefaults.name} - </span>
-                <b data-qrz-call="${esc(spot.call)}" style="color:${mapDefaults.color}; cursor:pointer">${esc(spot.call)}</b><br><span style="color:#888">${esc(spot.ref)}</span> ${esc(spot.locationDesc || '')}<br>${spot.name ? `<i>${esc(spot.name)}</i><br>` : ''}${esc(spot.freq)} ${esc(spot.mode || '')} <span style="color:#888">${esc(spot.time || '')}</span>`,
+                    ${mapDefaults.shape} ${mapDefaults.name} - </span>
+                  <b data-qrz-call="${esc(spot.call)}" style="color:${mapDefaults.color}; cursor:pointer">${esc(spot.call)}</b><br/>
+                  ${grid ? `${esc(grid)}<br/>` : ''}
+                  <span style="color:#888">${esc(spot.ref)}</span> ${esc(spot.locationDesc || '')}<br/>
+                  ${spot.name ? `<i>${esc(spot.name)}</i><br/>` : ''}${esc(spot.freq)} ${esc(spot.mode || '')} <span style="color:#888">${esc(spot.time || '')}</span>
+                  ${spot.comments?.length > 0 ? `<br/><i>(${esc(spot.comments)})</i>` : ''}`,
               )
               .addTo(map);
 
@@ -1765,7 +1770,9 @@ export const WorldMap = ({
         if (isNaN(lat) || isNaN(lon)) return;
 
         const isWatched = watchSet.has?.(station.call) || watchSet.has?.(station.ssid);
-        const color = isWatched ? '#f59e0b' : '#22d3ee'; // amber for watched, cyan for regular
+        const isRF = station.source === 'local-tnc';
+        // amber for watched, green for local RF, cyan for internet
+        const color = isWatched ? '#f59e0b' : isRF ? '#4ade80' : '#22d3ee';
         const size = isWatched ? 7 : 5;
 
         try {
@@ -1799,7 +1806,8 @@ export const WorldMap = ({
               .bindPopup(
                 `
                 <b data-qrz-call="${esc(station.call)}" style="cursor:pointer">${esc(station.ssid || station.call)}</b>
-                ${isWatched ? ' <span style="color:#f59e0b">★</span>' : ''}<br>
+                ${isWatched ? ' <span style="color:#f59e0b">★</span>' : ''}
+                ${isRF ? ' <span style="color:#4ade80;font-size:10px">RF</span>' : ''}<br>
                 <span style="color:#888;font-size:11px">${ageStr}</span><br>
                 ${station.speed > 0 ? `Speed: ${station.speed} kt<br>` : ''}
                 ${station.altitude ? `Alt: ${station.altitude} ft<br>` : ''}
@@ -1925,6 +1933,7 @@ export const WorldMap = ({
           plugin={layerDef}
           enabled={pluginLayerStates[layerDef.id]?.enabled ?? layerDef.defaultEnabled}
           opacity={pluginLayerStates[layerDef.id]?.opacity ?? layerDef.defaultOpacity}
+          onDXChange={onDXChange}
           mapBandFilter={mapBandFilter}
           config={pluginLayerStates[layerDef.id]?.config ?? layerDef.config}
           map={isAzimuthal ? azimuthalMapRef.current : mapInstanceRef.current}

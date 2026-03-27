@@ -355,6 +355,12 @@ module.exports = function (app, ctx) {
 
         const station = parseAprsPacket(trimmed);
         if (station) {
+          // RF-wins: if this station was already heard locally over RF, preserve
+          // the local-tnc tag even when an internet update arrives for the same station.
+          const existingStation = aprsStations.get(station.ssid);
+          if (existingStation?.source === 'local-tnc') {
+            station.source = 'local-tnc';
+          }
           aprsStations.set(station.ssid, station);
 
           // Prune if over limit
@@ -436,9 +442,9 @@ module.exports = function (app, ctx) {
     });
   }
 
-  // Periodic cleanup of old stations
+  // Periodic cleanup of old stations (runs regardless of APRS_ENABLED so that
+  // RF-only stations injected via /api/aprs/local are also aged out correctly).
   setInterval(() => {
-    if (!APRS_ENABLED) return;
     const cutoff = Date.now() - APRS_MAX_AGE_MINUTES * 60000;
     for (const [key, val] of aprsStations) {
       if (val.timestamp < cutoff) aprsStations.delete(key);
@@ -470,12 +476,17 @@ module.exports = function (app, ctx) {
           altitude: station.altitude,
           age: Math.floor((Date.now() - station.timestamp) / 60000),
           timestamp: station.timestamp,
+          source: station.source ?? null,
         });
       }
     }
+    // tncActive: true whenever at least one station from the local TNC is present in the
+    // cache. This lets the UI display RF data even when APRS_ENABLED (APRS-IS) is off.
+    const tncActive = stations.some((s) => s.source === 'local-tnc');
     res.json({
       connected: aprsConnected,
       enabled: APRS_ENABLED,
+      tncActive,
       count: stations.length,
       stations: stations.sort((a, b) => b.timestamp - a.timestamp),
     });
@@ -600,6 +611,23 @@ module.exports = function (app, ctx) {
     }
   });
 
+  // REST endpoint: GET /api/aprs/tnc-status — proxy to rig-bridge APRS TNC status
+  // Lets the browser query TNC connection state without needing to know the rig-bridge port.
+  app.get('/api/aprs/tnc-status', async (req, res) => {
+    try {
+      const rigHost = CONFIG.rigControl?.host || 'http://localhost';
+      const rigPort = CONFIG.rigControl?.port || 5555;
+      const response = await ctx.fetch(`${rigHost}:${rigPort}/api/aprs-tnc/status`);
+      if (response.ok) {
+        const data = await response.json();
+        return res.json(data);
+      }
+      return res.json({ enabled: false, running: false, connected: false });
+    } catch (e) {
+      return res.json({ enabled: false, running: false, connected: false });
+    }
+  });
+
   // REST endpoint: POST /api/aprs/local — inject local TNC packets (from cloud relay)
   // Accepts raw APRS info strings and parses them into station objects.
   app.post('/api/aprs/local', (req, res) => {
@@ -629,8 +657,14 @@ module.exports = function (app, ctx) {
       station.source = 'local-tnc'; // Tag so UI can distinguish RF from internet
       station.timestamp = pkt.timestamp || Date.now();
 
-      const key = station.call;
+      const key = station.ssid;
       const existing = aprsStations.get(key);
+      // RF source wins: if an internet update arrives for a station we already
+      // heard over the air, preserve the local-tnc tag so the UI keeps it in
+      // the RF view even after the internet feed also reports the same station.
+      if (existing?.source === 'local-tnc') {
+        station.source = 'local-tnc';
+      }
       if (!existing || station.timestamp > existing.timestamp) {
         if (!existing && aprsStations.size >= APRS_MAX_STATIONS) {
           // Evict oldest
