@@ -65,12 +65,17 @@ function removeSseClient(id) {
   sseClients = sseClients.filter((c) => c.id !== id);
 }
 
+function getSseClientCount() {
+  return sseClients.length;
+}
+
 module.exports = {
   state,
   broadcast,
   updateState,
   addSseClient,
   removeSseClient,
+  getSseClientCount,
   onStateChange,
   removeStateChangeListener,
   addToDecodeRingBuffer,

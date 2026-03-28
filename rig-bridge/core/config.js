@@ -103,6 +103,7 @@ const DEFAULT_CONFIG = {
   },
   wsjtxRelay: {
     enabled: false,
+    relayToServer: false, // false = SSE-only (local/LAN); true = also POST decodes to OHC server (cloud relay)
     url: '', // OpenHamClock server URL (e.g. https://openhamclock.com)
     key: '', // Relay authentication key
     session: '', // Browser session ID for per-user isolation

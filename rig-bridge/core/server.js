@@ -22,7 +22,7 @@
 const express = require('express');
 const cors = require('cors');
 const { getSerialPort, listPorts } = require('./serial-utils');
-const { state, addSseClient, removeSseClient, getDecodeRingBuffer } = require('./state');
+const { state, addSseClient, removeSseClient, getDecodeRingBuffer, getSseClientCount } = require('./state');
 const { config, saveConfig, CONFIG_PATH } = require('./config');
 
 // ─── Security helpers ─────────────────────────────────────────────────────
@@ -2009,6 +2009,13 @@ function createServer(registry, version) {
   });
 
   // Diagnostic endpoint — no auth required, designed for troubleshooting
+  app.get('/api/status', (req, res) => {
+    res.json({
+      sseClients: getSseClientCount(),
+      uptime: Math.floor(process.uptime()),
+    });
+  });
+
   app.get('/health', (req, res) => {
     // Collect integration plugin status
     const integrations = {};

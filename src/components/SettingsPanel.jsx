@@ -90,6 +90,8 @@ export const SettingsPanel = ({
   const [wsjtxMulticastAddress, setWsjtxMulticastAddress] = useState(
     config?.wsjtxRelayMulticast.address || '224.0.0.1',
   );
+  const [wsjtxRelayToServer, setWsjtxRelayToServer] = useState(false);
+  const [sseClientCount, setSseClientCount] = useState(null);
 
   // Local-only integration flags
   const [n3fjpEnabled, setN3fjpEnabled] = useState(() => {
@@ -477,6 +479,7 @@ export const SettingsPanel = ({
             key: relayKey,
             session: wsjtxSessionId || '',
             enabled: true,
+            relayToServer: true,
           },
         }),
       });
@@ -485,11 +488,43 @@ export const SettingsPanel = ({
         setWsjtxRelayMsg(t('station.settings.rigControl.wsjtxRelay.status.error.push'));
         return;
       }
+      setWsjtxRelayToServer(true);
       setWsjtxRelayStatus('ok');
       setWsjtxRelayMsg(t('station.settings.rigControl.wsjtxRelay.status.ok'));
     } catch {
       setWsjtxRelayStatus('error');
       setWsjtxRelayMsg(t('station.settings.rigControl.wsjtxRelay.status.error.push'));
+    }
+  };
+
+  const handleToggleRelayToServer = async (enabled) => {
+    const rigBridgeUrl = `${rigHost.replace(/\/$/, '')}:${rigPort}`;
+    if (!rigHost || !rigPort) return;
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (rigApiToken) headers['X-RigBridge-Token'] = rigApiToken;
+      const res = await fetch(`${rigBridgeUrl}/api/config`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ wsjtxRelay: { relayToServer: enabled } }),
+      });
+      if (res.ok) setWsjtxRelayToServer(enabled);
+    } catch {
+      // connection error — user can see via rig-bridge status
+    }
+  };
+
+  const fetchSseClientCount = async () => {
+    const rigBridgeUrl = `${rigHost.replace(/\/$/, '')}:${rigPort}`;
+    if (!rigHost || !rigPort) return;
+    try {
+      const res = await fetch(`${rigBridgeUrl}/api/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setSseClientCount(data.sseClients ?? 0);
+      }
+    } catch {
+      setSseClientCount(null);
     }
   };
 
@@ -1565,6 +1600,81 @@ export const SettingsPanel = ({
                           {wsjtxRelayMsg}
                         </div>
                       )}
+
+                      {/* Relay-to-server toggle */}
+                      <div
+                        style={{
+                          marginTop: '12px',
+                          padding: '8px 10px',
+                          background: 'var(--bg-tertiary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '4px',
+                        }}
+                      >
+                        <label
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            color: 'var(--text-primary)',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={wsjtxRelayToServer}
+                            onChange={(e) => handleToggleRelayToServer(e.target.checked)}
+                          />
+                          Relay decodes to OHC server
+                        </label>
+                        <div
+                          style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px', lineHeight: 1.4 }}
+                        >
+                          {wsjtxRelayToServer
+                            ? 'ON — rig-bridge batches decodes and POSTs them to the OHC server (required for cloud relay mode).'
+                            : 'OFF — decodes flow via SSE /stream only. No server traffic. Use this for local/LAN connections.'}
+                        </div>
+                      </div>
+
+                      {/* SSE client count */}
+                      <div
+                        style={{
+                          marginTop: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          fontSize: '11px',
+                          color: 'var(--text-muted)',
+                        }}
+                      >
+                        <span>
+                          SSE clients:{' '}
+                          <span
+                            style={{
+                              color: sseClientCount > 0 ? 'var(--accent-green, #4ade80)' : 'var(--text-muted)',
+                              fontWeight: '600',
+                            }}
+                          >
+                            {sseClientCount ?? '—'}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={fetchSseClientCount}
+                          style={{
+                            padding: '2px 8px',
+                            fontSize: '10px',
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '3px',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          ↺ Refresh
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}
