@@ -55,7 +55,7 @@ function resolveConfigPath() {
 const { dir: CONFIG_DIR, path: CONFIG_PATH } = resolveConfigPath();
 
 // Increment when DEFAULT_CONFIG structure changes (new keys, renamed keys, etc.)
-const CONFIG_VERSION = 7;
+const CONFIG_VERSION = 8;
 
 const DEFAULT_CONFIG = {
   configVersion: CONFIG_VERSION,
@@ -154,7 +154,7 @@ const DEFAULT_CONFIG = {
     // Local forwarding: push received packets to the local OHC server's /api/aprs/local
     // Set to false when using cloudRelay to avoid duplicate injection on the cloud server.
     localForward: true,
-    ohcUrl: 'http://localhost:3000', // URL of the local OpenHamClock server
+    ohcUrl: 'http://localhost:8080', // URL of the local OpenHamClock server
   },
   // Rotator control via rotctld (Hamlib)
   rotator: {
