@@ -41,7 +41,9 @@ function generateCert() {
 
       const cert = forge.pki.createCertificate();
       cert.publicKey = keyPair.publicKey;
-      cert.serialNumber = '01';
+      // Random 16-byte serial — avoids OS trust-store caching bugs when a cert
+      // is regenerated (macOS Keychain and some browsers cache by issuer+serial).
+      cert.serialNumber = forge.util.bytesToHex(forge.random.getBytesSync(16));
 
       cert.validity.notBefore = new Date();
       cert.validity.notAfter = new Date();

@@ -24,6 +24,7 @@ const cors = require('cors');
 const { getSerialPort, listPorts } = require('./serial-utils');
 const { state, addSseClient, removeSseClient, getDecodeRingBuffer, getSseClientCount } = require('./state');
 const { config, saveConfig, CONFIG_PATH } = require('./config');
+const tlsModule = require('./tls');
 
 // ─── Security helpers ─────────────────────────────────────────────────────
 
@@ -2144,8 +2145,7 @@ function createServer(registry, version) {
 
       if (config.tls.enabled) {
         try {
-          const { ensureCerts } = require('./tls');
-          await ensureCerts(forceRegen);
+          await tlsModule.ensureCerts(forceRegen);
           config.tls.certGenerated = true;
         } catch (e) {
           console.error('[TLS] Certificate generation failed:', e.message);
@@ -2251,8 +2251,7 @@ function createServer(registry, version) {
   // ─── API: TLS / HTTPS certificate management ─────────────────────────
   // No auth on /status — the Security tab needs this before login succeeds.
   app.get('/api/tls/status', (req, res) => {
-    const { getCertInfo } = require('./tls');
-    const info = getCertInfo();
+    const info = tlsModule.getCertInfo();
     res.json({ enabled: !!(config.tls && config.tls.enabled), ...info });
   });
 
@@ -2260,44 +2259,49 @@ function createServer(registry, version) {
   // Token-gated: downloading the cert allows a user to install it as trusted, which
   // only makes sense for someone who already has access to the setup UI.
   app.get('/api/tls/cert', requireAuth, (req, res) => {
-    const { CERT_PATH } = require('./tls');
     const fs = require('fs');
-    if (!fs.existsSync(CERT_PATH)) {
+    if (!fs.existsSync(tlsModule.CERT_PATH)) {
       return res.status(404).json({ error: 'No certificate found. Enable HTTPS first.' });
     }
     res.setHeader('Content-Type', 'application/x-pem-file');
     res.setHeader('Content-Disposition', 'attachment; filename="rig-bridge.crt"');
-    res.sendFile(CERT_PATH);
+    res.sendFile(tlsModule.CERT_PATH);
   });
 
   // Attempt OS-level certificate installation. On permission failure the command
-  // is returned for the user to run manually. Only hardcoded paths are used in the
-  // exec call — no user input is interpolated — so there is no command injection risk.
+  // is returned for the user to run manually.
+  // Uses execFile (not exec) with an explicit args array — CERT_PATH is never
+  // interpolated into a shell string, so unusual home directory characters cannot
+  // affect command parsing.
   app.post('/api/tls/install', requireAuth, (req, res) => {
-    const { CERT_PATH } = require('./tls');
     const fs = require('fs');
-    const { exec } = require('child_process');
-    if (!fs.existsSync(CERT_PATH)) {
+    const { execFile } = require('child_process');
+    const certPath = tlsModule.CERT_PATH;
+    if (!fs.existsSync(certPath)) {
       return res.status(404).json({ error: 'No certificate found. Enable HTTPS first.' });
     }
-    let cmd;
+    let bin, args, humanCmd;
     if (process.platform === 'darwin') {
-      cmd = `security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${CERT_PATH}"`;
+      bin = 'security';
+      args = ['add-trusted-cert', '-d', '-r', 'trustRoot', '-k', '/Library/Keychains/System.keychain', certPath];
+      humanCmd = `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${certPath}"`;
     } else if (process.platform === 'win32') {
-      cmd = `certutil -addstore -f ROOT "${CERT_PATH}"`;
+      bin = 'certutil';
+      args = ['-addstore', '-f', 'ROOT', certPath];
+      humanCmd = `certutil -addstore -f ROOT "${certPath}"`;
     } else {
       // Linux: many distros, provide manual instructions only
       return res.json({
         success: false,
         manual: true,
         platform: 'linux',
-        certPath: CERT_PATH,
+        certPath,
       });
     }
-    exec(cmd, (err) => {
+    execFile(bin, args, (err) => {
       if (err) {
-        // Likely a permission error — return the command so the user can run it with sudo
-        return res.json({ success: false, error: err.message, command: cmd, certPath: CERT_PATH });
+        // Likely a permission error — return a human-readable command for manual use
+        return res.json({ success: false, error: err.message, command: humanCmd, certPath });
       }
       res.json({ success: true });
     });
@@ -2476,10 +2480,9 @@ async function startServer(port, registry, version) {
   let protocol = 'http';
 
   if (config.tls && config.tls.enabled) {
-    const { ensureCerts, loadCreds } = require('./tls');
     try {
-      await ensureCerts();
-      const { key, cert } = loadCreds();
+      await tlsModule.ensureCerts();
+      const { key, cert } = tlsModule.loadCreds();
       const https = require('https');
       server = https.createServer({ key, cert }, app);
       protocol = 'https';
@@ -2502,7 +2505,7 @@ async function startServer(port, registry, version) {
       console.log('  ╠══════════════════════════════════════════════╣');
       console.log(`  ║   Setup UI:  ${uiUrl.padEnd(32)}║`);
       if (protocol === 'https') {
-        console.log('  ║   🔒 HTTPS enabled — install cert to trust it  ║');
+        console.log('  ║   🔒 HTTPS enabled — install certificate     ║');
       }
       console.log(`  ║   Radio:     ${(config.radio.type || 'none').padEnd(30)}║`);
       if (bindAddress !== '127.0.0.1') {
