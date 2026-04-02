@@ -50,5 +50,9 @@
     "multicastGroup": "224.0.0.1",
     "multicastInterface": "",
     "udpBindAddress": ""
+  },
+  "tls": {
+    "enabled": false,
+    "certGenerated": false
   }
 }
