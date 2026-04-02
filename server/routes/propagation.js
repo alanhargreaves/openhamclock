@@ -494,7 +494,13 @@ module.exports = function (app, ctx) {
       }
       if (kRes.status === 'fulfilled' && kRes.value.ok) {
         const data = await kRes.value.json();
-        if (data?.length > 1) kIndex = parseInt(data[data.length - 1][1]) || 2;
+        // NOAA changed from array-of-arrays to array-of-objects — support both.
+        if (data?.length) {
+          const last = data[data.length - 1];
+          const raw = Array.isArray(last) ? last[1] : last?.Kp;
+          const parsed = parseFloat(raw);
+          if (Number.isFinite(parsed)) kIndex = parsed;
+        }
       }
       ssn = Math.max(0, Math.round((sfi - 67) / 0.97));
     } catch (e) {
