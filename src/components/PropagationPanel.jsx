@@ -209,8 +209,31 @@ export const PropagationPanel = ({
   return (
     <div className="panel">
       <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           {viewMode === 'bands' ? t('band.conditions') : viewMode === 'health' ? '📶 Band Health' : '⌇ VOACAP'}
+          {viewMode === 'bands' &&
+            bandConditions?.extras?.stale &&
+            bandConditions.extras.fetchedAt != null &&
+            (() => {
+              const mins = Math.round((Date.now() - bandConditions.extras.fetchedAt) / 60_000);
+              return (
+                <span
+                  title={`N0NBH data could not be refreshed — showing data from ${mins} minute${mins === 1 ? '' : 's'} ago`}
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: '600',
+                    color: 'var(--accent-amber)',
+                    background: 'rgba(255,180,50,0.15)',
+                    border: '1px solid var(--accent-amber)',
+                    borderRadius: '4px',
+                    padding: '1px 5px',
+                    cursor: 'default',
+                  }}
+                >
+                  ⚠ stale ({mins}m)
+                </span>
+              );
+            })()}
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           {!forcedMode && (

@@ -28,7 +28,7 @@ export const useSpaceWeather = () => {
         }
         if (kIndexRes.status === 'fulfilled' && kIndexRes.value.ok) {
           const d = await kIndexRes.value.json();
-          if (d?.length > 1) kIndex = d[d.length - 1][1] || '--';
+          if (d?.length > 1) kIndex = d[d.length - 1][1] ?? '--';
         }
         if (sunspotRes.status === 'fulfilled' && sunspotRes.value.ok) {
           const d = await sunspotRes.value.json();

@@ -20,6 +20,10 @@ module.exports = function (app, ctx) {
   // N0NBH / HamQSL cache
   let n0nbhCache = { data: null, timestamp: 0 };
   const N0NBH_CACHE_TTL = 60 * 60 * 1000;
+  // Maximum age of stale error-fallback data.  N0NBH updates every ~3 hours;
+  // beyond 4 hours the data is definitively out of date and we should stop
+  // serving it rather than silently mislead clients.
+  const N0NBH_MAX_STALE_TTL = 4 * 60 * 60 * 1000;
 
   // Parse N0NBH solarxml.php XML into clean JSON
   function parseN0NBHxml(xml) {
@@ -165,7 +169,7 @@ module.exports = function (app, ctx) {
       }
 
       // SFI current fallback: N0NBH
-      if (!result.sfi.current && n0nbhCache.data?.solarData?.solarFlux) {
+      if (result.sfi.current == null && n0nbhCache.data?.solarData?.solarFlux) {
         const flux = parseInt(n0nbhCache.data.solarData.solarFlux);
         if (flux > 0) result.sfi.current = flux;
       }
@@ -179,8 +183,8 @@ module.exports = function (app, ctx) {
             date: d.time_tag || d.date,
             value: Math.round(d.flux || d.value || 0),
           }));
-          if (!result.sfi.current) {
-            result.sfi.current = result.sfi.history[result.sfi.history.length - 1]?.value || null;
+          if (result.sfi.current == null) {
+            result.sfi.current = result.sfi.history[result.sfi.history.length - 1]?.value ?? null;
           }
         }
       }
@@ -194,7 +198,7 @@ module.exports = function (app, ctx) {
             time: d[0],
             value: parseFloat(d[1]) || 0,
           }));
-          result.kp.current = result.kp.history[result.kp.history.length - 1]?.value || null;
+          result.kp.current = result.kp.history[result.kp.history.length - 1]?.value ?? null;
         }
       }
 
@@ -224,8 +228,8 @@ module.exports = function (app, ctx) {
             date: `${d['time-tag'] || d.time_tag || ''}`,
             value: Math.round(d.ssn || d['ISES SSN'] || 0),
           }));
-          if (!result.ssn.current) {
-            result.ssn.current = result.ssn.history[result.ssn.history.length - 1]?.value || null;
+          if (result.ssn.current == null) {
+            result.ssn.current = result.ssn.history[result.ssn.history.length - 1]?.value ?? null;
           }
         }
       }
@@ -570,10 +574,18 @@ module.exports = function (app, ctx) {
       const parsed = parseN0NBHxml(xml);
 
       n0nbhCache = { data: parsed, timestamp: Date.now() };
-      res.json(parsed);
+      res.json({ ...parsed, fetchedAt: n0nbhCache.timestamp });
     } catch (error) {
       logErrorOnce('N0NBH', error.message);
-      if (n0nbhCache.data) return res.json(n0nbhCache.data);
+      if (n0nbhCache.data) {
+        const age = Date.now() - n0nbhCache.timestamp;
+        if (age > N0NBH_MAX_STALE_TTL) {
+          // Cache is too old to be useful; tell the client so it can show a
+          // meaningful error rather than silently displaying stale conditions.
+          return res.status(503).json({ error: 'N0NBH data unavailable and cached data is too stale' });
+        }
+        return res.json({ ...n0nbhCache.data, fetchedAt: n0nbhCache.timestamp, stale: true });
+      }
       res.status(500).json({ error: 'Failed to fetch N0NBH data' });
     }
   });
@@ -599,7 +611,8 @@ module.exports = function (app, ctx) {
     try {
       const response = await fetch('https://www.hamqsl.com/solarxml.php');
       const xml = await response.text();
-      n0nbhCache = { data: parseN0NBHxml(xml), timestamp: Date.now() };
+      const ts = Date.now();
+      n0nbhCache = { data: { ...parseN0NBHxml(xml), fetchedAt: ts }, timestamp: ts };
       logInfo('[Startup] N0NBH solar data pre-warmed');
     } catch (e) {
       logWarn('[Startup] N0NBH pre-warm failed:', e.message);
