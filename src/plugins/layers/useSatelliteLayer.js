@@ -263,10 +263,17 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
                     style="background:none; border:none; color:#ff4444; cursor:pointer; font-weight:bold; font-size:20px; padding: 0 5px;">✕</button>
           </div>
           <table style="width:100%; font-size:11px; border-collapse: collapse;">
+
+            <!-- section 1: satellite position and motion -->
+            <table style="background-color: #302115; width:100%; font-size:11px;">
             <tr><td style="color:#888; padding:2px 0;">${t('station.settings.satellites.latitude')}:</td><td align="right" style="padding:2px 0;">${sat.lat.toFixed(2)}°</td></tr>
             <tr><td style="color:#888; padding:2px 0;">${t('station.settings.satellites.longitude')}:</td><td align="right" style="padding:2px 0;">${sat.lon.toFixed(2)}°</td></tr>
-            <tr><td style="color:#888; padding:2px 0;">${t('station.settings.satellites.speed')}:</td><td align="right" style="padding:2px 0;">${speedStr}</td></tr>
             <tr><td style="color:#888; padding:2px 0;">${t('station.settings.satellites.altitude')}:</td><td align="right" style="padding:2px 0;">${altitudeStr}</td></tr>
+            <tr><td style="color:#888; padding:2px 0;">${t('station.settings.satellites.speed')}:</td><td align="right" style="padding:2px 0;">${speedStr}</td></tr>
+            </table>
+
+            <!-- section 2: relative location and visibility -->
+            <table style="background-color: #283119; width:100%; font-size:11px;">
             <tr><td style="color:#888; padding:2px 0;">${t('station.settings.satellites.azimuth_elevation')}:</td><td align="right" style="padding:2px 0;">${sat.azimuth}° / ${sat.elevation}°</td></tr>
 
             ${
@@ -279,17 +286,24 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
                 : ``
             }
 
-            <tr><td style="color:#888; padding:2px 0;">${t('station.settings.satellites.mode')}:</td><td align="right" style="color:#ffa500; padding:2px 0;">${sat.mode || 'N/A'}</td></tr>
-            ${sat.downlink ? `<tr><td style="color:#888; padding:2px 0;">${t('station.settings.satellites.downlink')}:</td><td align="right" style="color:#00ffcc; padding:2px 0;">${sat.downlink}</td></tr>` : ''}
-            ${sat.uplink ? `<tr><td style="color:#888; padding:2px 0;">${t('station.settings.satellites.uplink')}:</td><td align="right" style="color:#ffcc00; padding:2px 0;">${sat.uplink}</td></tr>` : ''}
-            ${sat.tone ? `<tr><td style="color:#888; padding:2px 0;">${t('station.settings.satellites.tone')}:</td><td align="right" style="padding:2px 0;">${sat.tone}</td></tr>` : ''}
             <tr><td style="color:#888; padding:2px 0;">${t('station.settings.satellites.status')}:</td>
                 <td align="right" class="${isVisible ? 'sat-visible-blink' : ''}" style="padding:2px 0;">
                   ${isVisible ? `<span style="color:#00ff88;">${t('station.settings.satellites.visible')}</span>` : `<span style="color:#666;">${t('station.settings.satellites.belowHorizon')}</span>`}
                 </td>
             </tr>
-          </table>
-          ${sat.notes ? `<div style="font-size:9px; color:#666; margin-top:4px; font-style:italic;">${sat.notes}</div>` : ''}
+            </table>
+
+            <!-- section 3: miscellaneous satellite information -->
+            <table style="background-color: #233b46; width:100%; font-size:11px;">
+            <tr><td style="color:#888; padding:2px 0;">${t('station.settings.satellites.mode')}:</td><td align="right" style="color:#ffa500; padding:2px 0;">${sat.mode || 'N/A'}</td></tr>
+            ${sat.downlink ? `<tr><td style="color:#888; padding:2px 0;">${t('station.settings.satellites.downlink')}:</td><td align="right" style="color:#00ffcc; padding:2px 0;">${sat.downlink}</td></tr>` : ''}
+            ${sat.uplink ? `<tr><td style="color:#888; padding:2px 0;">${t('station.settings.satellites.uplink')}:</td><td align="right" style="color:#ffcc00; padding:2px 0;">${sat.uplink}</td></tr>` : ''}
+            ${sat.tone ? `<tr><td style="color:#888; padding:2px 0;">${t('station.settings.satellites.tone')}:</td><td align="right" style="padding:2px 0;">${sat.tone}</td></tr>` : ''}
+            </table>
+
+            </table>
+
+            ${sat.notes ? `<div style="font-size:9px; color:#666; margin-top:4px; font-style:italic;">${sat.notes}</div>` : ''}
         </div>
       `;
         })
