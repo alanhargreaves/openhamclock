@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as satellite from 'satellite.js';
 
-export const useSatellites = (observerLocation) => {
+export const useSatellites = (observerLocation, satelliteConfig) => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tleData, setTleData] = useState({});
@@ -45,7 +45,7 @@ export const useSatellites = (observerLocation) => {
       const observerGd = {
         longitude: satellite.degreesToRadians(observerLocation.lon),
         latitude: satellite.degreesToRadians(observerLocation.lat),
-        height: 0.1, // km above sea level
+        height: (observerLocation.stationAlt || 100) / 1000, // above sea level [km], stationAlt is [m]), defaults to 100m
       };
 
       Object.entries(tleData).forEach(([name, tle]) => {
@@ -105,11 +105,13 @@ export const useSatellites = (observerLocation) => {
 
           // Calculate footprint radius (visibility circle)
           // Formula: radius = Earth_radius * arccos(Earth_radius / (Earth_radius + altitude))
-          const earthRadius = 6371; // km
+          const earthRadius = 6371; // [km]
           const footprintRadius = earthRadius * Math.acos(earthRadius / (earthRadius + alt));
 
           positions.push({
             name: tle.name || name,
+            tle1: line1,
+            tle2: line2,
             lat,
             lon,
             alt: Math.round(alt),
@@ -117,7 +119,7 @@ export const useSatellites = (observerLocation) => {
             azimuth: Math.round(azimuth),
             elevation: Math.round(elevation),
             range: Math.round(rangeSat),
-            visible: elevation > 0,
+            visible: elevation >= satelliteConfig.minElev, // visible if above minimum elevation
             isPopular: tle.priority <= 2,
             track,
             footprintRadius: Math.round(footprintRadius),
