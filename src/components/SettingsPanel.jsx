@@ -66,6 +66,7 @@ export const SettingsPanel = ({
   const [distUnits, setDistUnits] = useState(config?.allUnits?.dist || config?.units || 'imperial');
   const [tempUnits, setTempUnits] = useState(config?.allUnits?.temp || config?.units || 'imperial');
   const [pressUnits, setPressUnits] = useState(config?.allUnits?.press || config?.units || 'imperial');
+  const [showWhatsNew, setShowWhatsNew] = useState(config.showWhatsNew); // set in config.js
   const [propMode, setPropMode] = useState(config?.propagation?.mode || 'SSB');
   const [propPower, setPropPower] = useState(config?.propagation?.power || 100);
   const [rigEnabled, setRigEnabled] = useState(config?.rigControl?.enabled || false);
@@ -2881,6 +2882,35 @@ export const SettingsPanel = ({
               </label>
               <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
                 By default, UTC is shown first. Enable this to display Local Time first.
+              </div>
+            </div>
+
+            {/* Display Whats New on Startup */}
+            <div style={{ marginBottom: '24px' }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={showWhatsNew}
+                  onChange={(e) => {
+                    config.showWhatsNew = e.target.checked;
+                    setShowWhatsNew(e.target.checked);
+                  }}
+                  style={{ accentColor: 'var(--accent-amber)' }}
+                />
+                Show What's New on Startup
+              </label>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                By default, What's New is displayed. Setting this true means it will only be displayed when the version
+                is clicked.
               </div>
             </div>
 

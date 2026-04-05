@@ -745,7 +745,7 @@ const App = () => {
         isOpen={showWwbotaFilters}
         onClose={() => setShowWwbotaFilters(false)}
       />
-      <WhatsNew />
+      <WhatsNew showWhatsNew={config.showWhatsNew} />
     </div>
   );
 };

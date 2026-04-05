@@ -1038,7 +1038,7 @@ const CHANGELOG = [
 
 const LS_KEY = 'openhamclock_lastSeenVersion';
 
-export default function WhatsNew() {
+export default function WhatsNew({ showWhatsNew }) {
   const [visible, setVisible] = useState(false);
   const [currentVersion, setCurrentVersion] = useState(null);
 
@@ -1058,7 +1058,7 @@ export default function WhatsNew() {
         if (!lastSeen || lastSeen !== version) {
           // Only show if we actually have changelog entries for this version
           const hasEntry = CHANGELOG.some((c) => c.version === version);
-          if (hasEntry) {
+          if (hasEntry && showWhatsNew) {
             setVisible(true);
           } else {
             // No changelog entry — just silently update the stored version
