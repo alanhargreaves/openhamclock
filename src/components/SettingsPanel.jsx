@@ -47,10 +47,10 @@ export const SettingsPanel = ({
   const [swapHeaderClocks, setSwapHeaderClocks] = useState(config?.swapHeaderClocks || false);
   const [showMutualReception, setShowMutualReception] = useState(config?.showMutualReception ?? true);
   const [gridSquare, setGridSquare] = useState(config?.locator || '');
-  const [lat, setLat] = useState(config?.location?.lat ?? 0);
-  const [lon, setLon] = useState(config?.location?.lon ?? 0);
-  const [stationAlt, setStationAlt] = useState(config?.location?.stationAlt ?? 100);
-  const [minElev, setMinElev] = useState(config?.satellite?.minElev ?? 5.0);
+  const [lat, setLat] = useState(config?.location?.lat || 0);
+  const [lon, setLon] = useState(config?.location?.lon || 0);
+  const [stationAlt, setStationAlt] = useState(config?.location?.stationAlt || 100);
+  const [minElev, setMinElev] = useState(config?.satellite?.minElev || 5.0);
   const [layout, setLayout] = useState(config?.layout || 'modern');
   const [mouseZoom, setMouseZoom] = useState(config?.mouseZoom || 50);
   const [timezone, setTimezone] = useState(config?.timezone || '');
@@ -179,10 +179,10 @@ export const SettingsPanel = ({
     if (config) {
       setCallsign(config.callsign || '');
       setheaderSize(config.headerSize || 1.0);
-      setLat(config.location?.lat ?? 0);
-      setLon(config.location?.lon ?? 0);
-      setStationAlt(config.location?.stationAlt ?? 100);
-      setMinElev(config.satellite?.minElev ?? 5.0);
+      setLat(config.location?.lat || 0);
+      setLon(config.location?.lon || 0);
+      setStationAlt(config.location?.stationAlt || 100);
+      setMinElev(config.satellite?.minElev || 5.0);
       setLayout(config.layout || 'modern');
       setMouseZoom(config.mouseZoom || 50);
       setTimezone(config.timezone || '');
@@ -3415,10 +3415,10 @@ export const SettingsPanel = ({
                             <input
                               type="number"
                               step="0.1"
-                              min="-89.0"
+                              min="-5.0"
                               max="89.0"
                               value={isNaN(minElev) ? '' : minElev}
-                              onChange={(e) => setMinElev(e.target.valueAsNumber ?? 5.0)}
+                              onChange={(e) => setMinElev(isNaN(e.target.valueAsNumber) ? 5.0 : e.target.valueAsNumber)}
                               style={{
                                 width: '100%',
                                 padding: '10px',
