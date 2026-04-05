@@ -747,7 +747,7 @@ export const SettingsPanel = ({
               fontFamily: 'JetBrains Mono, monospace',
             }}
           >
-            📻 Rig Bridge
+            📻 {t('station.settings.tab.title.rig-bridge')}
           </button>
         </div>
 
