@@ -383,7 +383,7 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
                 interactive: false,
               }).addTo(layerGroupRef.current);
               window.L.polyline([coords[i], coords[i + 1]], {
-                color: 'rgba(255, 255, 255, 1)fff',
+                color: 'rgba(255, 255, 255, 1)',
                 weight: 2,
                 opacity: fade * globalOpacity,
                 lineCap: 'round',
@@ -405,7 +405,7 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
           const leadCoords = sat.leadTrack.map((p) => [p[0], p[1]]);
           replicatePath(leadCoords).forEach((lCoords) => {
             window.L.polyline(lCoords, {
-              color: 'rgba(255, 255, 255, 1)f00',
+              color: 'rgba(255, 255, 0, 1)',
               weight: 3,
               opacity: 0.8 * globalOpacity,
               dashArray: '8, 12',

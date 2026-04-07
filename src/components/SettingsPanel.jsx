@@ -3386,7 +3386,9 @@ export const SettingsPanel = ({
                               type="number"
                               step="1"
                               value={isNaN(stationAlt) ? '' : stationAlt}
-                              onChange={(e) => setStationAlt(e.target.valueAsNumber ?? 100)}
+                              onChange={(e) =>
+                                setStationAlt(isNaN(e.target.valueAsNumber) ? 100 : e.target.valueAsNumber)
+                              }
                               style={{
                                 width: '100%',
                                 padding: '10px',
