@@ -229,6 +229,7 @@ export function useLayer({
   const [minSNR, setMinSNR] = useState(-10);
   const [showPaths, setShowPaths] = useState(true);
   const [spotterFilter, setSpotterFilter] = useState('');
+  const [queryMode, setQueryMode] = useState('dx'); // 'dx' = who hears me, 'spotter' = what does a skimmer hear
   const [stats, setStats] = useState({ total: 0, skimmers: 0, avgSNR: 0 });
 
   // Low memory mode limits
@@ -240,15 +241,30 @@ export function useLayer({
 
   // Fetch RBN spots
   const fetchRBNSpots = async () => {
-    if (!callsign || callsign === 'N0CALL') {
-      console.log('[RBN] No valid callsign configured');
+    // In spotter mode, query by the spotter callsign; in dx mode, query by user's callsign
+    let queryCallsign;
+    let queryModeParam;
+    if (queryMode === 'spotter' && spotterFilter.trim()) {
+      queryCallsign = spotterFilter.split(',')[0].trim().toUpperCase();
+      queryModeParam = 'spotter';
+    } else {
+      queryCallsign = callsign;
+      queryModeParam = 'dx';
+    }
+
+    if (!queryCallsign || queryCallsign === 'N0CALL') {
+      if (queryMode === 'spotter') {
+        console.log('[RBN] Spotter mode: enter a skimmer callsign');
+      } else {
+        console.log('[RBN] No valid callsign configured');
+      }
       return;
     }
 
     try {
       // Server filters by callsign and enriches with locations — no client-side firehose scanning
       const response = await fetch(
-        `/api/rbn/spots?callsign=${encodeURIComponent(callsign)}&minutes=${Math.ceil(timeWindow)}`,
+        `/api/rbn/spots?callsign=${encodeURIComponent(queryCallsign)}&minutes=${Math.ceil(timeWindow)}&mode=${queryModeParam}`,
         { headers: { Accept: 'application/json' } },
       );
 
@@ -302,13 +318,21 @@ export function useLayer({
         // Calculate statistics from all spots
         const validSNRs = enrichedSpots.map((s) => s.snr).filter((snr) => snr !== null && snr !== undefined);
 
-        const uniqueSkimmers = new Set(enrichedSpots.map((s) => s.callsign));
-
-        setStats({
-          total: enrichedSpots.length,
-          skimmers: uniqueSkimmers.size,
-          avgSNR: validSNRs.length > 0 ? (validSNRs.reduce((a, b) => a + b, 0) / validSNRs.length).toFixed(1) : 0,
-        });
+        if (queryModeParam === 'spotter') {
+          const uniqueDX = new Set(enrichedSpots.map((s) => s.dx));
+          setStats({
+            total: enrichedSpots.length,
+            skimmers: uniqueDX.size, // In spotter mode, show unique DX stations count
+            avgSNR: validSNRs.length > 0 ? (validSNRs.reduce((a, b) => a + b, 0) / validSNRs.length).toFixed(1) : 0,
+          });
+        } else {
+          const uniqueSkimmers = new Set(enrichedSpots.map((s) => s.callsign));
+          setStats({
+            total: enrichedSpots.length,
+            skimmers: uniqueSkimmers.size,
+            avgSNR: validSNRs.length > 0 ? (validSNRs.reduce((a, b) => a + b, 0) / validSNRs.length).toFixed(1) : 0,
+          });
+        }
       }
     } catch (error) {
       console.error('[RBN] Error fetching spots:', error);
@@ -317,7 +341,9 @@ export function useLayer({
 
   // Fetch data on mount and set interval
   useEffect(() => {
-    if (enabled && callsign && callsign !== 'N0CALL') {
+    const shouldFetch = enabled && (queryMode === 'spotter' ? spotterFilter.trim() : callsign && callsign !== 'N0CALL');
+
+    if (shouldFetch) {
       fetchRBNSpots();
       updateIntervalRef.current = setInterval(fetchRBNSpots, UPDATE_INTERVAL);
     }
@@ -327,7 +353,7 @@ export function useLayer({
         clearInterval(updateIntervalRef.current);
       }
     };
-  }, [enabled, callsign, timeWindow]);
+  }, [enabled, callsign, timeWindow, queryMode, spotterFilter]);
 
   // Render markers and paths
   useEffect(() => {
@@ -355,19 +381,21 @@ export function useLayer({
     const hasMapBandFilter = selectedMapBands.size > 0;
 
     // Parse spotter filter: comma-separated callsigns (case-insensitive)
-    const spotterCallsigns = spotterFilter
-      ? spotterFilter
-          .split(',')
-          .map((s) => s.trim().toUpperCase())
-          .filter(Boolean)
-      : [];
+    // In spotter mode, the filter is used as the query target, not a client-side filter
+    const spotterCallsigns =
+      queryMode === 'dx' && spotterFilter
+        ? spotterFilter
+            .split(',')
+            .map((s) => s.trim().toUpperCase())
+            .filter(Boolean)
+        : [];
 
     const filteredSpots = spots.filter((spot) => {
       const band = freqToBand(spot.frequency || spot.freq || 0);
       const normalizedBand = normalizeBandKey(spot.band || band);
       const snr = spot.snr || spot.db || 0;
 
-      // Spotter filter — only show spots from specific skimmer stations
+      // Spotter filter (dx mode only) — only show spots from specific skimmer stations
       if (spotterCallsigns.length > 0) {
         const skimmer = (spot.callsign || '').toUpperCase();
         if (!spotterCallsigns.some((f) => skimmer.includes(f))) return false;
@@ -394,77 +422,133 @@ export function useLayer({
       `[RBN] Rendering ${filteredSpots.length} spots (within ${timeWindow < 1 ? (timeWindow * 60).toFixed(0) + 's' : timeWindow.toFixed(1) + 'min'} window)`,
     );
 
+    // In spotter mode, resolve the spotter's own location for path origin
+    let spotterOrigin = null;
+    if (queryMode === 'spotter' && filteredSpots.length > 0) {
+      const first = filteredSpots[0];
+      if (first.skimmerLat && first.skimmerLon) {
+        spotterOrigin = { lat: first.skimmerLat, lon: first.skimmerLon };
+      } else if (first.grid) {
+        spotterOrigin = gridToLatLon(first.grid);
+      }
+    }
+
     // Render each spot
     filteredSpots.forEach((spot) => {
-      // spot contains: { callsign (skimmer), dx (you), freq, band, mode, snr, grid, skimmerLat, skimmerLon }
-      const skimmerGrid = spot.grid;
-
-      if (!skimmerGrid) {
-        console.warn(`[RBN] No grid square for skimmer ${spot.callsign}`);
-        return;
-      }
-
-      // Use provided lat/lon if available, otherwise convert grid
-      let skimmerLoc;
-      if (spot.skimmerLat && spot.skimmerLon) {
-        skimmerLoc = { lat: spot.skimmerLat, lon: spot.skimmerLon };
-      } else {
-        skimmerLoc = gridToLatLon(skimmerGrid);
-      }
-
-      if (!skimmerLoc) return;
-
       const snr = spot.snr || 0;
       const freq = spot.frequency || 0;
       const band = spot.band || freqToBand(freq);
-      const skimmerCall = spot.callsign || 'Unknown';
       const timestamp = new Date(spot.timestamp);
-
-      // Create path line from YOUR location to the SKIMMER
-      if (showPaths) {
-        const pathSegments = getGreatCirclePath(deLocation.lat, deLocation.lon, skimmerLoc.lat, skimmerLoc.lon);
-
-        // Draw each segment (handles dateline crossing)
-        pathSegments.forEach((pathPoints) => {
-          const pathLine = L.polyline(pathPoints, {
-            color: getSNRColor(snr),
-            weight: 2,
-            opacity: opacity * 0.6,
-            dashArray: '5, 5',
-          });
-
-          pathLine.addTo(map);
-          layersRef.current.push(pathLine);
-        });
-      }
-
-      // Create skimmer marker
       const markerSize = getMarkerSize(snr);
       const markerColor = getSNRColor(snr);
 
-      const marker = L.circleMarker([skimmerLoc.lat, skimmerLoc.lon], {
-        radius: markerSize,
-        fillColor: markerColor,
-        color: '#ffffff',
-        weight: 2,
-        opacity: opacity,
-        fillOpacity: opacity * 0.8,
-      });
+      if (queryMode === 'spotter') {
+        // SPOTTER MODE: markers at DX station locations, paths from spotter to each DX
+        const dxLat = spot.dxLat;
+        const dxLon = spot.dxLon;
+        if (!Number.isFinite(dxLat) || !Number.isFinite(dxLon)) return;
 
-      marker.bindPopup(`
-        <div style="font-family: 'JetBrains Mono', monospace;">
-          <strong>📡 ${esc(skimmerCall)}</strong><br>
-          Heard: <strong>${esc(callsign)}</strong><br>
-          SNR: <strong>${snr} dB</strong><br>
-          Band: <strong>${esc(band)}</strong><br>
-          Freq: <strong>${(freq / 1000).toFixed(1)} kHz</strong><br>
-          Grid: ${esc(skimmerGrid)}<br>
-          Time: ${timestamp.toLocaleTimeString()}
-        </div>
-      `);
+        const dxCall = spot.dx || 'Unknown';
+        const dxGrid = spot.dxGrid || '';
+        const skimmerCall = spot.callsign || 'Unknown';
 
-      marker.addTo(map);
-      layersRef.current.push(marker);
+        // Path from spotter to DX station
+        if (showPaths && spotterOrigin) {
+          const pathSegments = getGreatCirclePath(spotterOrigin.lat, spotterOrigin.lon, dxLat, dxLon);
+          pathSegments.forEach((pathPoints) => {
+            const pathLine = L.polyline(pathPoints, {
+              color: getSNRColor(snr),
+              weight: 2,
+              opacity: opacity * 0.6,
+              dashArray: '5, 5',
+            });
+            pathLine.addTo(map);
+            layersRef.current.push(pathLine);
+          });
+        }
+
+        // DX station marker
+        const marker = L.circleMarker([dxLat, dxLon], {
+          radius: markerSize,
+          fillColor: markerColor,
+          color: '#ffffff',
+          weight: 2,
+          opacity: opacity,
+          fillOpacity: opacity * 0.8,
+        });
+
+        marker.bindPopup(`
+          <div style="font-family: 'JetBrains Mono', monospace;">
+            <strong>${esc(dxCall)}</strong><br>
+            Spotted by: <strong>${esc(skimmerCall)}</strong><br>
+            SNR: <strong>${snr} dB</strong><br>
+            Band: <strong>${esc(band)}</strong><br>
+            Freq: <strong>${(freq / 1000).toFixed(1)} kHz</strong><br>
+            ${dxGrid ? `Grid: ${esc(dxGrid)}<br>` : ''}
+            Time: ${timestamp.toLocaleTimeString()}
+          </div>
+        `);
+
+        marker.addTo(map);
+        layersRef.current.push(marker);
+      } else {
+        // DX MODE (default): markers at skimmer locations, paths from DE to skimmer
+        const skimmerGrid = spot.grid;
+
+        if (!skimmerGrid) {
+          console.warn(`[RBN] No grid square for skimmer ${spot.callsign}`);
+          return;
+        }
+
+        let skimmerLoc;
+        if (spot.skimmerLat && spot.skimmerLon) {
+          skimmerLoc = { lat: spot.skimmerLat, lon: spot.skimmerLon };
+        } else {
+          skimmerLoc = gridToLatLon(skimmerGrid);
+        }
+
+        if (!skimmerLoc) return;
+
+        const skimmerCall = spot.callsign || 'Unknown';
+
+        if (showPaths) {
+          const pathSegments = getGreatCirclePath(deLocation.lat, deLocation.lon, skimmerLoc.lat, skimmerLoc.lon);
+          pathSegments.forEach((pathPoints) => {
+            const pathLine = L.polyline(pathPoints, {
+              color: getSNRColor(snr),
+              weight: 2,
+              opacity: opacity * 0.6,
+              dashArray: '5, 5',
+            });
+            pathLine.addTo(map);
+            layersRef.current.push(pathLine);
+          });
+        }
+
+        const marker = L.circleMarker([skimmerLoc.lat, skimmerLoc.lon], {
+          radius: markerSize,
+          fillColor: markerColor,
+          color: '#ffffff',
+          weight: 2,
+          opacity: opacity,
+          fillOpacity: opacity * 0.8,
+        });
+
+        marker.bindPopup(`
+          <div style="font-family: 'JetBrains Mono', monospace;">
+            <strong>📡 ${esc(skimmerCall)}</strong><br>
+            Heard: <strong>${esc(callsign)}</strong><br>
+            SNR: <strong>${snr} dB</strong><br>
+            Band: <strong>${esc(band)}</strong><br>
+            Freq: <strong>${(freq / 1000).toFixed(1)} kHz</strong><br>
+            Grid: ${esc(skimmerGrid)}<br>
+            Time: ${timestamp.toLocaleTimeString()}
+          </div>
+        `);
+
+        marker.addTo(map);
+        layersRef.current.push(marker);
+      }
     });
   }, [
     map,
@@ -478,6 +562,7 @@ export function useLayer({
     timeWindow,
     mapBandFilter,
     spotterFilter,
+    queryMode,
   ]);
 
   // Create control panel
@@ -501,9 +586,16 @@ export function useLayer({
           Avg SNR: <strong>0 dB</strong>
         </div>
         <div style="margin-bottom: 6px;">
-          <label>Spotter:</label>
+          <label>Mode:</label>
+          <select id="rbn-query-mode" style="width: 100%; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 4px;">
+            <option value="dx">Who hears me?</option>
+            <option value="spotter">What does a skimmer hear?</option>
+          </select>
+        </div>
+        <div id="rbn-spotter-section" style="margin-bottom: 6px;">
+          <label id="rbn-spotter-label">Spotter:</label>
           <input type="text" id="rbn-spotter-filter" placeholder="e.g. NU4F, W3LPL" style="width: 100%; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 4px; font-size: 12px; box-sizing: border-box;">
-          <div style="font-size: 9px; color: var(--text-muted); margin-top: 2px;">Comma-separated. Leave blank for all.</div>
+          <div id="rbn-spotter-hint" style="font-size: 9px; color: var(--text-muted); margin-top: 2px;">Comma-separated. Leave blank for all.</div>
         </div>
         <div style="margin-bottom: 6px;">
           <label>Band:</label>
@@ -544,13 +636,39 @@ export function useLayer({
 
         // Add event listeners
         setTimeout(() => {
+          const modeSelect = document.getElementById('rbn-query-mode');
           const spotterInput = document.getElementById('rbn-spotter-filter');
+          const spotterLabel = document.getElementById('rbn-spotter-label');
+          const spotterHint = document.getElementById('rbn-spotter-hint');
           const bandSelect = document.getElementById('rbn-band-select');
           const timeSlider = document.getElementById('rbn-time-slider');
           const timeValue = document.getElementById('rbn-time-value');
           const snrSlider = document.getElementById('rbn-snr-slider');
           const snrValue = document.getElementById('rbn-snr-value');
           const pathsCheck = document.getElementById('rbn-paths-check');
+
+          // Helper to update spotter input labels based on mode
+          const updateSpotterUI = (mode) => {
+            if (!spotterInput || !spotterLabel || !spotterHint) return;
+            if (mode === 'spotter') {
+              spotterLabel.textContent = 'Skimmer callsign:';
+              spotterInput.placeholder = 'e.g. KD2OGR, W3LPL';
+              spotterHint.textContent = 'Enter a skimmer callsign to see what it hears.';
+            } else {
+              spotterLabel.textContent = 'Spotter:';
+              spotterInput.placeholder = 'e.g. NU4F, W3LPL';
+              spotterHint.textContent = 'Comma-separated. Leave blank for all.';
+            }
+          };
+
+          if (modeSelect) {
+            modeSelect.value = queryMode;
+            updateSpotterUI(queryMode);
+            modeSelect.addEventListener('change', (e) => {
+              setQueryMode(e.target.value);
+              updateSpotterUI(e.target.value);
+            });
+          }
 
           if (spotterInput) {
             spotterInput.value = spotterFilter;
@@ -647,7 +765,7 @@ export function useLayer({
         controlRef.current = null;
       }
     };
-  }, [map, enabled, callsign]); // Only recreate when map, enabled, or callsign changes
+  }, [map, enabled, callsign]); // Only recreate when map, enabled, or callsign changes — mode switch updates labels via DOM
 
   // Separate effect to update stats display without recreating the entire control
   useEffect(() => {
@@ -661,12 +779,13 @@ export function useLayer({
       container.querySelector('#rbn-stats-display') || container.querySelector('.rbn-panel-content #rbn-stats-display');
 
     if (statsDisplay) {
+      const countLabel = queryMode === 'spotter' ? 'DX Stations' : 'Skimmers';
       statsDisplay.innerHTML = `
-        Spots: <strong>${stats.total}</strong> | Skimmers: <strong>${stats.skimmers}</strong><br>
+        Spots: <strong>${stats.total}</strong> | ${countLabel}: <strong>${stats.skimmers}</strong><br>
         Avg SNR: <strong>${stats.avgSNR} dB</strong>
       `;
     }
-  }, [enabled, stats]);
+  }, [enabled, stats, queryMode]);
 
   // Cleanup on disable
   useEffect(() => {

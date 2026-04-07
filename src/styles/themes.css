@@ -19,6 +19,7 @@
   --accent-blue: #4488ff;
   --accent-cyan: #00ddff;
   --accent-purple: #aa66ff;
+  --color-aprs-rf: #4ade80;
   --map-ocean: #0a0e14;
   /* --scanline-opacity: 0.02; */
 }
@@ -43,6 +44,7 @@
   --accent-blue: #2266cc;
   --accent-cyan: #0099bb;
   --accent-purple: #7744cc;
+  --color-aprs-rf: #16a34a;
   --map-ocean: #f0f4f8;
   /* --scanline-opacity: 0; */
 }
@@ -67,6 +69,7 @@
   --accent-blue: #00aaff;
   --accent-cyan: #00ffff;
   --accent-purple: #ff00ff;
+  --color-aprs-rf: #00ff00;
   --map-ocean: #000008;
   /* --scanline-opacity: 0.05; */
 }
@@ -93,6 +96,7 @@
   --accent-blue: #000080;
   --accent-cyan: #008080;
   --accent-purple: #800080;
+  --color-aprs-rf: #008000;
   --title-bar: linear-gradient(90deg, #000080, #1084d0);
   --title-bar-text: #ffffff;
   --map-ocean: #000080;

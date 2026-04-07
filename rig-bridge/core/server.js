@@ -4,6 +4,7 @@
  *
  * Exposes the openhamclock-compatible API:
  *   GET  /             Setup UI (HTML) or JSON health check
+ *   GET  /health       Diagnostic endpoint (auth, plugin, ptt status)
  *   GET  /status       Current rig state snapshot
  *   GET  /stream       SSE stream for real-time state updates
  *   POST /freq         Set frequency  { freq: Hz }
@@ -21,8 +22,9 @@
 const express = require('express');
 const cors = require('cors');
 const { getSerialPort, listPorts } = require('./serial-utils');
-const { state, addSseClient, removeSseClient } = require('./state');
-const { config, saveConfig } = require('./config');
+const { state, addSseClient, removeSseClient, getDecodeRingBuffer, getSseClientCount } = require('./state');
+const { config, saveConfig, CONFIG_PATH } = require('./config');
+const tlsModule = require('./tls');
 
 // ─── Security helpers ─────────────────────────────────────────────────────
 
@@ -499,6 +501,14 @@ function buildSetupHtml(version, firstRunToken = null) {
       <h1>📻 OpenHamClock Rig Bridge</h1>
       <div class="subtitle">Direct USB connection to your radio — no flrig or rigctld needed</div>
       <div id="logoutArea" style="display:none;margin-top:8px;">
+        <div id="headerTokenArea" style="display:none;justify-content:center;margin-bottom:6px;">
+          <div style="display:inline-flex;align-items:center;gap:6px;background:#111620;border:1px solid #1e2530;border-radius:6px;padding:5px 10px;white-space:nowrap;">
+            <span style="font-size:11px;color:#4b5563;">API Token:</span>
+            <input type="password" id="headerToken" readonly style="background:none;border:none;color:#00ffcc;font-family:'Courier New',Courier,monospace;font-size:11px;outline:none;width:260px;letter-spacing:0.5px;">
+            <button class="copy-btn" onclick="copyHeaderToken()" style="font-size:10px;padding:2px 7px;">Copy</button>
+            <button class="copy-btn" id="headerTokenToggle" onclick="toggleHeaderToken()" style="font-size:10px;padding:2px 7px;">Show</button>
+          </div>
+        </div>
         <span class="logout-link" onclick="doLogout()">🔓 Lock setup</span>
       </div>
     </div>
@@ -514,8 +524,10 @@ function buildSetupHtml(version, firstRunToken = null) {
     <!-- Tabs -->
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab('radio', this)">📻 Radio</button>
-      <button class="tab-btn" onclick="switchTab('integrations', this)">🔌 Integrations</button>
-      <button class="tab-btn" onclick="switchTab('log', this)">🖥️ Console Log</button>
+      <button class="tab-btn" onclick="switchTab('plugins', this)">🧩 Plugins</button>
+      <button class="tab-btn" onclick="switchTab('integrations', this)">🔌 WSJT-X <span style="font-size:9px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:#06b6d4;border:1px solid #06b6d4;border-radius:3px;padding:1px 4px;line-height:1.4;opacity:0.85;margin-left:4px;vertical-align:middle;">Beta</span></button>
+      <button class="tab-btn" onclick="switchTab('log', this)">🖥️ Log</button>
+      <button class="tab-btn" onclick="switchTab('security', this); loadTlsStatus();">🔒 Security</button>
     </div>
 
     <!-- ══ Tab: Radio ══ -->
@@ -730,59 +742,63 @@ function buildSetupHtml(version, firstRunToken = null) {
 
       <!-- Instructions -->
       <div class="ohc-instructions">
-        <strong>Setup in OpenHamClock:</strong><br>
-        1. Open <strong>Settings</strong> → <strong>Station Settings</strong> → <strong>Rig Control</strong><br>
-        2. Check <strong>Enable Rig Control</strong><br>
-        3. Set Host URL to: <code>http://localhost:5555</code><br>
-        4. Click any DX spot, POTA, or SOTA to tune your radio! 🎉
+        <strong>New to Rig Bridge?</strong><br>
+        Follow <a href="https://github.com/accius/openhamclock/blob/main/rig-bridge/README.md#option-a----installer-from-the-openhamclock-settings-tab-recommended" target="_blank" rel="noopener noreferrer" style="color:#00ffcc;">Quick Start Option A</a> for step-by-step setup instructions.
       </div>
     </div>
 
     <!-- ══ Tab: Integrations ══ -->
+    <!-- ══ Tab: Plugins ══ -->
+    <div class="tab-panel" id="tab-plugins">
+      <div class="card">
+        <div class="card-title">🧩 Plugin Manager</div>
+        <p class="help-text" style="margin-bottom:14px; color:#6b7280;">
+          Enable or disable plugins and configure their settings. Changes are saved immediately.
+        </p>
+        <div id="pluginList" style="display:flex; flex-direction:column; gap:12px;">
+          <div style="color:#6b7280; font-size:12px;">Loading plugins...</div>
+        </div>
+      </div>
+    </div>
+
     <div class="tab-panel" id="tab-integrations">
       <div class="card">
         <div class="card-title">📡 WSJT-X Relay</div>
         <p class="help-text" style="margin-bottom:14px; color:#6b7280;">
-          Captures WSJT-X UDP packets on your machine and forwards decoded messages
-          to an OpenHamClock server in real time. In WSJT-X: Settings → Reporting → UDP Server: 127.0.0.1 port 2237.
+          Captures WSJT-X UDP packets on your machine and delivers decoded messages
+          to OpenHamClock. In WSJT-X: Settings → Reporting → UDP Server: 127.0.0.1 port 2237.
         </p>
 
         <div class="checkbox-row">
           <input type="checkbox" id="wsjtxEnabled" onchange="toggleWsjtxOpts()">
-          <span>Enable WSJT-X Relay</span>
+          <span>Enable WSJT-X</span>
         </div>
 
         <div id="wsjtxOpts" style="display:none;">
-          <label>OpenHamClock Server URL</label>
-          <div style="display:flex; gap:6px; align-items:center; margin-bottom:4px;">
-            <input type="text" id="wsjtxUrl" placeholder="https://openhamclock.com" style="flex:1; margin-bottom:0;">
-            <button class="btn btn-secondary" onclick="fetchWsjtxCredentials()" id="fetchCredsBtn" style="width:auto; padding:6px 12px; font-size:12px; white-space:nowrap;">🔗 Fetch credentials</button>
-          </div>
-          <div id="fetchCredsStatus" class="help-text" style="margin-bottom:10px;"></div>
 
-          <label>Relay Key</label>
-          <input type="text" id="wsjtxKey" placeholder="Your relay authentication key">
-
-          <label>Session ID</label>
-          <input type="text" id="wsjtxSession" placeholder="Your browser session ID">
-          <div class="help-text">
-            The session ID links your relayed decodes to your OpenHamClock dashboard.
-            Find it in OpenHamClock → Settings → Station → Rig Control → WSJT-X Relay,
-            or click <strong>Fetch credentials</strong> above to fill both fields automatically.
+          <!-- Mode selector -->
+          <div style="margin:12px 0; padding:10px 12px; background:#1a1f2e; border:1px solid #2d3548; border-radius:6px;">
+            <div style="font-size:12px; font-weight:600; color:#c4c9d4; margin-bottom:8px;">Delivery mode</div>
+            <div class="checkbox-row" style="margin-bottom:6px;">
+              <input type="radio" id="wsjtxModeSSE" name="wsjtxMode" value="sse" onchange="toggleWsjtxMode()" checked>
+              <span style="font-size:13px;">📶 SSE only <span style="color:#6b7280; font-size:11px;">— decodes flow via the local /stream connection (local &amp; LAN use)</span></span>
+            </div>
+            <div class="checkbox-row">
+              <input type="radio" id="wsjtxModeRelay" name="wsjtxMode" value="relay" onchange="toggleWsjtxMode()">
+              <span style="font-size:13px;">☁️ Relay to OHC server <span style="color:#6b7280; font-size:11px;">— also POST batches to an OpenHamClock server (cloud relay / remote access)</span></span>
+            </div>
           </div>
 
-          <div class="row">
+          <!-- UDP port (always visible when enabled) -->
+          <div class="row" style="margin-bottom:0;">
             <div>
               <label>UDP Port</label>
               <input type="number" id="wsjtxPort" value="2237" min="1024" max="65535">
             </div>
-            <div>
-              <label>Batch Interval (ms)</label>
-              <input type="number" id="wsjtxInterval" value="2000" min="500" max="30000">
-            </div>
           </div>
 
-          <div class="checkbox-row">
+          <!-- Multicast (always visible when enabled) -->
+          <div class="checkbox-row" style="margin-top:10px;">
             <input type="checkbox" id="wsjtxMulticast" onchange="toggleWsjtxMulticastOpts()">
             <span>Enable Multicast</span>
           </div>
@@ -804,7 +820,31 @@ function buildSetupHtml(version, firstRunToken = null) {
             </div>
           </div>
 
-          <div style="font-size:12px; color:#6b7280; margin-bottom:14px;">
+          <!-- Server relay fields — only shown in relay mode -->
+          <div id="wsjtxServerOpts" style="display:none; margin-top:4px; padding:10px 12px; background:#1a1f2e; border:1px solid #2d3548; border-radius:6px;">
+            <label>OpenHamClock Server URL</label>
+            <div style="display:flex; gap:6px; align-items:center; margin-bottom:4px;">
+              <input type="text" id="wsjtxUrl" placeholder="https://openhamclock.com" style="flex:1; margin-bottom:0;">
+              <button class="btn btn-secondary" onclick="fetchWsjtxCredentials()" id="fetchCredsBtn" style="width:auto; padding:6px 12px; font-size:12px; white-space:nowrap;">🔗 Fetch credentials</button>
+            </div>
+            <div id="fetchCredsStatus" class="help-text" style="margin-bottom:10px;"></div>
+
+            <label>Relay Key</label>
+            <input type="text" id="wsjtxKey" placeholder="Your relay authentication key">
+
+            <label>Session ID</label>
+            <input type="text" id="wsjtxSession" placeholder="Your browser session ID">
+            <div class="help-text">
+              The session ID links your relayed decodes to your OpenHamClock dashboard.
+              Find it in OpenHamClock → Settings → Station → Rig Control → WSJT-X Relay,
+              or click <strong>Fetch credentials</strong> above to fill both fields automatically.
+            </div>
+
+            <label>Batch Interval (ms)</label>
+            <input type="number" id="wsjtxInterval" value="2000" min="500" max="30000">
+          </div>
+
+          <div style="font-size:12px; color:#6b7280; margin-top:10px; margin-bottom:4px;">
             Status: <span id="wsjtxStatusText" style="color:#c4c9d4;">—</span>
           </div>
         </div>
@@ -844,6 +884,56 @@ function buildSetupHtml(version, firstRunToken = null) {
         </div>
       </div>
     </div>
+    <!-- ══ Tab: Security ══ -->
+    <div class="tab-panel" id="tab-security">
+      <div class="card">
+        <div class="card-title">🔒 HTTPS / TLS</div>
+        <p style="font-size:13px; color:#6b7280; margin-bottom:16px; line-height:1.5;">
+          Enable HTTPS so OpenHamClock (served over HTTPS) can connect to rig-bridge
+          without mixed-content browser errors. A self-signed certificate is generated
+          automatically. <strong style="color:#f59e0b;">Restart required after toggling.</strong>
+        </p>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="tlsEnabled" onchange="onTlsToggle(this.checked)">
+          <span>Enable HTTPS</span>
+        </div>
+        <p class="help-text" style="margin-top:6px;">
+          When enabled, open
+          <strong id="tlsUrl" style="color:#00ffcc;">https://localhost:${config.port}</strong>
+          instead of the HTTP URL.
+        </p>
+      </div>
+
+      <div id="tlsCertCard" class="card" style="display:none;">
+        <div class="card-title">Certificate</div>
+
+        <div id="tlsCertInfo" style="background:#0a0e14; border:1px solid #1e2530; border-radius:6px; padding:12px; font-family:'JetBrains Mono','Consolas',monospace; font-size:12px; color:#9ca3af; margin-bottom:14px;">
+          Loading…
+        </div>
+
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-secondary" onclick="downloadCert()" style="flex:none; width:auto; padding:8px 16px;">⬇ Download Certificate</button>
+          <button class="btn btn-secondary" onclick="regenCert()" style="flex:none; width:auto; padding:8px 16px;">🔄 Regenerate</button>
+        </div>
+      </div>
+
+      <div id="tlsInstallCard" class="card" style="display:none;">
+        <div class="card-title">Install Certificate</div>
+        <p style="font-size:13px; color:#6b7280; margin-bottom:12px; line-height:1.5;">
+          Browsers block connections to servers with untrusted certificates. Install the
+          certificate below so your browser trusts rig-bridge's HTTPS connection.
+          After installing, restart your browser and open the HTTPS URL above.
+        </p>
+
+        <div id="tlsInstallInstructions" style="margin-bottom:12px;"></div>
+
+        <button class="btn btn-primary" onclick="installCert()" id="tlsInstallBtn" style="width:auto; padding:8px 20px;">
+          Install Certificate
+        </button>
+        <div id="tlsInstallResult" style="margin-top:10px; font-size:13px;"></div>
+      </div>
+    </div>
   </div>
 
   <div class="toast" id="toast"></div>
@@ -865,6 +955,168 @@ function buildSetupHtml(version, firstRunToken = null) {
       document.getElementById('tab-' + name).classList.add('active');
     }
 
+    // ── Plugin Manager ────────────────────────────────────────────────────
+
+    const PLUGIN_DEFS = [
+      { key: 'mshv', name: 'MSHV', maturity: 'alpha', desc: 'Multi-stream digital mode software (MSK144, Q65, etc.)', fields: [
+        { id: 'udpPort', label: 'UDP Port', type: 'number', default: 2239 },
+        { id: 'verbose', label: 'Verbose logging', type: 'checkbox', default: false },
+      ]},
+      { key: 'jtdx', name: 'JTDX', maturity: 'alpha', desc: 'Enhanced JT65/JT9/FT8 decoding (WSJT-X fork)', fields: [
+        { id: 'udpPort', label: 'UDP Port', type: 'number', default: 2238 },
+        { id: 'verbose', label: 'Verbose logging', type: 'checkbox', default: false },
+      ]},
+      { key: 'js8call', name: 'JS8Call', maturity: 'alpha', desc: 'JS8 messaging protocol for keyboard-to-keyboard QSOs', fields: [
+        { id: 'udpPort', label: 'UDP Port', type: 'number', default: 2242 },
+        { id: 'verbose', label: 'Verbose logging', type: 'checkbox', default: false },
+      ]},
+      { key: 'aprs', name: 'APRS TNC', maturity: 'beta', desc: 'Local APRS via Direwolf or hardware TNC (KISS protocol)', fields: [
+        { id: 'protocol', label: 'Protocol', type: 'select', options: ['kiss-tcp', 'kiss-serial'], default: 'kiss-tcp' },
+        { id: 'host', label: 'TNC Host', type: 'text', default: '127.0.0.1' },
+        { id: 'port', label: 'TNC Port', type: 'number', default: 8001 },
+        { id: 'callsign', label: 'Your Callsign', type: 'text', default: '' },
+        { id: 'ssid', label: 'SSID', type: 'number', default: 0 },
+        { id: 'beaconInterval', label: 'Beacon Interval (sec)', type: 'number', default: 600 },
+        { id: 'verbose', label: 'Verbose logging', type: 'checkbox', default: false },
+      ]},
+      { key: 'rotator', name: 'Rotator (rotctld)', maturity: 'alpha', desc: 'Antenna rotator control via Hamlib rotctld', fields: [
+        { id: 'host', label: 'rotctld Host', type: 'text', default: '127.0.0.1' },
+        { id: 'port', label: 'rotctld Port', type: 'number', default: 4533 },
+        { id: 'pollInterval', label: 'Poll Interval (ms)', type: 'number', default: 1000 },
+      ]},
+      { key: 'winlink', name: 'Winlink', maturity: 'alpha', desc: 'Gateway discovery + Pat client for Winlink messaging', fields: [
+        { id: 'apiKey', label: 'Winlink API Key', type: 'text', default: '' },
+        { id: 'pat.enabled', label: 'Enable Pat Client', type: 'checkbox', default: false },
+        { id: 'pat.host', label: 'Pat Host', type: 'text', default: '127.0.0.1' },
+        { id: 'pat.port', label: 'Pat Port', type: 'number', default: 8080 },
+      ]},
+      { key: 'cloudRelay', name: 'Cloud Relay', maturity: 'alpha', desc: 'Proxy rig features to cloud-hosted OpenHamClock', fields: [
+        { id: 'url', label: 'OHC Server URL', type: 'text', default: '' },
+        { id: 'apiKey', label: 'Relay API Key', type: 'text', default: '' },
+        { id: 'session', label: 'Session ID', type: 'text', default: '' },
+        { id: 'pushInterval', label: 'Push Interval (ms)', type: 'number', default: 2000 },
+        { id: 'pollInterval', label: 'Poll Interval (ms)', type: 'number', default: 1000 },
+      ]},
+    ];
+
+    function maturityBadge(level) {
+      if (!level) return '';
+      const color = level === 'alpha' ? '#f59e0b' : '#06b6d4';
+      const label = level === 'alpha' ? 'Alpha' : 'Beta';
+      return '<span style="font-size:9px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;' +
+             'color:' + color + ';border:1px solid ' + color + ';border-radius:3px;' +
+             'padding:1px 4px;line-height:1.4;opacity:0.85;margin-left:6px;vertical-align:middle;">' +
+             label + '</span>';
+    }
+
+    function renderPlugins(cfg) {
+      const container = document.getElementById('pluginList');
+      container.innerHTML = '';
+
+      PLUGIN_DEFS.forEach(plugin => {
+        const pcfg = cfg[plugin.key] || {};
+        const enabled = !!pcfg.enabled;
+
+        const card = document.createElement('div');
+        card.style.cssText = 'background:#0d1117; border:1px solid #1e2530; border-radius:8px; padding:14px;';
+        card.innerHTML =
+          '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">' +
+            '<div>' +
+              '<strong style="color:#c4c9d4; font-size:13px;">' + plugin.name + maturityBadge(plugin.maturity) + '</strong>' +
+              '<div style="font-size:11px; color:#6b7280; margin-top:2px;">' + plugin.desc + '</div>' +
+            '</div>' +
+            '<label style="position:relative; display:inline-block; width:44px; height:24px; margin:0;">' +
+              '<input type="checkbox" ' + (enabled ? 'checked' : '') +
+              ' onchange="togglePlugin(\\''+plugin.key+'\\', this.checked)"' +
+              ' style="opacity:0; width:0; height:0;">' +
+              '<span style="position:absolute; cursor:pointer; inset:0; background:' + (enabled ? '#22c55e' : '#374151') +
+              '; border-radius:24px; transition:0.2s;"></span>' +
+              '<span style="position:absolute; left:' + (enabled ? '22px' : '3px') +
+              '; top:3px; width:18px; height:18px; background:#fff; border-radius:50%; transition:0.2s;"></span>' +
+            '</label>' +
+          '</div>';
+
+        // Settings fields (shown when enabled)
+        if (enabled && plugin.fields.length > 0) {
+          const fields = document.createElement('div');
+          fields.style.cssText = 'border-top:1px solid #1e2530; padding-top:10px; margin-top:8px; display:grid; grid-template-columns:1fr 1fr; gap:8px;';
+
+          plugin.fields.forEach(f => {
+            const val = f.id.includes('.') ? (pcfg[f.id.split('.')[0]] || {})[f.id.split('.')[1]] : pcfg[f.id];
+            const div = document.createElement('div');
+
+            if (f.type === 'checkbox') {
+              div.innerHTML =
+                '<label style="display:flex; align-items:center; gap:6px; font-size:11px; color:#8b95a5; margin:0;">' +
+                  '<input type="checkbox" ' + (val ? 'checked' : '') +
+                  ' onchange="setPluginField(\\''+plugin.key+'\\', \\''+f.id+'\\', this.checked)">' +
+                  f.label +
+                '</label>';
+              div.style.gridColumn = 'span 2';
+            } else if (f.type === 'select') {
+              div.innerHTML =
+                '<label style="font-size:10px; color:#6b7280; margin-bottom:3px; display:block;">' + f.label + '</label>' +
+                '<select onchange="setPluginField(\\''+plugin.key+'\\', \\''+f.id+'\\', this.value)"' +
+                ' style="width:100%; padding:6px; background:#0a0e14; border:1px solid #1e2530; border-radius:4px; color:#c4c9d4; font-size:12px;">' +
+                f.options.map(o => '<option value="'+o+'" '+(val===o?'selected':'')+'>'+o+'</option>').join('') +
+                '</select>';
+            } else {
+              div.innerHTML =
+                '<label style="font-size:10px; color:#6b7280; margin-bottom:3px; display:block;">' + f.label + '</label>' +
+                '<input type="' + f.type + '" value="' + (val != null ? val : f.default) + '"' +
+                ' onchange="setPluginField(\\''+plugin.key+'\\', \\''+f.id+'\\', this.value)"' +
+                ' style="width:100%; padding:6px; background:#0a0e14; border:1px solid #1e2530; border-radius:4px; color:#c4c9d4; font-size:12px; box-sizing:border-box;">';
+            }
+            fields.appendChild(div);
+          });
+
+          card.appendChild(fields);
+        }
+
+        container.appendChild(card);
+      });
+    }
+
+    async function togglePlugin(key, enabled) {
+      const update = {};
+      update[key] = { enabled };
+      try {
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-RigBridge-Token': _sessionToken },
+          body: JSON.stringify(update),
+        });
+        if (res.ok) {
+          showToast(enabled ? 'Plugin enabled — restart rig-bridge to activate' : 'Plugin disabled');
+          loadApp(); // Refresh UI
+        } else {
+          showToast('Failed to save', true);
+        }
+      } catch (e) {
+        showToast('Error: ' + e.message, true);
+      }
+    }
+
+    async function setPluginField(key, field, value) {
+      const update = {};
+      if (field.includes('.')) {
+        const [section, subkey] = field.split('.');
+        update[key] = {};
+        update[key][section] = {};
+        update[key][section][subkey] = value;
+      } else {
+        update[key] = {};
+        update[key][field] = typeof value === 'string' && /^\\d+$/.test(value) ? parseInt(value) : value;
+      }
+      try {
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-RigBridge-Token': _sessionToken },
+          body: JSON.stringify(update),
+        });
+      } catch (e) {}
+    }
+
     // ── Integrations tab ───────────────────────────────────────────────────
 
     function populateIntegrations(cfg) {
@@ -878,13 +1130,23 @@ function buildSetupHtml(version, firstRunToken = null) {
       document.getElementById('wsjtxMulticast').checked = !!w.multicast;
       document.getElementById('wsjtxMulticastGroup').value = w.multicastGroup || '224.0.0.1';
       document.getElementById('wsjtxMulticastInterface').value = w.multicastInterface || '';
+      // Set delivery mode radio
+      const relayMode = !!w.relayToServer;
+      document.getElementById('wsjtxModeSSE').checked = !relayMode;
+      document.getElementById('wsjtxModeRelay').checked = relayMode;
       toggleWsjtxOpts();
+      toggleWsjtxMode();
       toggleWsjtxMulticastOpts();
     }
 
     function toggleWsjtxOpts() {
       const enabled = document.getElementById('wsjtxEnabled').checked;
       document.getElementById('wsjtxOpts').style.display = enabled ? 'block' : 'none';
+    }
+
+    function toggleWsjtxMode() {
+      const relay = document.getElementById('wsjtxModeRelay').checked;
+      document.getElementById('wsjtxServerOpts').style.display = relay ? 'block' : 'none';
     }
 
     async function fetchWsjtxCredentials() {
@@ -926,8 +1188,10 @@ function buildSetupHtml(version, firstRunToken = null) {
     }
 
     async function saveIntegrations() {
+      const relayMode = document.getElementById('wsjtxModeRelay').checked;
       const wsjtxRelay = {
         enabled: document.getElementById('wsjtxEnabled').checked,
+        relayToServer: relayMode,
         url: document.getElementById('wsjtxUrl').value.trim(),
         key: document.getElementById('wsjtxKey').value.trim(),
         session: document.getElementById('wsjtxSession').value.trim(),
@@ -999,8 +1263,17 @@ function buildSetupHtml(version, firstRunToken = null) {
       }
       const overlay = document.getElementById('loginOverlay');
       const logoutArea = document.getElementById('logoutArea');
+      const headerTokenArea = document.getElementById('headerTokenArea');
+      const headerToken = document.getElementById('headerToken');
       if (overlay) overlay.style.display = 'none';
       if (logoutArea) logoutArea.style.display = 'block';
+      if (token && headerToken) {
+        headerToken.value = token;
+        headerToken.type = 'password';
+        const toggle = document.getElementById('headerTokenToggle');
+        if (toggle) toggle.textContent = 'Show';
+      }
+      if (headerTokenArea) headerTokenArea.style.display = token ? 'flex' : 'none';
       loadApp();
     }
 
@@ -1087,6 +1360,26 @@ function buildSetupHtml(version, firstRunToken = null) {
       showToast('✅ Token copied!', 'success');
     }
 
+    function copyHeaderToken() {
+      const inp = document.getElementById('headerToken');
+      if (!inp) return;
+      const prev = inp.type;
+      inp.type = 'text';
+      inp.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      inp.type = prev;
+      showToast('✅ Token copied!', 'success');
+    }
+
+    function toggleHeaderToken() {
+      const inp = document.getElementById('headerToken');
+      const btn = document.getElementById('headerTokenToggle');
+      if (!inp) return;
+      const showing = inp.type === 'text';
+      inp.type = showing ? 'password' : 'text';
+      if (btn) btn.textContent = showing ? 'Show' : 'Hide';
+    }
+
     async function dismissBanner() {
       await fetch('/api/setup/token-seen', { method: 'POST', headers: authHeaders() }).catch(() => {});
       const banner = document.getElementById('welcomeBanner');
@@ -1103,6 +1396,7 @@ function buildSetupHtml(version, firstRunToken = null) {
         const logData = await logRes.json();
         populateForm(currentConfig);
         populateIntegrations(currentConfig);
+        renderPlugins(currentConfig);
         setLoggingBtn(logData.logging !== false); // default true
         refreshPorts();
         startStatusPoll();
@@ -1477,6 +1771,170 @@ function buildSetupHtml(version, firstRunToken = null) {
       connect();
     }
 
+    // ── TLS / Security tab ────────────────────────────────────────────────
+
+    async function loadTlsStatus() {
+      try {
+        const r = await fetch('/api/tls/status');
+        const d = await r.json();
+
+        const enabledCb = document.getElementById('tlsEnabled');
+        const certCard = document.getElementById('tlsCertCard');
+        const installCard = document.getElementById('tlsInstallCard');
+
+        if (enabledCb) enabledCb.checked = !!d.enabled;
+
+        if (d.exists) {
+          if (certCard) certCard.style.display = 'block';
+          if (installCard) installCard.style.display = 'block';
+          const infoEl = document.getElementById('tlsCertInfo');
+          if (infoEl) {
+            const expires = d.notAfter ? new Date(d.notAfter).toLocaleDateString() : '—';
+            infoEl.innerHTML =
+              '<div style="margin-bottom:4px;"><span style="color:#6b7280;display:inline-block;width:90px;">Fingerprint</span>' +
+              '<span style="color:#f59e0b;word-break:break-all;">' + (d.fingerprint || '—') + '</span></div>' +
+              '<div><span style="color:#6b7280;display:inline-block;width:90px;">Expires</span>' +
+              '<span style="color:#c4c9d4;">' + expires + ' (' + (d.daysLeft ?? '?') + ' days)</span></div>';
+          }
+          renderTlsInstallInstructions();
+        } else {
+          if (certCard) certCard.style.display = 'none';
+          if (installCard) installCard.style.display = 'none';
+        }
+      } catch (e) {
+        console.error('Failed to load TLS status:', e.message);
+      }
+    }
+
+    function renderTlsInstallInstructions() {
+      const el = document.getElementById('tlsInstallInstructions');
+      const btn = document.getElementById('tlsInstallBtn');
+      if (!el) return;
+      const ua = navigator.userAgent;
+      let html = '';
+      if (/Windows/i.test(ua)) {
+        html = '<p style="font-size:13px;color:#9ca3af;line-height:1.5;">' +
+          'Click <em>Install Certificate</em> to run <code style="color:#f59e0b;">certutil -addstore -f ROOT</code>. ' +
+          'If it fails, download the certificate and double-click it, then choose ' +
+          '<strong>Install Certificate → Local Machine → Trusted Root Certification Authorities</strong>.</p>';
+      } else if (/Macintosh|Mac OS/i.test(ua)) {
+        html = '<p style="font-size:13px;color:#9ca3af;line-height:1.5;">' +
+          'Click <em>Install Certificate</em> to run <code style="color:#f59e0b;">security add-trusted-cert</code>. ' +
+          'If it asks for your password, enter your macOS login password. ' +
+          'If it fails, open <strong>Keychain Access</strong>, drag the downloaded .crt file into ' +
+          '<strong>System</strong>, then double-click it and set <em>SSL → Always Trust</em>.</p>';
+      } else {
+        // Linux — no auto-install
+        if (btn) { btn.disabled = true; btn.style.opacity = '0.4'; }
+        html = '<p style="font-size:13px;color:#9ca3af;line-height:1.5;">' +
+          'Download the certificate and run the following commands:</p>' +
+          '<code style="display:block;background:#0a0e14;border:1px solid #1e2530;border-radius:6px;' +
+          'padding:10px;font-size:12px;color:#f59e0b;margin:8px 0;line-height:1.7;">' +
+          'sudo cp ~/Downloads/rig-bridge.crt /usr/local/share/ca-certificates/<br>' +
+          'sudo update-ca-certificates</code>' +
+          '<p style="font-size:12px;color:#6b7280;">Then import the certificate into your browser certificate store ' +
+          '(Settings → Privacy &amp; Security → Manage Certificates).</p>';
+      }
+      el.innerHTML = html;
+    }
+
+    async function onTlsToggle(enabled) {
+      try {
+        const r = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ tls: { enabled } }),
+        });
+        const d = await r.json();
+        if (d.success) {
+          showToast(enabled
+            ? 'HTTPS enabled — restart rig-bridge to apply'
+            : 'HTTP mode — restart rig-bridge to apply', 'success');
+          await loadTlsStatus();
+        } else {
+          showToast(d.error || 'Failed to update TLS setting', 'error');
+          const cb = document.getElementById('tlsEnabled');
+          if (cb) cb.checked = !enabled;
+        }
+      } catch (e) {
+        showToast('Failed to save TLS setting: ' + e.message, 'error');
+        const cb = document.getElementById('tlsEnabled');
+        if (cb) cb.checked = !enabled;
+      }
+    }
+
+    function downloadCert() {
+      const a = document.createElement('a');
+      a.href = '/api/tls/cert';
+      a.download = 'rig-bridge.crt';
+      // Add token as a query param isn't supported by this endpoint — it uses the header.
+      // Instead trigger via fetch+blob so the auth header is sent.
+      fetch('/api/tls/cert', { headers: authHeaders() })
+        .then((r) => {
+          if (!r.ok) throw new Error('Cert not available');
+          return r.blob();
+        })
+        .then((blob) => {
+          const url = URL.createObjectURL(blob);
+          a.href = url;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        })
+        .catch((e) => showToast('Download failed: ' + e.message, 'error'));
+    }
+
+    async function regenCert() {
+      if (!confirm('Regenerate the self-signed certificate?\\n\\nAny existing browser trust for the old certificate will be lost and you will need to install the new one.')) return;
+      try {
+        const r = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ tls: { enabled: true, forceRegen: true } }),
+        });
+        const d = await r.json();
+        if (d.success) {
+          showToast('Certificate regenerated — restart rig-bridge to use the new cert', 'success');
+          await loadTlsStatus();
+        } else {
+          showToast(d.error || 'Failed to regenerate certificate', 'error');
+        }
+      } catch (e) {
+        showToast('Failed to regenerate certificate: ' + e.message, 'error');
+      }
+    }
+
+    async function installCert() {
+      const btn = document.getElementById('tlsInstallBtn');
+      const resultEl = document.getElementById('tlsInstallResult');
+      if (btn) btn.disabled = true;
+      if (resultEl) { resultEl.textContent = 'Running installer…'; resultEl.style.color = '#9ca3af'; }
+
+      try {
+        const r = await fetch('/api/tls/install', { method: 'POST', headers: authHeaders() });
+        const d = await r.json();
+        if (d.success) {
+          if (resultEl) { resultEl.textContent = 'Certificate installed successfully. Restart your browser.'; resultEl.style.color = '#22c55e'; }
+        } else if (d.manual) {
+          if (resultEl) { resultEl.textContent = 'Auto-install not available on Linux. Use the commands above.'; resultEl.style.color = '#f59e0b'; }
+        } else {
+          const msg = d.command
+            ? 'Install failed (needs admin). Run manually:\\n' + d.command
+            : (d.error || 'Install failed');
+          if (resultEl) {
+            resultEl.innerHTML = 'Install failed (needs admin access). Run this command manually:<br>' +
+              '<code style="font-size:11px;color:#f59e0b;word-break:break-all;">' + escHtml(d.command || '') + '</code>';
+            resultEl.style.color = '#ef4444';
+          }
+        }
+      } catch (e) {
+        if (resultEl) { resultEl.textContent = 'Install request failed: ' + e.message; resultEl.style.color = '#ef4444'; }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
     doAutoLogin();
   </script>
 </body>
@@ -1495,14 +1953,36 @@ function createServer(registry, version) {
     .filter(Boolean);
 
   // Always allow the local setup UI and common OHC origins
+  const tlsEnabled = !!(config.tls && config.tls.enabled);
   const defaultOrigins = [
     `http://localhost:${config.port}`,
     `http://127.0.0.1:${config.port}`,
     'http://localhost:3000',
+    'http://localhost:3001',
     'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+    'http://localhost:8080',
+    'http://127.0.0.1:8080',
+    'http://localhost:8443',
+    'http://127.0.0.1:8443',
     'https://openhamclock.com',
     'https://www.openhamclock.com',
   ];
+  // When TLS is enabled the setup UI is served over https://, so add HTTPS variants
+  if (tlsEnabled) {
+    defaultOrigins.push(
+      `https://localhost:${config.port}`,
+      `https://127.0.0.1:${config.port}`,
+      'https://localhost:3000',
+      'https://localhost:3001',
+      'https://127.0.0.1:3000',
+      'https://127.0.0.1:3001',
+      'https://localhost:8080',
+      'https://127.0.0.1:8080',
+      'https://localhost:8443',
+      'https://127.0.0.1:8443',
+    );
+  }
   const origins = [...new Set([...defaultOrigins, ...allowedOrigins])];
 
   app.use(
@@ -1511,6 +1991,9 @@ function createServer(registry, version) {
         // Allow requests with no origin (curl, Postman, server-to-server)
         if (!requestOrigin) return callback(null, true);
         if (origins.includes(requestOrigin)) return callback(null, true);
+        console.warn(
+          `[CORS] Blocked request from origin: ${requestOrigin} — add it to corsOrigins in rig-bridge-config.json`,
+        );
         callback(null, false);
       },
       methods: ['GET', 'POST'],
@@ -1526,6 +2009,7 @@ function createServer(registry, version) {
     if (!config.apiToken) return next(); // auth disabled — backwards-compatible
     const provided = req.headers['x-rigbridge-token'] || '';
     if (provided === config.apiToken) return next();
+    console.warn(`[Auth] Rejected ${req.method} ${req.path} — invalid or missing token`);
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -1622,7 +2106,7 @@ function createServer(registry, version) {
     res.json(safeConfig);
   });
 
-  app.post('/api/config', requireAuth, cfgLimiter, (req, res) => {
+  app.post('/api/config', requireAuth, cfgLimiter, async (req, res) => {
     const newConfig = req.body;
     if (newConfig.port) config.port = newConfig.port;
     if (newConfig.radio) {
@@ -1685,6 +2169,37 @@ function createServer(registry, version) {
       }
       config.rtltcp = { ...config.rtltcp, ...newConfig.rtltcp };
     }
+    // Deep-merge plugin config sections
+    for (const key of ['mshv', 'jtdx', 'js8call', 'aprs', 'rotator', 'cloudRelay', 'winlink']) {
+      if (newConfig[key]) {
+        config[key] = { ...(config[key] || {}), ...newConfig[key] };
+        // Handle nested objects (e.g. winlink.pat)
+        if (newConfig[key].pat && config[key].pat) {
+          config[key].pat = { ...config[key].pat, ...newConfig[key].pat };
+        }
+      }
+    }
+
+    // TLS config — handle enable/disable and optional cert regeneration
+    if (newConfig.tls) {
+      const forceRegen = !!newConfig.tls.forceRegen;
+      const tlsPayload = { ...newConfig.tls };
+      delete tlsPayload.forceRegen; // transient flag — never persisted
+      config.tls = { ...(config.tls || {}), ...tlsPayload };
+
+      if (config.tls.enabled) {
+        try {
+          await tlsModule.ensureCerts(forceRegen);
+          config.tls.certGenerated = true;
+        } catch (e) {
+          console.error('[TLS] Certificate generation failed:', e.message);
+          config.tls.enabled = false;
+          saveConfig();
+          return res.json({ success: false, error: `TLS cert generation failed: ${e.message}` });
+        }
+      }
+    }
+
     // macOS: tty.* (dial-in) blocks open() — silently upgrade to cu.* (call-out)
     if (process.platform === 'darwin' && config.radio.serialPort?.startsWith('/dev/tty.')) {
       config.radio.serialPort = config.radio.serialPort.replace('/dev/tty.', '/dev/cu.');
@@ -1777,7 +2292,138 @@ function createServer(registry, version) {
     res.json({ success: true });
   });
 
+  // ─── API: TLS / HTTPS certificate management ─────────────────────────
+  // No auth on /status — the Security tab needs this before login succeeds.
+  app.get('/api/tls/status', (req, res) => {
+    const info = tlsModule.getCertInfo();
+    res.json({ enabled: !!(config.tls && config.tls.enabled), ...info });
+  });
+
+  // Download the PEM certificate — used by the "Download Certificate" button in the UI.
+  // Token-gated: downloading the cert allows a user to install it as trusted, which
+  // only makes sense for someone who already has access to the setup UI.
+  app.get('/api/tls/cert', requireAuth, (req, res) => {
+    const fs = require('fs');
+    if (!fs.existsSync(tlsModule.CERT_PATH)) {
+      return res.status(404).json({ error: 'No certificate found. Enable HTTPS first.' });
+    }
+    res.setHeader('Content-Type', 'application/x-pem-file');
+    res.setHeader('Content-Disposition', 'attachment; filename="rig-bridge.crt"');
+    res.sendFile(tlsModule.CERT_PATH);
+  });
+
+  // Attempt OS-level certificate installation. On permission failure the command
+  // is returned for the user to run manually.
+  // Uses execFile (not exec) with an explicit args array — CERT_PATH is never
+  // interpolated into a shell string, so unusual home directory characters cannot
+  // affect command parsing.
+  app.post('/api/tls/install', requireAuth, (req, res) => {
+    const fs = require('fs');
+    const { execFile } = require('child_process');
+    const certPath = tlsModule.CERT_PATH;
+    if (!fs.existsSync(certPath)) {
+      return res.status(404).json({ error: 'No certificate found. Enable HTTPS first.' });
+    }
+    let bin, args, humanCmd;
+    if (process.platform === 'darwin') {
+      bin = 'security';
+      args = ['add-trusted-cert', '-d', '-r', 'trustRoot', '-k', '/Library/Keychains/System.keychain', certPath];
+      humanCmd = `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${certPath}"`;
+    } else if (process.platform === 'win32') {
+      bin = 'certutil';
+      args = ['-addstore', '-f', 'ROOT', certPath];
+      humanCmd = `certutil -addstore -f ROOT "${certPath}"`;
+    } else {
+      // Linux: many distros, provide manual instructions only
+      return res.json({
+        success: false,
+        manual: true,
+        platform: 'linux',
+        certPath,
+      });
+    }
+    execFile(bin, args, (err) => {
+      if (err) {
+        // Likely a permission error — return a human-readable command for manual use
+        return res.json({ success: false, error: err.message, command: humanCmd, certPath });
+      }
+      res.json({ success: true });
+    });
+  });
+
   // ─── OHC-compatible API ───
+  // ─── Message Log API ─────────────────────────────────────────────────
+  app.get('/api/messages', (req, res) => {
+    const log = registry.services?.messageLog;
+    if (!log) return res.json({ entries: [] });
+    const { callsign, type, since, until, limit } = req.query;
+    const entries = log.query({
+      callsign,
+      type,
+      since: since ? parseInt(since) : undefined,
+      until: until ? parseInt(until) : undefined,
+      limit: limit ? parseInt(limit) : 200,
+    });
+    res.json({ count: entries.length, entries });
+  });
+
+  app.get('/api/messages/export', (req, res) => {
+    const log = registry.services?.messageLog;
+    if (!log) return res.status(503).json({ error: 'Message log not available' });
+    const format = req.query.format || 'csv';
+    const filters = {
+      callsign: req.query.callsign,
+      type: req.query.type,
+      since: req.query.since ? parseInt(req.query.since) : undefined,
+    };
+    if (format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="messages.csv"');
+      res.send(log.exportCSV(filters));
+    } else {
+      res.setHeader('Content-Type', 'text/plain');
+      res.setHeader('Content-Disposition', 'attachment; filename="messages.txt"');
+      res.send(log.exportText(filters));
+    }
+  });
+
+  app.get('/api/messages/stats', (req, res) => {
+    const log = registry.services?.messageLog;
+    if (!log) return res.json({ total: 0 });
+    res.json(log.stats());
+  });
+
+  // Diagnostic endpoint — no auth required, designed for troubleshooting
+  app.get('/api/status', (req, res) => {
+    res.json({
+      sseClients: getSseClientCount(),
+      uptime: Math.floor(process.uptime()),
+    });
+  });
+
+  app.get('/health', (req, res) => {
+    // Collect integration plugin status
+    const integrations = {};
+    for (const [id, instance] of registry.getIntegrations()) {
+      if (typeof instance.getStatus === 'function') {
+        integrations[id] = instance.getStatus();
+      }
+    }
+
+    res.json({
+      auth: config.apiToken ? 'enabled' : 'disabled',
+      plugin: registry.activeId || 'none',
+      connected: state.connected,
+      freq: state.freq,
+      mode: state.mode,
+      ptt: state.ptt,
+      pttEnabled: !!(config.radio && config.radio.pttEnabled),
+      integrations,
+      configPath: CONFIG_PATH,
+      uptime: Math.floor(process.uptime()),
+    });
+  });
+
   app.get('/status', (req, res) => {
     res.json({
       connected: state.connected,
@@ -1807,6 +2453,18 @@ function createServer(registry, version) {
     };
     res.write(`data: ${JSON.stringify(initialData)}\n\n`);
 
+    // Send plugin-init so the browser immediately sees which integrations are
+    // running and gets a replay of recent decodes (no waiting for next FT8 cycle).
+    const recentDecodes = getDecodeRingBuffer();
+    const runningPlugins = Array.from(registry.getIntegrations().keys());
+    res.write(
+      `data: ${JSON.stringify({
+        type: 'plugin-init',
+        plugins: runningPlugins,
+        decodes: recentDecodes,
+      })}\n\n`,
+    );
+
     const clientId = Date.now() + Math.random();
     addSseClient(clientId, res);
 
@@ -1822,7 +2480,9 @@ function createServer(registry, version) {
     if (!Number.isFinite(hz) || hz < 1000 || hz > 75e9) {
       return res.status(400).json({ error: 'Frequency out of range (1 kHz–75 GHz)' });
     }
-    registry.dispatch('setFreq', hz);
+    if (!registry.dispatch('setFreq', hz)) {
+      return res.status(503).json({ error: 'No radio plugin active' });
+    }
     res.json({ success: true });
   });
 
@@ -1832,7 +2492,9 @@ function createServer(registry, version) {
     if (typeof mode !== 'string' || !/^[A-Za-z0-9-]{1,20}$/.test(mode)) {
       return res.status(400).json({ error: 'Invalid mode value' });
     }
-    registry.dispatch('setMode', mode);
+    if (!registry.dispatch('setMode', mode)) {
+      return res.status(503).json({ error: 'No radio plugin active' });
+    }
     res.json({ success: true });
   });
 
@@ -1841,14 +2503,16 @@ function createServer(registry, version) {
     if (ptt && !config.radio.pttEnabled) {
       return res.status(403).json({ error: 'PTT disabled in configuration' });
     }
-    registry.dispatch('setPTT', !!ptt);
+    if (!registry.dispatch('setPTT', !!ptt)) {
+      return res.status(503).json({ error: 'No radio plugin active' });
+    }
     res.json({ success: true });
   });
 
   return app;
 }
 
-function startServer(port, registry, version) {
+async function startServer(port, registry, version) {
   const app = createServer(registry, version);
 
   // SECURITY: Bind to localhost by default. Set bindAddress to '0.0.0.0' in
@@ -1856,31 +2520,58 @@ function startServer(port, registry, version) {
   // browser on a desktop).
   const bindAddress = config.bindAddress || '127.0.0.1';
 
-  const server = app.listen(port, bindAddress, () => {
-    const versionLabel = `v${version}`.padEnd(8);
-    console.log('');
-    console.log('  ╔══════════════════════════════════════════════╗');
-    console.log(`  ║   📻  OpenHamClock Rig Bridge  ${versionLabel}      ║`);
-    console.log('  ╠══════════════════════════════════════════════╣');
-    console.log(`  ║   Setup UI:  http://localhost:${port}          ║`);
-    console.log(`  ║   Radio:     ${(config.radio.type || 'none').padEnd(30)}║`);
-    if (bindAddress !== '127.0.0.1') {
-      console.log(`  ║   ⚠ Bound to ${bindAddress.padEnd(33)}║`);
-    }
-    console.log('  ╚══════════════════════════════════════════════╝');
-    console.log('');
-  });
+  let server;
+  let protocol = 'http';
 
-  server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-      console.error(`\n[Server] ERROR: Port ${port} is already in use.`);
-      console.error(`         Another instance of Rig Bridge might be running.`);
-      console.error(`         Please close it or use --port <new_port> to start another one.\n`);
-      process.exit(1);
-    } else {
-      console.error(`\n[Server] Unexpected error: ${err.message}\n`);
-      process.exit(1);
+  if (config.tls && config.tls.enabled) {
+    try {
+      await tlsModule.ensureCerts();
+      const { key, cert } = tlsModule.loadCreds();
+      const https = require('https');
+      server = https.createServer({ key, cert }, app);
+      protocol = 'https';
+      console.log('[TLS] Starting HTTPS server with self-signed certificate');
+    } catch (e) {
+      console.error(`[TLS] Failed to start HTTPS (${e.message}) — falling back to HTTP`);
+      server = require('http').createServer(app);
     }
+  } else {
+    server = require('http').createServer(app);
+  }
+
+  return new Promise((resolve, reject) => {
+    server.listen(port, bindAddress, () => {
+      const versionLabel = `v${version}`.padEnd(8);
+      const uiUrl = `${protocol}://localhost:${port}`;
+      console.log('');
+      console.log('  ╔══════════════════════════════════════════════╗');
+      console.log(`  ║   📻  OpenHamClock Rig Bridge  ${versionLabel}      ║`);
+      console.log('  ╠══════════════════════════════════════════════╣');
+      console.log(`  ║   Setup UI:  ${uiUrl.padEnd(32)}║`);
+      if (protocol === 'https') {
+        console.log('  ║   🔒 HTTPS enabled — install certificate     ║');
+      }
+      console.log(`  ║   Radio:     ${(config.radio.type || 'none').padEnd(30)}║`);
+      if (bindAddress !== '127.0.0.1') {
+        console.log(`  ║   ⚠ Bound to ${bindAddress.padEnd(33)}║`);
+      }
+      console.log('  ╚══════════════════════════════════════════════╝');
+      console.log(`  Config: ${CONFIG_PATH}`);
+      console.log('');
+      resolve();
+    });
+
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`\n[Server] ERROR: Port ${port} is already in use.`);
+        console.error(`         Another instance of Rig Bridge might be running.`);
+        console.error(`         Please close it or use --port <new_port> to start another one.\n`);
+        process.exit(1);
+      } else {
+        console.error(`\n[Server] Unexpected error: ${err.message}\n`);
+        reject(err);
+      }
+    });
   });
 }
 

@@ -86,6 +86,15 @@ module.exports = function (app, ctx) {
     return /^[A-Za-z0-9_\-:.]{1,128}$/.test(id);
   }
 
+  // Validate WSJT-X client IDs — more permissive than session IDs since these are
+  // user-configurable instance names (e.g. "WSJT-X - FT991A") that can contain spaces.
+  // Only block prototype pollution vectors and enforce a length limit.
+  function isValidClientId(id) {
+    if (!id || typeof id !== 'string' || id.length > 128) return false;
+    if (id === '__proto__' || id === 'constructor' || id === 'prototype') return false;
+    return true;
+  }
+
   function getRelaySession(sessionId) {
     if (!isValidSessionId(sessionId)) return null;
     if (!wsjtxRelaySessions[sessionId]) {
@@ -480,7 +489,7 @@ module.exports = function (app, ctx) {
     if (!msg) return;
     if (!state) state = wsjtxState;
     // Reject dangerous msg.id values to prevent prototype pollution on state.clients
-    if (msg.id && !isValidSessionId(msg.id)) return;
+    if (msg.id && !isValidClientId(msg.id)) return;
 
     // Ensure clients is a prototype-less object to prevent prototype pollution
     if (!state.clients || Object.getPrototypeOf(state.clients) !== null) {
@@ -621,7 +630,7 @@ module.exports = function (app, ctx) {
         }
 
         // If no grid from message, try callsign → grid cache (from prior CQ/exchange with grid)
-        if (!decode.lat) {
+        if (decode.lat == null) {
           const targetCall = (
             parsed.caller ||
             (parsed.deCall == CONFIG.callsign ? parsed.dxCall : parsed.deCall) ||
@@ -639,7 +648,7 @@ module.exports = function (app, ctx) {
         }
 
         // Try HamQTH callsign cache (DXCC-level, more accurate than prefix centroid)
-        if (!decode.lat) {
+        if (decode.lat == null) {
           const rawCall = (
             parsed.caller ||
             (parsed.deCall == CONFIG.callsign ? parsed.dxCall : parsed.deCall) ||
@@ -686,7 +695,7 @@ module.exports = function (app, ctx) {
         }
 
         // Last resort: estimate from callsign prefix
-        if (!decode.lat) {
+        if (decode.lat == null) {
           const rawCall = parsed.caller || (parsed.deCall == CONFIG.callsign ? parsed.dxCall : parsed.deCall) || '';
           const targetCall = extractBaseCallsign(rawCall);
           if (targetCall) {

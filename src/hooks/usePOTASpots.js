@@ -72,8 +72,7 @@ export const usePOTASpots = () => {
           const validSpots = spots
             .filter((s) => {
               // Filter out QRT (operator signed off)
-              const comments = (s.comments || '').toUpperCase().trim();
-              if (comments === 'QRT' || comments.startsWith('QRT ') || comments.startsWith('QRT,')) return false;
+              if (/\bQRT\b/.test((s.comments || '').toUpperCase().trim())) return false;
 
               // Filter out spots expiring within 60 seconds
               if (typeof s.expire === 'number' && s.expire < 60) return false;
@@ -97,17 +96,17 @@ export const usePOTASpots = () => {
           setData(
             validSpots.map((s) => {
               // Use API coordinates, fall back to grid square
-              let lat = s.latitude ? parseFloat(s.latitude) : null;
-              let lon = s.longitude ? parseFloat(s.longitude) : null;
+              let lat = s.latitude != null ? parseFloat(s.latitude) : null;
+              let lon = s.longitude != null ? parseFloat(s.longitude) : null;
 
-              if ((!lat || !lon) && s.grid6) {
+              if ((lat == null || lon == null) && s.grid6) {
                 const loc = gridToLatLon(s.grid6);
                 if (loc) {
                   lat = loc.lat;
                   lon = loc.lon;
                 }
               }
-              if ((!lat || !lon) && s.grid4) {
+              if ((lat == null || lon == null) && s.grid4) {
                 const loc = gridToLatLon(s.grid4);
                 if (loc) {
                   lat = loc.lat;
@@ -127,6 +126,7 @@ export const usePOTASpots = () => {
                 band: getBandFromFreq(s.frequency),
                 mode: s.mode,
                 name: s.name || s.locationDesc,
+                comments: (s.comments || '').trim(),
                 locationDesc: s.locationDesc,
                 lat,
                 lon,

@@ -56,8 +56,11 @@ module.exports = function (app, ctx) {
   // are preserved even when the stream produces thousands of spots per second.
   // Old approach used a flat 2000-spot buffer — user's 3 spots drowned in the firehose.
   const rbnSpotsByDX = new Map(); // Map<dxCallsign, spot[]>
+  const rbnSpotsBySpotter = new Map(); // Map<spotterCallsign, spot[]>
   const MAX_SPOTS_PER_DX = 50; // Keep up to 50 spots per DX station
+  const MAX_SPOTS_PER_SPOTTER = 100; // Skimmers hear many stations; allow more
   const MAX_DX_CALLSIGNS = 5000; // Track up to 5000 unique DX stations
+  const MAX_SPOTTER_CALLSIGNS = 2000; // ~1000 active RBN skimmers worldwide
   const RBN_SPOT_TTL = 30 * 60 * 1000; // 30 minutes
   const callsignLocationCache = new Map(); // Cache for skimmer/station locations
   const LOCATION_CACHE_MAX = 2000; // ~1000 active RBN skimmers worldwide, 2x headroom
@@ -192,6 +195,21 @@ module.exports = function (app, ctx) {
             dxSpots.shift();
           }
 
+          // Also index by spotter/skimmer callsign (for "what does this skimmer hear?" queries)
+          const spotterUpper = spot.callsign.toUpperCase();
+          if (!rbnSpotsBySpotter.has(spotterUpper)) {
+            if (rbnSpotsBySpotter.size >= MAX_SPOTTER_CALLSIGNS) {
+              const oldestKey = rbnSpotsBySpotter.keys().next().value;
+              rbnSpotsBySpotter.delete(oldestKey);
+            }
+            rbnSpotsBySpotter.set(spotterUpper, []);
+          }
+          const spotterSpots = rbnSpotsBySpotter.get(spotterUpper);
+          spotterSpots.push(spot);
+          if (spotterSpots.length > MAX_SPOTS_PER_SPOTTER) {
+            spotterSpots.shift();
+          }
+
           rbnSpotCount++;
         }
       }
@@ -231,8 +249,21 @@ module.exports = function (app, ctx) {
         cleaned += before - filtered.length;
       }
     }
+    for (const [spotterCall, spots] of rbnSpotsBySpotter) {
+      const before = spots.length;
+      const filtered = spots.filter((s) => s.timestampMs > cutoff);
+      if (filtered.length === 0) {
+        rbnSpotsBySpotter.delete(spotterCall);
+        cleaned += before;
+      } else if (filtered.length < before) {
+        rbnSpotsBySpotter.set(spotterCall, filtered);
+        cleaned += before - filtered.length;
+      }
+    }
     if (cleaned > 0) {
-      console.log(`[RBN] Cleanup: removed ${cleaned} expired spots, tracking ${rbnSpotsByDX.size} DX stations`);
+      console.log(
+        `[RBN] Cleanup: removed ${cleaned} expired spots, tracking ${rbnSpotsByDX.size} DX stations, ${rbnSpotsBySpotter.size} spotters`,
+      );
     }
     // Also purge expired rbnApiCaches entries (10s TTL, but entries never removed otherwise)
     const apiCutoff = Date.now() - 60000; // Keep entries under 1 minute (6x the 10s TTL)
@@ -352,20 +383,82 @@ module.exports = function (app, ctx) {
     return spot;
   }
 
+  // Helper: enrich a spot with DX station location data (for spotter mode)
+  async function enrichSpotWithDXLocation(spot) {
+    const dxCall = (spot.dx || '').toUpperCase();
+    if (!dxCall) return spot;
+
+    if (callsignLocationCache.has(dxCall)) {
+      const location = callsignLocationCache.get(dxCall);
+      if (location._failed) {
+        if (location._expires && Date.now() > location._expires) {
+          callsignLocationCache.delete(dxCall);
+        } else {
+          return spot;
+        }
+      } else {
+        return {
+          ...spot,
+          dxLat: location.lat,
+          dxLon: location.lon,
+          dxGrid: location.grid,
+          dxCountry: location.country,
+        };
+      }
+    }
+
+    try {
+      const response = await fetch(`http://localhost:${PORT}/api/callsign/${encodeURIComponent(dxCall)}`);
+      if (response.ok) {
+        const locationData = await response.json();
+        if (
+          typeof locationData.lat === 'number' &&
+          typeof locationData.lon === 'number' &&
+          Math.abs(locationData.lat) <= 90 &&
+          Math.abs(locationData.lon) <= 180
+        ) {
+          const grid = latLonToGrid(locationData.lat, locationData.lon);
+          const location = {
+            callsign: dxCall,
+            grid: grid,
+            lat: locationData.lat,
+            lon: locationData.lon,
+            country: locationData.country,
+          };
+          cacheCallsignLocation(dxCall, location);
+          return {
+            ...spot,
+            dxLat: locationData.lat,
+            dxLon: locationData.lon,
+            dxGrid: grid,
+            dxCountry: locationData.country,
+          };
+        }
+      }
+    } catch (err) {
+      cacheCallsignLocation(dxCall, { _failed: true, _expires: Date.now() + 10 * 60 * 1000 });
+    }
+
+    return spot;
+  }
+
   // Cache for RBN API responses (per-callsign)
   const rbnApiCaches = new Map(); // Map<callsign, {data, timestamp}>
   const RBN_API_CACHE_TTL = 10000; // 10 seconds — short so new spots appear quickly
 
-  // Primary endpoint: get RBN spots for a specific DX callsign
-  // GET /api/rbn/spots?callsign=WB3IZU&minutes=5
+  // Primary endpoint: get RBN spots
+  // GET /api/rbn/spots?callsign=WB3IZU&minutes=5           — who is hearing WB3IZU? (mode=dx, default)
+  // GET /api/rbn/spots?callsign=W3LPL&minutes=5&mode=spotter — what is skimmer W3LPL hearing?
   app.get('/api/rbn/spots', async (req, res) => {
     const callsign = (req.query.callsign || '').toUpperCase().trim();
     const minutes = Math.min(parseInt(req.query.minutes) || 15, 30);
+    const mode = (req.query.mode || 'dx').toLowerCase() === 'spotter' ? 'spotter' : 'dx';
 
     if (!callsign || callsign === 'N0CALL') {
       return res.json({
         count: 0,
         spots: [],
+        mode,
         minutes,
         timestamp: new Date().toISOString(),
         source: 'rbn-telnet-stream',
@@ -374,39 +467,45 @@ module.exports = function (app, ctx) {
 
     const now = Date.now();
 
-    // Check per-callsign cache
-    const cached = rbnApiCaches.get(callsign);
+    // Check per-callsign+mode cache
+    const cacheKey = `${mode}:${callsign}`;
+    const cached = rbnApiCaches.get(cacheKey);
     if (cached && now - cached.timestamp < RBN_API_CACHE_TTL) {
       return res.json(cached.data);
     }
 
     const cutoff = now - minutes * 60 * 1000;
 
-    // Direct O(1) lookup by DX callsign — no scanning the full firehose
-    const dxSpots = rbnSpotsByDX.get(callsign) || [];
-    const recentSpots = dxSpots.filter((spot) => spot.timestampMs > cutoff);
+    // Direct O(1) lookup — by DX callsign or by spotter callsign
+    const rawSpots = mode === 'spotter' ? rbnSpotsBySpotter.get(callsign) || [] : rbnSpotsByDX.get(callsign) || [];
+    const recentSpots = rawSpots.filter((spot) => spot.timestampMs > cutoff);
 
-    // Enrich with skimmer locations — process sequentially to avoid
+    // Enrich with locations — process sequentially to avoid
     // concurrent lookup race conditions that can mix up locations
     const enrichedSpots = [];
     for (const spot of recentSpots) {
-      enrichedSpots.push(await enrichSpotWithLocation(spot));
+      let enriched = await enrichSpotWithLocation(spot);
+      if (mode === 'spotter') {
+        enriched = await enrichSpotWithDXLocation(enriched);
+      }
+      enrichedSpots.push(enriched);
     }
 
     logDebug(
-      `[RBN] Returning ${enrichedSpots.length} spots for ${callsign} (last ${minutes} min, ${rbnSpotsByDX.size} DX stations tracked)`,
+      `[RBN] Returning ${enrichedSpots.length} ${mode} spots for ${callsign} (last ${minutes} min, ${rbnSpotsByDX.size} DX stations, ${rbnSpotsBySpotter.size} spotters tracked)`,
     );
 
     const response = {
       count: enrichedSpots.length,
       spots: enrichedSpots,
+      mode: mode,
       minutes: minutes,
       timestamp: new Date().toISOString(),
       source: 'rbn-telnet-stream',
     };
 
-    // Cache the response per callsign
-    rbnApiCaches.set(callsign, { data: response, timestamp: Date.now() });
+    // Cache the response per callsign+mode
+    rbnApiCaches.set(cacheKey, { data: response, timestamp: Date.now() });
 
     res.json(response);
   });

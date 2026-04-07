@@ -44,9 +44,7 @@ export const useWWFFSpots = () => {
           const validSpots = spots
             .filter((s) => {
               // Filter out QRT (operator signed off)
-              const comments = (s.remarks || '').toUpperCase().trim();
-              if (comments === 'QRT' || comments.startsWith('QRT ') || comments.startsWith('QRT,')) return false;
-
+              if (/\bQRT\b/.test((s.remarks || '').toUpperCase().trim())) return false;
               // We should also time it out if it's more than 60 minutes old
               if (Math.floor(Date.now() / 1000) - s.spot_time > 3600) return false;
 
@@ -77,7 +75,7 @@ export const useWWFFSpots = () => {
                 band: getBandFromFreq(s.frequency_khz),
                 mode: s.mode,
                 name: s.reference_name,
-                remarks: s.remarks,
+                comments: (s.remarks || '').trim(),
                 lat,
                 lon,
                 time: s.spot_time ? s.spot_time_formatted.substr(11, 5) + 'z' : '',

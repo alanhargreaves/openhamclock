@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react';
 // Set to null to hide. Shown at the top of the What's New modal.
 const ANNOUNCEMENT = {
   emoji: '🎪',
-  text: 'OpenHamClock will be at Dayton Hamvention 2026! Come visit us in the Flea Market area — Booth #9518. Say hi, see a live demo, and grab some stickers!',
+  text: 'OpenHamClock will be at Dayton Hamvention 2026! Come visit us in the Flea Market area — Booth #9518. Say hi, see a live demo, and grab some stickers!\n\nWe are moving from weekly to monthly releases, giving us more time to develop features and improve stability. Look for updates on the first Tuesday of each month.',
   color: '#ff6b35',
   bg: 'rgba(255, 107, 53, 0.10)',
   border: 'rgba(255, 107, 53, 0.30)',
@@ -28,6 +28,94 @@ const ANNOUNCEMENT = {
 // The jump to v26 resets the scheme to something meaningful going forward.
 
 const CHANGELOG = [
+  {
+    version: '26.2.1',
+    date: '2026-04-06',
+    heading:
+      'Rig Bridge with 22 plugins, EmComm full platform, debug logging, privacy controls, lightning alerts, satellite enhancements, RBN spotter mode, propagation and solar index fixes, and deprecation of Rig Listener / Rig Daemon / WSJTX-Relay.',
+    features: [
+      {
+        icon: '📻',
+        title: 'Rig Bridge — Centralized Hardware Hub (Beta)',
+        desc: 'Rig Bridge is now the single system for all external hardware and digital mode integration. 22 plugins: 8 radio (Yaesu, Kenwood, Icom USB + rigctld, flrig, TCI, SmartSDR, RTL-TCP), 4 digital mode (WSJT-X, MSHV, JTDX, JS8Call — all bidirectional), APRS TNC (KISS/Direwolf), Winlink gateway, rotator (rotctld), and mock. Plugin Manager UI at localhost:5555 lets you enable/disable and configure plugins without editing JSON. Dedicated Rig Bridge tab in OHC Settings. HTTPS/TLS support with self-signed certificate. Note: Rig Bridge is currently in beta — please report issues on GitHub.',
+      },
+      {
+        icon: '🎵',
+        title: 'Bidirectional Digital Mode Control (Beta)',
+        desc: 'WSJT-X, MSHV, JTDX, and JS8Call plugins are fully bidirectional — OHC can send replies to decoded stations, halt TX, set free text, and highlight callsigns in the decode window. Shared protocol library with WSJTXWriter serializer. Each app runs on its own UDP port so they can operate simultaneously.',
+      },
+      {
+        icon: '🚨',
+        title: 'EmComm — Full Bidirectional Operations Platform',
+        desc: 'The EmComm layout is no longer display-only. Local APRS via Direwolf/hardware TNC (KISS protocol), 30+ APRS symbol icons, RF/Internet source selector. Net check-in/check-out via APRS messages, operator status board with live roster. Click-to-message with 67-char limit and RF send. Message logging with CSV/ICS-213 export. APRS telemetry parsing (T# frames with PARM/UNIT/EQNS calibration). All works over RF alone — no internet required.',
+      },
+      {
+        icon: '📡',
+        title: 'RBN Spotter Mode — What Does a Skimmer Hear?',
+        desc: 'The RBN overlay now supports a second query mode: "What does a skimmer hear?" Enter a skimmer callsign (e.g. KD2OGR) to see all stations it\'s receiving, with markers at DX locations and paths from the skimmer. Toggle between "Who hears me?" and spotter mode via the Mode dropdown in the RBN panel.',
+      },
+      {
+        icon: '🛰️',
+        title: 'Satellite Tracking Enhancements',
+        desc: 'Range, range rate, and doppler factor calculations for visible satellites with US/metric unit support. Updated to satellite.js v6.0.0 for corrected doppler factor.',
+      },
+      {
+        icon: '🔇',
+        title: 'Debug Logging System',
+        desc: 'Console output is now controlled via the ?log= query parameter (none, error, warn, info, debug, all). Defaults to warn so important issues are always visible. Silences noisy third-party library output in production.',
+      },
+      {
+        icon: '🔒',
+        title: 'Privacy Controls',
+        desc: 'Added presence opt-out toggle and privacy notice. Removed IP collection, GeoIP lookups, and country tracking from health check.',
+      },
+      {
+        icon: '⚡',
+        title: 'Lightning Proximity Alerts',
+        desc: 'Lightning strike proximity alerts are now integrated into the audio alerts system.',
+      },
+      {
+        icon: '🗺️',
+        title: 'APRS Map Improvements',
+        desc: 'APRS symbol sprites on map markers, distance column and hover tooltip in panel, callsign SSID stripping. APRS clicks no longer move DX location. APRS panel now works with local RF only — no APRS_ENABLED flag needed.',
+      },
+      {
+        icon: '🖥️',
+        title: 'DigitalModes & Winlink Dockable Panels',
+        desc: 'DigitalModes and Winlink are now available as dockable panels in the Dockable layout.',
+      },
+      {
+        icon: '⚠️',
+        title: 'Deprecation: Rig Listener, Rig Daemon & WSJTX-Relay',
+        desc: 'Rig Listener, Rig Daemon, and WSJTX-Relay are now deprecated and will be removed in a future release. Rig Bridge replaces all three with a single unified system. Existing users should migrate to Rig Bridge via Settings → Rig Bridge. Download installers are available for Windows, Mac, and Linux.',
+      },
+      {
+        icon: '📊',
+        title: 'Propagation & Solar Index Fixes',
+        desc: 'Fixed propagation bars/chart mismatch when 24h ITURHFProp fetch failed. Panel footer now shows SFI/K from separate NOAA fetch instead of N0NBH. Fixed NOAA K-index API format change causing Kp=0, broken K-index array parser, stale band conditions badge, and f107_cm_flux.json sort order. Kp forecast no longer includes 60+ past observations.',
+      },
+      {
+        icon: '🗺️',
+        title: 'Locale-Aware Map Labels',
+        desc: "Map labels on CARTO and Google tile layers now match your OHC language setting instead of following the browser's Accept-Language header.",
+      },
+      {
+        icon: '🔧',
+        title: 'Rig Bridge CORS Fix — Click-to-Tune Works Again (Beta)',
+        desc: 'Fixed click-to-tune and PTT failures (issues #707 and #834). The rig-bridge CORS whitelist was missing common OHC ports. CORS rejections are now logged to the rig-bridge console.',
+      },
+      {
+        icon: '📻',
+        title: 'WSJT-X — Spaces in Client IDs',
+        desc: 'WSJT-X client IDs with spaces are now accepted.',
+      },
+      {
+        icon: '🐛',
+        title: 'Additional Bug Fixes',
+        desc: 'Spot comments display correctly with grid locator in WorldMap popups for POTA, SOTA, WWFF, and WWBOTA. Improved QRT detection. Refined contest QSO DX auto-targeting. Unique visitor stats across all trackable requests. Stale band-conditions badge localized in all 16 languages.',
+      },
+    ],
+  },
   {
     version: '26.1.3',
     date: '2026-03-23',
@@ -990,7 +1078,7 @@ const CHANGELOG = [
 
 const LS_KEY = 'openhamclock_lastSeenVersion';
 
-export default function WhatsNew() {
+export default function WhatsNew({ showWhatsNew }) {
   const [visible, setVisible] = useState(false);
   const [currentVersion, setCurrentVersion] = useState(null);
 
@@ -1010,7 +1098,7 @@ export default function WhatsNew() {
         if (!lastSeen || lastSeen !== version) {
           // Only show if we actually have changelog entries for this version
           const hasEntry = CHANGELOG.some((c) => c.version === version);
-          if (hasEntry) {
+          if (hasEntry && showWhatsNew) {
             setVisible(true);
           } else {
             // No changelog entry — just silently update the stored version
@@ -1128,6 +1216,7 @@ export default function WhatsNew() {
                 border: `1px solid ${ANNOUNCEMENT.border}`,
                 lineHeight: '1.5',
                 textAlign: 'center',
+                whiteSpace: 'pre-line',
               }}
             >
               <span style={{ fontSize: '18px', display: 'block', marginBottom: '4px' }}>{ANNOUNCEMENT.emoji}</span>

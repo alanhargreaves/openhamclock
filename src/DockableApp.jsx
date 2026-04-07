@@ -30,6 +30,8 @@ import {
   IDTimerPanel,
   KeybindingsPanel,
   DXLocalTime,
+  DigitalModesPanel,
+  WinlinkPanel,
 } from './components';
 import MeshtasticPanel from './components/MeshtasticPanel.jsx';
 
@@ -436,6 +438,8 @@ export const DockableApp = ({
       'id-timer': { name: 'ID Timer', icon: '📢' },
       keybindings: { name: 'Keyboard Shortcuts', icon: '⌨️' },
       meshtastic: { name: 'Meshtastic', icon: '📡' },
+      'digital-modes': { name: 'Digital Modes', icon: '📻', group: 'Rig Bridge' },
+      winlink: { name: 'Winlink', icon: '📬', group: 'Rig Bridge' },
     };
   }, [isLocalInstall]);
 
@@ -787,7 +791,8 @@ export const DockableApp = ({
           break;
 
         case 'band-health':
-          return <BandHealthPanel dxSpots={dxClusterData.spots} clusterFilters={dxFilters} />;
+          content = <BandHealthPanel dxSpots={dxClusterData.spots} clusterFilters={dxFilters} />;
+          break;
 
         case 'dx-cluster':
           content = (
@@ -929,7 +934,8 @@ export const DockableApp = ({
               showOnMap={mapLayersEff.showAPRS}
               onToggleMap={toggleAPRSEff}
               onHoverSpot={setHoveredSpot}
-              onSpotClick={handleSpotClick}
+              deLocation={config.location}
+              units={config.allUnits?.dist}
             />
           );
           break;
@@ -972,6 +978,14 @@ export const DockableApp = ({
 
         case 'meshtastic':
           content = <MeshtasticPanel />;
+          break;
+
+        case 'digital-modes':
+          content = <DigitalModesPanel />;
+          break;
+
+        case 'winlink':
+          content = <WinlinkPanel />;
           break;
 
         default:

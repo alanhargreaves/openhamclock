@@ -103,24 +103,24 @@ if (fs.existsSync(configJsonPath)) {
 let stationLat = parseFloat(process.env.LATITUDE);
 let stationLon = parseFloat(process.env.LONGITUDE);
 
-if ((!stationLat || !stationLon) && locator) {
+if ((!Number.isFinite(stationLat) || !Number.isFinite(stationLon)) && locator) {
   const coords = gridToLatLon(locator);
   if (coords) {
-    stationLat = stationLat || coords.latitude;
-    stationLon = stationLon || coords.longitude;
+    stationLat = Number.isFinite(stationLat) ? stationLat : coords.latitude;
+    stationLon = Number.isFinite(stationLon) ? stationLon : coords.longitude;
   }
 }
 
 // Fallback to config.json location if no env
-if (!stationLat && jsonConfig.location?.lat) stationLat = jsonConfig.location.lat;
-if (!stationLon && jsonConfig.location?.lon) stationLon = jsonConfig.location.lon;
+if (!Number.isFinite(stationLat) && jsonConfig.location?.lat != null) stationLat = jsonConfig.location.lat;
+if (!Number.isFinite(stationLon) && jsonConfig.location?.lon != null) stationLon = jsonConfig.location.lon;
 
 const CONFIG = {
   // Station info (env takes precedence over config.json)
   callsign: process.env.CALLSIGN || jsonConfig.callsign || 'N0CALL',
   gridSquare: locator || jsonConfig.locator || '',
-  latitude: stationLat || 40.7128,
-  longitude: stationLon || -74.006,
+  latitude: Number.isFinite(stationLat) ? stationLat : 40.7128,
+  longitude: Number.isFinite(stationLon) ? stationLon : -74.006,
 
   // Display preferences
   units: process.env.UNITS || jsonConfig.units || 'imperial',
@@ -134,8 +134,12 @@ const CONFIG = {
   layout: process.env.LAYOUT || jsonConfig.layout || 'modern',
 
   // DX target
-  dxLatitude: parseFloat(process.env.DX_LATITUDE) || jsonConfig.defaultDX?.lat || 51.5074,
-  dxLongitude: parseFloat(process.env.DX_LONGITUDE) || jsonConfig.defaultDX?.lon || -0.1278,
+  dxLatitude: Number.isFinite(parseFloat(process.env.DX_LATITUDE))
+    ? parseFloat(process.env.DX_LATITUDE)
+    : (jsonConfig.defaultDX?.lat ?? 51.5074),
+  dxLongitude: Number.isFinite(parseFloat(process.env.DX_LONGITUDE))
+    ? parseFloat(process.env.DX_LONGITUDE)
+    : (jsonConfig.defaultDX?.lon ?? -0.1278),
 
   // Feature toggles
   showSatellites: process.env.SHOW_SATELLITES !== 'false' && jsonConfig.features?.showSatellites !== false,
@@ -177,22 +181,21 @@ if (configMissing) {
   console.log('[Config] Settings popup will appear in browser');
 }
 
-// ITURHFProp service URL
-const ITURHFPROP_DEFAULT = 'https://proppy-production.up.railway.app';
+// ITURHFProp service URL — only enabled when explicitly configured.
+// Self-hosted users get the built-in model by default (no external dependency).
+// The hosted deployment (openhamclock.com) sets this in its .env.
+// Users can set ITURHFPROP_URL in their .env to use a custom P.533 service.
 const ITURHFPROP_URL =
   process.env.ITURHFPROP_URL && process.env.ITURHFPROP_URL.trim().startsWith('http')
     ? process.env.ITURHFPROP_URL.trim()
-    : ITURHFPROP_DEFAULT;
+    : null;
 
 // Log configuration
 console.log(`[Config] Station: ${CONFIG.callsign} @ ${CONFIG.gridSquare || 'No grid'}`);
 console.log(`[Config] Location: ${CONFIG.latitude.toFixed(4)}, ${CONFIG.longitude.toFixed(4)}`);
 console.log(`[Config] Units: ${CONFIG.units}, Time: ${CONFIG.timeFormat}h`);
 if (ITURHFPROP_URL) {
-  const isDefault = ITURHFPROP_URL === ITURHFPROP_DEFAULT;
-  console.log(
-    `[Propagation] ITU-R P.533-14 enabled via ${isDefault ? 'public service' : 'custom service'}: ${ITURHFPROP_URL}`,
-  );
+  console.log(`[Propagation] ITU-R P.533-14 enabled: ${ITURHFPROP_URL}`);
 } else {
   console.log('[Propagation] Standalone mode - using built-in calculations');
 }
@@ -225,6 +228,9 @@ const ROTATOR_PROVIDER = process.env.ROTATOR_PROVIDER || 'none';
 const ROTATOR_HOST = process.env.ROTATOR_HOST || '127.0.0.1';
 const ROTATOR_PORT = parseInt(process.env.ROTATOR_PORT || '12000', 10);
 
+// Rig Bridge Cloud Relay
+const RIG_BRIDGE_RELAY_KEY = process.env.RIG_BRIDGE_RELAY_KEY || process.env.WSJTX_RELAY_KEY || '';
+
 // DX Spider Proxy URL
 const DXSPIDER_PROXY_URL = process.env.DXSPIDER_PROXY_URL || 'https://spider-production-1ec7.up.railway.app';
 
@@ -243,7 +249,6 @@ module.exports = {
   TRUST_PROXY,
   API_WRITE_KEY,
   ITURHFPROP_URL,
-  ITURHFPROP_DEFAULT,
   WSJTX_ENABLED,
   WSJTX_UDP_PORT,
   WSJTX_MULTICAST_ADDRESS,
@@ -260,6 +265,7 @@ module.exports = {
   ROTATOR_PROVIDER,
   ROTATOR_HOST,
   ROTATOR_PORT,
+  RIG_BRIDGE_RELAY_KEY,
   DXSPIDER_PROXY_URL,
   CORS_ORIGINS,
   SETTINGS_SYNC,
