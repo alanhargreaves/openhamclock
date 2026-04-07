@@ -36,12 +36,12 @@ const CHANGELOG = [
     features: [
       {
         icon: '📻',
-        title: 'Rig Bridge — Centralized Hardware Hub',
-        desc: 'Rig Bridge is now the single system for all external hardware and digital mode integration. 22 plugins: 8 radio (Yaesu, Kenwood, Icom USB + rigctld, flrig, TCI, SmartSDR, RTL-TCP), 4 digital mode (WSJT-X, MSHV, JTDX, JS8Call — all bidirectional), APRS TNC (KISS/Direwolf), Winlink gateway, rotator (rotctld), and mock. Plugin Manager UI at localhost:5555 lets you enable/disable and configure plugins without editing JSON. Dedicated Rig Bridge tab in OHC Settings. HTTPS/TLS support with self-signed certificate.',
+        title: 'Rig Bridge — Centralized Hardware Hub (Beta)',
+        desc: 'Rig Bridge is now the single system for all external hardware and digital mode integration. 22 plugins: 8 radio (Yaesu, Kenwood, Icom USB + rigctld, flrig, TCI, SmartSDR, RTL-TCP), 4 digital mode (WSJT-X, MSHV, JTDX, JS8Call — all bidirectional), APRS TNC (KISS/Direwolf), Winlink gateway, rotator (rotctld), and mock. Plugin Manager UI at localhost:5555 lets you enable/disable and configure plugins without editing JSON. Dedicated Rig Bridge tab in OHC Settings. HTTPS/TLS support with self-signed certificate. Note: Rig Bridge is currently in beta — please report issues on GitHub.',
       },
       {
         icon: '🎵',
-        title: 'Bidirectional Digital Mode Control',
+        title: 'Bidirectional Digital Mode Control (Beta)',
         desc: 'WSJT-X, MSHV, JTDX, and JS8Call plugins are fully bidirectional — OHC can send replies to decoded stations, halt TX, set free text, and highlight callsigns in the decode window. Shared protocol library with WSJTXWriter serializer. Each app runs on its own UDP port so they can operate simultaneously.',
       },
       {
@@ -101,7 +101,7 @@ const CHANGELOG = [
       },
       {
         icon: '🔧',
-        title: 'Rig Bridge CORS Fix — Click-to-Tune Works Again',
+        title: 'Rig Bridge CORS Fix — Click-to-Tune Works Again (Beta)',
         desc: 'Fixed click-to-tune and PTT failures (issues #707 and #834). The rig-bridge CORS whitelist was missing common OHC ports. CORS rejections are now logged to the rig-bridge console.',
       },
       {
