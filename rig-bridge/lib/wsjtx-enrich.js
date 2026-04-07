@@ -14,18 +14,28 @@
  *  • Frequency (Hz) → band name          — 160 m … 70 cm + fallback
  *  • In-message grid cache               — remembers callsign → grid from CQ
  *    and exchange messages; entries expire after 2 h
+ *  • HamQTH callsign lookup (opt-in)     — resolves unknown callsigns to
+ *    country-level lat/lon; results cached 24 h, max 5 concurrent requests
  *
  * Exported helpers
  * ────────────────
- *  gridToLatLon(grid)                    → { lat, lon } | null
- *  getBandFromHz(freqHz)                 → string  (e.g. '20m')
- *  createGridCache()                     → { get, set, prune, size }
- *  parseDecodeMessage(text, cache, myCall) → parsed object
- *  enrichDecode(msg, clientState, cache, myCall) → enriched decode object
- *  enrichStatus(msg, prevState, cache)   → enriched status fields
- *  enrichQso(msg)                        → enriched QSO object
- *  enrichWspr(msg)                       → enriched WSPR object
+ *  gridToLatLon(grid)                         → { lat, lon } | null
+ *  getBandFromHz(freqHz)                      → string  (e.g. '20m')
+ *  createGridCache()                          → { get, set, prune, size }
+ *  createCallsignCache()                      → { get, set, prune, size }
+ *  parseDecodeMessage(text, cache, myCall)    → parsed object
+ *  enrichDecode(msg, clientState, gridCache,
+ *               myCall, callsignCache)        → enriched decode object
+ *  enrichStatus(msg, prevState, cache)        → enriched status fields
+ *  enrichQso(msg)                             → enriched QSO object
+ *  enrichWspr(msg)                            → enriched WSPR object
+ *  triggerHamqthLookup(callsign,
+ *    callsignCache, inflightSet, onResult)    → void  (fire-and-forget)
  */
+
+const https = require('https');
+const http = require('http');
+const { URL } = require('url');
 
 // ──────────────────────────────────────────────────────────────────────────────
 // FT8 token blacklist — look like Maidenhead grids but are QSO protocol tokens
@@ -181,6 +191,133 @@ function createGridCache() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// HamQTH callsign → lat/lon cache
+// ──────────────────────────────────────────────────────────────────────────────
+
+const CALLSIGN_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Create a per-plugin-instance callsign lookup cache.
+ *
+ * Stores the results of HamQTH DXCC lookups: callsign → { lat, lon, timestamp }.
+ * Separate from the grid cache because it comes from a different source (remote
+ * DXCC database) and has a longer TTL (24 h vs 2 h).
+ *
+ * @returns {{ get(call): entry|null, set(call, lat, lon): void, prune(): void, size: number }}
+ */
+function createCallsignCache() {
+  const _map = new Map();
+
+  function set(callsign, lat, lon) {
+    if (!callsign || lat == null || lon == null) return;
+    _map.set(callsign.toUpperCase(), { lat, lon, timestamp: Date.now() });
+  }
+
+  function get(callsign) {
+    if (!callsign) return null;
+    const entry = _map.get(callsign.toUpperCase());
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > CALLSIGN_CACHE_TTL) {
+      _map.delete(callsign.toUpperCase());
+      return null;
+    }
+    return entry;
+  }
+
+  function prune() {
+    const cutoff = Date.now() - CALLSIGN_CACHE_TTL;
+    for (const [key, entry] of _map) {
+      if (entry.timestamp < cutoff) _map.delete(key);
+    }
+  }
+
+  return {
+    get,
+    set,
+    prune,
+    get size() {
+      return _map.size;
+    },
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// HamQTH lookup (fire-and-forget)
+// ──────────────────────────────────────────────────────────────────────────────
+
+const HAMQTH_MAX_CONCURRENT = 5;
+const HAMQTH_TIMEOUT_MS = 5000;
+
+/**
+ * Fire-and-forget background callsign → lat/lon lookup via HamQTH DXCC API.
+ *
+ * Writes the result into `callsignCache` so future decodes from the same
+ * callsign resolve without another network request.  Calls `onResult` with
+ * `{ callsign, lat, lon }` when the lookup succeeds, allowing the caller to
+ * emit a `decode-update` event for already-displayed decodes.
+ *
+ * Concurrency is capped at HAMQTH_MAX_CONCURRENT (5) via `inflightSet`.
+ * All errors are silently swallowed — this is purely a best-effort enrichment.
+ *
+ * @param {string}   callsign      Uppercase base callsign (no portable suffixes)
+ * @param {object}   callsignCache Cache from createCallsignCache()
+ * @param {Set}      inflightSet   Shared Set of in-flight callsigns
+ * @param {function} onResult      Called with { callsign, lat, lon } on success
+ */
+function triggerHamqthLookup(callsign, callsignCache, inflightSet, onResult) {
+  if (!callsign || callsign.length < 3) return;
+  if (inflightSet.has(callsign)) return;
+  if (inflightSet.size >= HAMQTH_MAX_CONCURRENT) return;
+  // Already cached — nothing to do
+  if (callsignCache.get(callsign)) return;
+
+  inflightSet.add(callsign);
+
+  const reqUrl = `https://www.hamqth.com/dxcc.php?callsign=${encodeURIComponent(callsign)}`;
+  let parsed;
+  try {
+    parsed = new URL(reqUrl);
+  } catch {
+    inflightSet.delete(callsign);
+    return;
+  }
+
+  const transport = parsed.protocol === 'https:' ? https : http;
+  const req = transport.request(
+    {
+      hostname: parsed.hostname,
+      path: parsed.pathname + parsed.search,
+      method: 'GET',
+      headers: { 'User-Agent': 'rig-bridge/wsjtx-enrich' },
+      timeout: HAMQTH_TIMEOUT_MS,
+    },
+    (res) => {
+      let body = '';
+      res.on('data', (chunk) => (body += chunk));
+      res.on('end', () => {
+        inflightSet.delete(callsign);
+        if (res.statusCode !== 200) return;
+        const latMatch = body.match(/<lat>([^<]+)<\/lat>/);
+        const lonMatch = body.match(/<lng>([^<]+)<\/lng>/);
+        if (!latMatch || !lonMatch) return;
+        const lat = parseFloat(latMatch[1]);
+        const lon = parseFloat(lonMatch[1]);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+        callsignCache.set(callsign, lat, lon);
+        if (onResult) onResult({ callsign, lat, lon });
+      });
+    },
+  );
+
+  req.on('error', () => inflightSet.delete(callsign));
+  req.on('timeout', () => {
+    req.destroy();
+    inflightSet.delete(callsign);
+  });
+  req.end();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // FT8 message text parser
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -271,13 +408,15 @@ function parseDecodeMessage(text, gridCache, myCall) {
  *  • lat/lon from in-message grid, then grid cache fallback
  *  • band name from current client status
  *
- * @param {object}      msg          Raw DECODE from parseMessage()
- * @param {object|null} clientState  Current client state { band, dialFrequency, mode }
- * @param {object}      gridCache    Cache from createGridCache()
- * @param {string|null} myCall       Operator callsign
+ * @param {object}      msg            Raw DECODE from parseMessage()
+ * @param {object|null} clientState    Current client state { band, dialFrequency, mode }
+ * @param {object}      gridCache      Cache from createGridCache()
+ * @param {string|null} myCall         Operator callsign
+ * @param {object|null} callsignCache  Optional cache from createCallsignCache() for
+ *                                     HamQTH-resolved coordinates (Phase 5)
  * @returns {object}
  */
-function enrichDecode(msg, clientState, gridCache, myCall) {
+function enrichDecode(msg, clientState, gridCache, myCall, callsignCache) {
   const parsed = parseDecodeMessage(msg.message, gridCache, myCall);
   const state = clientState ?? {};
 
@@ -326,6 +465,19 @@ function enrichDecode(msg, clientState, gridCache, myCall) {
         lon = cached.lon;
         if (!decode.grid) decode.grid = cached.grid;
         gridSource = 'cache';
+      }
+    }
+  }
+
+  // Fall back to HamQTH callsign cache (country-level, populated asynchronously)
+  if (lat == null && callsignCache) {
+    const targetCall = (parsed.caller ?? parsed.deCall ?? parsed.dxCall ?? '').toUpperCase();
+    if (targetCall) {
+      const cached = callsignCache.get(targetCall);
+      if (cached) {
+        lat = cached.lat;
+        lon = cached.lon;
+        gridSource = 'hamqth';
       }
     }
   }
@@ -472,9 +624,11 @@ module.exports = {
   gridToLatLon,
   getBandFromHz,
   createGridCache,
+  createCallsignCache,
   parseDecodeMessage,
   enrichDecode,
   enrichStatus,
   enrichQso,
   enrichWspr,
+  triggerHamqthLookup,
 };

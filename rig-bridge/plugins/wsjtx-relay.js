@@ -44,7 +44,15 @@ const {
   buildFreeText,
   buildHighlightCallsign,
 } = require('../lib/wsjtx-protocol');
-const { createGridCache, enrichDecode, enrichStatus, enrichQso, enrichWspr } = require('../lib/wsjtx-enrich');
+const {
+  createGridCache,
+  createCallsignCache,
+  enrichDecode,
+  enrichStatus,
+  enrichQso,
+  enrichWspr,
+  triggerHamqthLookup,
+} = require('../lib/wsjtx-enrich');
 
 const RELAY_VERSION = require('../package.json').version;
 
@@ -178,6 +186,9 @@ const descriptor = {
     // ── Local enrichment state ──────────────────────────────────────────────
     // Shared grid cache: remembers callsign → grid from CQ/exchange messages
     const gridCache = createGridCache();
+    // HamQTH callsign lookup cache (only populated when cfg.hamqthLookup is true)
+    const callsignCache = createCallsignCache();
+    const hamqthInflight = new Set(); // callsigns currently being looked up
     // Per-client state needed for decode enrichment (band, freq, mode)
     const clientStates = Object.create(null); // clientId → { band, dialFrequency, mode }
     // Content-based decode deduplication (time + freq + message text)
@@ -187,7 +198,7 @@ const descriptor = {
     const recentQsos = []; // { dxCall, frequency, mode, timestamp }
     const QSO_DEDUP_MS = 60_000;
     const QSO_DEDUP_MAX = 200; // max entries to scan
-    // Prune grid cache every 5 minutes
+    // Prune grid and callsign caches every 5 minutes
     let gridPruneInterval = null;
 
     // ── Helpers ─────────────────────────────────────────────────────────────
@@ -357,7 +368,13 @@ const descriptor = {
           totalDecodes++;
 
           const clientState = clientStates[msg.id] ?? null;
-          const decode = enrichDecode(msg, clientState, gridCache, cfg.myCall ?? null);
+          const decode = enrichDecode(
+            msg,
+            clientState,
+            gridCache,
+            cfg.myCall ?? null,
+            cfg.hamqthLookup ? callsignCache : null,
+          );
 
           // Content-based deduplication — skip if we have already emitted this decode
           if (seenDecodeIds.has(decode.id)) break;
@@ -368,6 +385,18 @@ const descriptor = {
           }
 
           if (bus) bus.emit('decode', { source: 'wsjtx-relay', ...decode });
+
+          // Phase 5: if still no coordinates and HamQTH lookup is enabled,
+          // start a background request. When it resolves, emit decode-update so
+          // the frontend can retroactively place the map pin for this decode.
+          if (cfg.hamqthLookup && decode.lat == null) {
+            const targetCall = (decode.caller ?? decode.deCall ?? decode.dxCall ?? '').toUpperCase();
+            if (targetCall) {
+              triggerHamqthLookup(targetCall, callsignCache, hamqthInflight, ({ callsign, lat, lon }) => {
+                if (bus) bus.emit('decode-update', { source: 'wsjtx-relay', callsign, lat, lon });
+              });
+            }
+          }
 
           if (cfg.verbose) {
             const snr = decode.snr != null ? (decode.snr >= 0 ? `+${decode.snr}` : decode.snr) : '?';
@@ -483,8 +512,14 @@ const descriptor = {
           }
         }
 
-        // Prune grid cache every 5 minutes to release stale entries
-        gridPruneInterval = setInterval(() => gridCache.prune(), 5 * 60 * 1000);
+        // Prune grid and callsign caches every 5 minutes to release stale entries
+        gridPruneInterval = setInterval(
+          () => {
+            gridCache.prune();
+            callsignCache.prune();
+          },
+          5 * 60 * 1000,
+        );
 
         if (willRelay) {
           console.log(`[WsjtxRelay] Relaying to ${serverUrl}`);
@@ -578,6 +613,9 @@ const descriptor = {
         multicast: mcEnabled,
         multicastGroup: mcEnabled ? mcGroup : null,
         gridCacheSize: gridCache.size,
+        callsignCacheSize: callsignCache.size,
+        hamqthLookup: !!cfg.hamqthLookup,
+        hamqthInflight: hamqthInflight.size,
       };
     }
 
