@@ -60,6 +60,7 @@ export default function ModernLayout(props) {
     deGrid,
     dxGrid,
     dxLocation,
+    dxCallsign,
     dxLocked,
     handleDXChange,
     handleToggleDxLock,
@@ -133,7 +134,7 @@ export default function ModernLayout(props) {
     tuneTo(spot);
     const path = findDXPathForSpot(dxClusterData.paths || [], spot);
     if (path && path.dxLat != null && path.dxLon != null) {
-      handleDXChange({ lat: path.dxLat, lon: path.dxLon });
+      handleDXChange({ lat: path.dxLat, lon: path.dxLon, callsign: spot.call ?? spot.dxCall ?? null });
     }
   };
 
@@ -261,6 +262,19 @@ export default function ModernLayout(props) {
               flex: '1 1 auto',
             }}
           />
+          {dxCallsign && (
+            <span
+              style={{
+                fontFamily: 'JetBrains Mono',
+                fontSize: '14px',
+                color: 'var(--accent-green)',
+                opacity: 0.85,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {dxCallsign}
+            </span>
+          )}
           <DXFavorites dxLocation={dxLocation} dxGrid={dxGrid} onDXChange={handleDXChange} dxLocked={dxLocked} />
           <button
             type="button"

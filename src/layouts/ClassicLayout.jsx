@@ -96,6 +96,7 @@ export default function ClassicLayout(props) {
     hoveredSpot,
     setHoveredSpot,
     dxLocation,
+    dxCallsign,
     dxLocked,
     handleDXChange,
     handleToggleDxLock,
@@ -158,7 +159,7 @@ export default function ClassicLayout(props) {
       tuneTo(spot);
       const path = findDXPathForSpot(dxClusterData.paths || [], spot);
       if (path && path.dxLat != null && path.dxLon != null) {
-        handleDXChange({ lat: path.dxLat, lon: path.dxLon });
+        handleDXChange({ lat: path.dxLat, lon: path.dxLon, callsign: spot.call ?? spot.dxCall ?? null });
       }
     },
     [tuneTo, dxClusterData.paths, handleDXChange],
@@ -1699,7 +1700,7 @@ export default function ClassicLayout(props) {
                     tuneTo(spot);
                     const path = findDXPathForSpot(dxClusterData.paths || [], spot);
                     if (path && path.dxLat != null && path.dxLon != null) {
-                      handleDXChange({ lat: path.dxLat, lon: path.dxLon });
+                      handleDXChange({ lat: path.dxLat, lon: path.dxLon, callsign: spot.call ?? spot.dxCall ?? null });
                     }
                   }}
                 >
@@ -2145,6 +2146,18 @@ export default function ClassicLayout(props) {
                 dxLocked={dxLocked}
                 style={{ color: 'var(--text-muted)', fontSize: '14px' }}
               />
+              {dxCallsign && (
+                <span
+                  style={{
+                    color: 'var(--text-muted)',
+                    fontSize: '14px',
+                    fontFamily: 'JetBrains Mono',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {dxCallsign}
+                </span>
+              )}
               <DXFavorites dxLocation={dxLocation} dxGrid={dxGrid} onDXChange={handleDXChange} dxLocked={dxLocked} /> •{' '}
               {dxLocked ? t('app.dxLock.lockedShort') : t('app.dxLock.clickToSet')}
             </span>
@@ -2254,7 +2267,7 @@ export default function ClassicLayout(props) {
                   tuneTo(spot);
                   const path = findDXPathForSpot(dxClusterData.paths || [], spot);
                   if (path && path.dxLat != null && path.dxLon != null) {
-                    handleDXChange({ lat: path.dxLat, lon: path.dxLon });
+                    handleDXChange({ lat: path.dxLat, lon: path.dxLon, callsign: spot.call ?? spot.dxCall ?? null });
                   }
                 }}
               >

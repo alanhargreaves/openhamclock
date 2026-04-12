@@ -234,7 +234,7 @@ const App = () => {
   usePresence({ callsign: config.callsign, locator: config.locator, sharePresence: config.sharePresence !== false });
 
   // Location & map state
-  const { dxLocation, dxLocked, handleToggleDxLock, handleDXChange } = useDXLocation(config.defaultDX);
+  const { dxLocation, dxCallsign, dxLocked, handleToggleDxLock, handleDXChange } = useDXLocation(config.defaultDX);
 
   const {
     mapLayers,
@@ -491,6 +491,7 @@ const App = () => {
     deGrid,
     dxGrid,
     dxLocation,
+    dxCallsign,
     dxLocked,
     handleDXChange,
     handleToggleDxLock,
