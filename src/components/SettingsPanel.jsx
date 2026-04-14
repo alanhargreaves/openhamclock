@@ -179,10 +179,10 @@ export const SettingsPanel = ({
     if (config) {
       setCallsign(config.callsign || '');
       setheaderSize(config.headerSize || 1.0);
-      setLat(config.location?.lat || 0);
-      setLon(config.location?.lon || 0);
-      setStationAlt(config.location?.stationAlt || 100);
-      setMinElev(config.satellite?.minElev || 5.0);
+      setLat(config.location?.lat ?? 0);
+      setLon(config.location?.lon ?? 0);
+      setStationAlt(config.location?.stationAlt ?? 100);
+      setMinElev(config.satellite?.minElev ?? 5.0);
       setLayout(config.layout || 'modern');
       setMouseZoom(config.mouseZoom || 50);
       setTimezone(config.timezone || '');
@@ -3385,6 +3385,8 @@ export const SettingsPanel = ({
                             <input
                               type="number"
                               step="1"
+                              min="-500"
+                              max="9000"
                               value={isNaN(stationAlt) ? '' : stationAlt}
                               onChange={(e) =>
                                 setStationAlt(isNaN(e.target.valueAsNumber) ? 100 : e.target.valueAsNumber)
