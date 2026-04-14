@@ -12,14 +12,16 @@ It also connects FT8/FT4 decoding software (WSJT-X, JTDX, MSHV, JS8Call) to Open
 
 1. [Supported Radios](#supported-radios)
 2. [Getting Started](#getting-started)
-3. [Connecting Your Radio](#connecting-your-radio)
-4. [Connecting to OpenHamClock](#connecting-to-openhamclock)
-5. [Digital Mode Software (FT8, JS8, etc.)](#digital-mode-software)
-6. [APRS via Local TNC](#aprs-via-local-tnc)
-7. [Antenna Rotator](#antenna-rotator)
-8. [HTTPS Setup (needed for openhamclock.com)](#https-setup)
-9. [Troubleshooting](#troubleshooting)
-10. [Advanced Topics](#advanced-topics)
+3. [Updating Rig Bridge](#updating-rig-bridge)
+4. [Connecting Your Radio](#connecting-your-radio)
+5. [Connecting to OpenHamClock](#connecting-to-openhamclock)
+6. [Digital Mode Software (FT8, JS8, etc.)](#digital-mode-software)
+7. [APRS via Local TNC](#aprs-via-local-tnc)
+8. [Antenna Rotator](#antenna-rotator)
+9. [HTTPS Setup (needed for openhamclock.com)](#https-setup)
+10. [Troubleshooting](#troubleshooting)
+11. [Glossary](#glossary)
+12. [Advanced Topics](#advanced-topics)
 
 ---
 
@@ -67,15 +69,49 @@ Select **Simulated Radio** in the setup screen. A fake radio will drift through 
 
 ### Step 1 — Download and run Rig Bridge
 
-**Option A — Standalone executable (easiest, no installation needed)**
+**Option A — Installer from the OpenHamClock Settings tab (recommended)**
 
-1. Go to the Releases page and download the file for your operating system:
-   - `ohc-rig-bridge-win.exe` — Windows
-   - `ohc-rig-bridge-macos` — macOS (Intel)
-   - `ohc-rig-bridge-macos-arm` — macOS (Apple Silicon / M1, M2, M3, M4)
-   - `ohc-rig-bridge-linux` — Linux
-2. Double-click the file to run it. On macOS you may need to right-click → Open the first time.
-3. A terminal/console window will appear showing log messages — leave it running.
+> Requires **Node.js** and **git** to be installed on your computer.
+
+1. In OpenHamClock, open **Settings → Rig Bridge**.
+2. Tick **Enable Rig Bridge**.
+3. Click the download button for your operating system — **Windows**, **Mac**, or **Linux**.
+
+**Windows**
+
+4. Open your Downloads folder and double-click `install-rig-bridge.bat`.
+   A Command Prompt window will open, download Rig Bridge, and start it automatically.
+
+**macOS**
+
+4. Open **Terminal** (Applications → Utilities → Terminal) and run:
+   ```bash
+   chmod +x ~/Downloads/install-rig-bridge.sh
+   ~/Downloads/install-rig-bridge.sh
+   ```
+   The script downloads Rig Bridge and starts it. Leave the Terminal window open.
+
+**Linux**
+
+4. Open a terminal and run:
+   ```bash
+   chmod +x ~/Downloads/install-rig-bridge.sh
+   ~/Downloads/install-rig-bridge.sh
+   ```
+   The script downloads Rig Bridge and starts it. Leave the terminal open.
+
+---
+
+5. Once Rig Bridge is running, return to OpenHamClock **Settings → Rig Bridge** and click
+   **Open Setup UI** — this opens **http://localhost:5555** in a new tab.
+6. Copy the **API Token** shown at the top of that page.
+7. Back in OpenHamClock **Settings → Rig Bridge**, paste the token into the **API Token** field.
+8. Confirm **Host** is `http://localhost` and **Port** is `5555`.
+9. Tick **Click-to-tune** if you want spot clicks to tune your radio, then click **Save**.
+
+Now configure your radio in the Rig Bridge Setup UI — see [Connecting Your Radio](#connecting-your-radio).
+
+To update Rig Bridge in the future, see [Updating Rig Bridge](#updating-rig-bridge).
 
 **Option B — Run from source with Node.js**
 
@@ -106,6 +142,48 @@ See [Connecting Your Radio](#connecting-your-radio) below for step-by-step instr
 ### Step 4 — Connect to OpenHamClock
 
 See [Connecting to OpenHamClock](#connecting-to-openhamclock) below.
+
+---
+
+## Updating Rig Bridge
+
+To update to the latest version, re-run the installer script you downloaded during setup
+with the `--update` flag. Your radio configuration is preserved automatically.
+
+**Windows**
+
+Open Command Prompt, navigate to your Downloads folder, and run:
+
+```cmd
+install-rig-bridge.bat --update
+```
+
+> You cannot pass arguments by double-clicking a `.bat` file — open Command Prompt first
+> (`Win + R` → type `cmd` → Enter), then run the command above.
+
+**macOS / Linux**
+
+```bash
+~/Downloads/install-rig-bridge.sh --update
+```
+
+> If you no longer have the original script, download it again from
+> **Settings → Rig Bridge** in OpenHamClock — the `--update` flag works on a freshly
+> downloaded copy too, as long as Rig Bridge is already installed.
+
+### What the update does
+
+1. Stops the running Rig Bridge instance (if any)
+2. Downloads the latest files from the repository
+3. Preserves your `rig-bridge-config.json` (radio settings, tokens, plugins)
+4. Re-installs dependencies
+5. Restarts Rig Bridge
+
+### What gets reset
+
+Nothing in your configuration is changed. Any manual edits you made directly to
+`rig-bridge.js` or other source files **will be overwritten** — the update replaces
+all source files.
 
 ---
 
@@ -280,7 +358,7 @@ For example: Rig Bridge runs on a Raspberry Pi or shack PC connected to the radi
 
 ---
 
-### Scenario C — Using the cloud version at openhamclock.com
+### Scenario C — Using the cloud version at openhamclock.com _(Cloud Relay: Alpha)_
 
 This lets you control your radio at home from anywhere in the world through the openhamclock.com website.
 
@@ -322,12 +400,12 @@ Rig Bridge can receive decoded FT8, FT4, JT65, and other digital mode signals fr
 
 ### Supported software
 
-| Software    | Mode                          | Default Port |
-| ----------- | ----------------------------- | ------------ |
-| **WSJT-X**  | FT8, FT4, JT65, JT9, and more | 2237         |
-| **JTDX**    | FT8, JT65 (enhanced decoding) | 2238         |
-| **MSHV**    | MSK144, Q65, and others       | 2239         |
-| **JS8Call** | JS8 keyboard messaging        | 2242         |
+| Software    | Mode                          | Default Port | Maturity |
+| ----------- | ----------------------------- | ------------ | -------- |
+| **WSJT-X**  | FT8, FT4, JT65, JT9, and more | 2237         | Beta     |
+| **JTDX**    | FT8, JT65 (enhanced decoding) | 2238         | Alpha    |
+| **MSHV**    | MSK144, Q65, and others       | 2239         | Alpha    |
+| **JS8Call** | JS8 keyboard messaging        | 2242         | Alpha    |
 
 All of these are **bidirectional** — OpenHamClock can also send replies, stop transmit, set free text, and highlight callsigns in the decode window.
 
@@ -362,7 +440,7 @@ By default, WSJT-X sends its decoded packets only to one listener. If you want b
 
 ---
 
-## APRS via Local TNC
+## APRS via Local TNC _(Beta)_
 
 If you run a local APRS TNC (for example, [Direwolf](https://github.com/wb2osz/direwolf) connected to a VHF radio), Rig Bridge can receive APRS packets from it and show nearby stations on the OpenHamClock map — without needing an internet connection.
 
@@ -389,7 +467,7 @@ If you have a traditional hardware TNC connected via serial port:
 
 ---
 
-## Antenna Rotator
+## Antenna Rotator _(Alpha)_
 
 Rig Bridge can control antenna rotators via [Hamlib's](https://hamlib.github.io/) `rotctld` daemon.
 
@@ -575,6 +653,23 @@ The certificate is valid for 10 years and is regenerated only if you click **Reg
 | **HTTPS: browser still shows warning after installing cert** | Restart your browser completely (close all windows, not just the tab).                                                            |
 | **Cloud Relay: 401 / 403 error**                             | The API Token in Rig Bridge does not match what OpenHamClock has. Copy the token again from the Rig Bridge setup page.            |
 | **Cloud Relay: PTT / tune feels slow**                       | Make sure Rig Bridge version is 2.0 or newer. Older versions used a slower polling method.                                        |
+
+---
+
+## Glossary
+
+### Maturity levels
+
+Components and plugins in Rig Bridge are labelled with a maturity level to help you set
+expectations before enabling them.
+
+| Level     | Meaning                                                                                                                                                        |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Alpha** | Test implementation with no rigid testing yet. Use with caution — behaviour may change and bugs are expected. Feedback and bug reports are especially welcome. |
+| **Beta**  | Already tested more intensively, but still experimental status. More stable than Alpha, but not yet considered production-ready.                               |
+
+Unlabelled components (USB radio control, flrig, rigctld, TCI, SmartSDR) are considered
+stable and have been tested across multiple hardware setups.
 
 ---
 
