@@ -770,6 +770,8 @@ export const DockableApp = ({
               bandConditions={bandConditions}
               allUnits={config.allUnits}
               propConfig={config.propagation}
+              dxSpots={dxClusterData.spots}
+              clusterFilters={dxFilters}
             />
           );
           break;
@@ -815,6 +817,7 @@ export const DockableApp = ({
 
         case 'band-health':
           content = <BandHealthPanel dxSpots={dxClusterData.spots} clusterFilters={dxFilters} />;
+
           break;
 
         case 'dx-cluster':
