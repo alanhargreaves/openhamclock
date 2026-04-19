@@ -110,7 +110,7 @@ Select **Simulated Radio** in the setup screen. A fake radio will drift through 
 
      The script downloads Rig Bridge and then prompts you to press Enter to open the Setup UI in your browser. Leave the terminal open.
 
-5. The installation script will automatically open the Setup UI (e.g., **http://localhost:5555**) in your web browser. _(If it doesn't, you can click **Open Setup UI** in OpenHamClock's Settings tab)._
+5. The installation script will automatically open the Setup UI (e.g., **http://localhost:5555**, or **https://localhost:5555** if you enabled TLS) in your web browser. _(If it doesn't, you can click **Open Setup UI** in OpenHamClock's Settings tab)._
 6. Copy the **API Token** shown at the top of that page.
 7. Back in OpenHamClock **Settings → Rig Bridge**, paste the token into the **API Token** field.
 8. Confirm **Host** is `http://localhost` and **Port** is `5555`.
