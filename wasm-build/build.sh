@@ -247,18 +247,16 @@ def externify(path, guard_match):
     write(path, text)
 
 
-# Both P533/Src/P533/Noise.h and P372/Src/P372/Noise.h contain the same
-# declaration block — each .c file picks whichever is on its include path.
-# Patch both copies so the P372 sources that include the local copy also
-# get extern declarations.
-externify(
-    src_dir / "P533/Src/P533/Noise.h",
-    "#elif defined(__linux__) || defined(__APPLE__)",
-)
-externify(
-    src_dir / "P372/Src/P372/Noise.h",
-    "#elif defined(__linux__) || defined(__APPLE__)",
-)
+# Upstream ships Noise.h copies in four locations, each byte-identical. Which
+# one a TU picks up depends on its -I order. Patch them all so every include
+# resolution gets extern declarations.
+import glob
+noise_count = 0
+for noise_h in sorted(src_dir.rglob("Noise.h")):
+    externify(noise_h, "#elif defined(__linux__) || defined(__APPLE__)")
+    noise_count += 1
+print(f"[build] Extern-ified {noise_count} Noise.h copies.")
+
 externify(
     src_dir / "ITURHFProp/Src/ITURHFProp/ITURHFProp.h",
     "#elif __linux__ || __APPLE__",
@@ -270,7 +268,7 @@ externify(
     src_dir / "ITURHFProp/Src/ITURHFProp/ITURHFProp.c",
     "#elif __linux__ || __APPLE__",
 )
-print("[build] Extern-ified dll* declarations in Noise.h (x2) + ITURHFProp.h + ITURHFProp.c.")
+print("[build] Extern-ified ITURHFProp.h + ITURHFProp.c as well.")
 
 # Emit canonical definitions in a fresh TU.
 wasm_globals = src_dir / "wasm_globals.c"
