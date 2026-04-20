@@ -37,69 +37,52 @@ if [[ ! -d "$SRC_DIR" ]]; then
   tar -xzf src/source.tar.gz -C src
   rm src/source.tar.gz
 
-  # ── Patch P533.c for static linking on Emscripten ───────────────────────────
-  # Upstream loads libp372 via dlopen() on Linux/macOS. In our WASM build the
-  # P.372 sources are statically linked into the same module, so replace the
-  # dynamic-load block with direct function-pointer assignment. Keeping the
-  # patch inline (no external .patch file) makes it easier to retarget when
-  # upstream bumps the tag. Python handles the multi-line replace reliably.
-  python3 - <<PYEOF
+  # ── Patch upstream for static Emscripten linkage ────────────────────────────
+  # Two minimal edits:
+  #
+  #  * P533.c loads libp372 with dlopen() on Linux/macOS. In our build libp372
+  #    is statically linked into the same module, so we insert an __EMSCRIPTEN__
+  #    branch ahead of the Linux/Apple block that assigns the dll* function
+  #    pointers directly to their real symbols.
+  #
+  #  * Noise.h declares those dll* pointers inside a `__linux__ || __APPLE__`
+  #    guard. Widen the guard to include __EMSCRIPTEN__.
+  #
+  # Anchoring on a single unique line is more robust to upstream whitespace
+  # drift than matching a whole block; when the anchor disappears we abort.
+  python3 - "$SRC_DIR" <<'PYEOF'
+import sys
 from pathlib import Path
-p533 = Path("$SRC_DIR/P533/Src/P533/P533.c")
+
+src_dir = Path(sys.argv[1])
+
+p533 = src_dir / "P533/Src/P533/P533.c"
 src = p533.read_text()
+anchor = "#elif __linux__ || __APPLE__"
+insertion = (
+    "#elif defined(__EMSCRIPTEN__)\n"
+    "\t\t/* WASM build: libp372 is statically linked — wire pointers directly. */\n"
+    "\t\tdllP372Version = P372Version;\n"
+    "\t\tdllP372CompileTime = P372CompileTime;\n"
+    "\t\tdllNoise = Noise;\n"
+    "\t\tdllAllocateNoiseMemory = AllocateNoiseMemory;\n"
+    "\t\tdllFreeNoiseMemory = FreeNoiseMemory;\n"
+    "\t\tdllInitializeNoise = InitializeNoise;\n"
+    "\t"
+)
+if anchor not in src:
+    sys.exit("build.sh: anchor '#elif __linux__ || __APPLE__' not found in P533.c")
+p533.write_text(src.replace(anchor, insertion + anchor, 1))
+print("[build] Patched P533.c — inserted __EMSCRIPTEN__ branch for static P372 linkage.")
 
-old_block = """\t#elif __linux__ || __APPLE__
-\t\tvoid * hLib;
-\t\thLib = dlopen("libp372.so", RTLD_NOW);
-\t\tif (!hLib) {
-\t\t\tprintf("Couldn't load libp372.so, exiting.\\n");
-\t\t\texit(1);
-\t\t}
-\t\tdllP372Version = dlsym(hLib, "P372Version");
-\t\tdllP372CompileTime = dlsym(hLib, "P372CompileTime");
-\t\tdllNoise = dlsym(hLib, "Noise");
-\t\tdllAllocateNoiseMemory = dlsym(hLib, "AllocateNoiseMemory");
-\t\tdllFreeNoiseMemory = dlsym(hLib, "FreeNoiseMemory");
-\t\tdllInitializeNoise = dlsym(hLib, "InitializeNoise");
-\t#endif"""
-
-new_block = """\t#elif defined(__EMSCRIPTEN__)
-\t\t/* WASM build: libp372 is statically linked — wire pointers directly. */
-\t\tdllP372Version = P372Version;
-\t\tdllP372CompileTime = P372CompileTime;
-\t\tdllNoise = Noise;
-\t\tdllAllocateNoiseMemory = AllocateNoiseMemory;
-\t\tdllFreeNoiseMemory = FreeNoiseMemory;
-\t\tdllInitializeNoise = InitializeNoise;
-\t#elif __linux__ || __APPLE__
-\t\tvoid * hLib;
-\t\thLib = dlopen("libp372.so", RTLD_NOW);
-\t\tif (!hLib) {
-\t\t\tprintf("Couldn't load libp372.so, exiting.\\n");
-\t\t\texit(1);
-\t\t}
-\t\tdllP372Version = dlsym(hLib, "P372Version");
-\t\tdllP372CompileTime = dlsym(hLib, "P372CompileTime");
-\t\tdllNoise = dlsym(hLib, "Noise");
-\t\tdllAllocateNoiseMemory = dlsym(hLib, "AllocateNoiseMemory");
-\t\tdllFreeNoiseMemory = dlsym(hLib, "FreeNoiseMemory");
-\t\tdllInitializeNoise = dlsym(hLib, "InitializeNoise");
-\t#endif"""
-
-if old_block not in src:
-    raise SystemExit("build.sh: expected dlopen block not found in P533.c — upstream changed?")
-p533.write_text(src.replace(old_block, new_block, 1))
-print("[build] Patched P533.c to use static linking on Emscripten.")
-
-# ── Patch Noise.h: declare dll* pointers on Emscripten too ─────────────────
-noise_h = Path("$SRC_DIR/P533/Src/P533/Noise.h")
+noise_h = src_dir / "P533/Src/P533/Noise.h"
 nsrc = noise_h.read_text()
 old_guard = "#elif defined(__linux__) || defined(__APPLE__)"
 new_guard = "#elif defined(__linux__) || defined(__APPLE__) || defined(__EMSCRIPTEN__)"
 if old_guard not in nsrc:
-    raise SystemExit("build.sh: expected __linux__ guard not found in Noise.h — upstream changed?")
+    sys.exit("build.sh: __linux__/__APPLE__ guard not found in Noise.h")
 noise_h.write_text(nsrc.replace(old_guard, new_guard, 1))
-print("[build] Patched Noise.h to declare dll* pointers on Emscripten.")
+print("[build] Patched Noise.h — declared dll* pointers under __EMSCRIPTEN__.")
 PYEOF
 fi
 
