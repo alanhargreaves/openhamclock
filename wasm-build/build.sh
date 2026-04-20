@@ -38,28 +38,54 @@ if [[ ! -d "$SRC_DIR" ]]; then
   rm src/source.tar.gz
 
   # ── Patch upstream for static Emscripten linkage ────────────────────────────
-  # Two minimal edits:
-  #
-  #  * P533.c loads libp372 with dlopen() on Linux/macOS. In our build libp372
-  #    is statically linked into the same module, so we insert an __EMSCRIPTEN__
-  #    branch ahead of the Linux/Apple block that assigns the dll* function
-  #    pointers directly to their real symbols.
-  #
-  #  * Noise.h declares those dll* pointers inside a `__linux__ || __APPLE__`
-  #    guard. Widen the guard to include __EMSCRIPTEN__.
-  #
-  # Anchoring on a single unique line is more robust to upstream whitespace
-  # drift than matching a whole block; when the anchor disappears we abort.
+  # Upstream loads libp533/libp372 via dlopen() at runtime on Linux/macOS. In
+  # the WASM build everything is static-linked into a single module, so we
+  # insert an __EMSCRIPTEN__ branch ahead of each Linux/Apple dlopen block
+  # that assigns the dll* function pointers directly to their real symbols.
+  # Each file's pointer-declaration guard is widened to include Emscripten.
+  # Upstream Linux/Apple branches stay intact so the native build still works.
   python3 - "$SRC_DIR" <<'PYEOF'
 import sys
 from pathlib import Path
 
 src_dir = Path(sys.argv[1])
 
-p533 = src_dir / "P533/Src/P533/P533.c"
-src = p533.read_text()
-anchor = "#elif __linux__ || __APPLE__"
-insertion = (
+
+def patch_file(path, edits):
+    text = path.read_text()
+    for anchor, replacement, desc in edits:
+        if anchor not in text:
+            sys.exit(f"build.sh: anchor not found in {path.name}: {desc}")
+        text = text.replace(anchor, replacement, 1)
+        print(f"[build] Patched {path.relative_to(src_dir)} — {desc}.")
+    path.write_text(text)
+
+
+# ── Noise.h / ITURHFProp.h: widen pointer-declaration guards ──────────────────
+for hdr, desc in [
+    (src_dir / "P533/Src/P533/Noise.h", "Noise.h guard widened to __EMSCRIPTEN__"),
+    (src_dir / "ITURHFProp/Src/ITURHFProp/ITURHFProp.h", "ITURHFProp.h guard widened"),
+]:
+    text = hdr.read_text()
+    if "#elif defined(__linux__) || defined(__APPLE__)" in text:
+        text = text.replace(
+            "#elif defined(__linux__) || defined(__APPLE__)",
+            "#elif defined(__linux__) || defined(__APPLE__) || defined(__EMSCRIPTEN__)",
+            1,
+        )
+    elif "#elif __linux__ || __APPLE__" in text:
+        text = text.replace(
+            "#elif __linux__ || __APPLE__",
+            "#elif __linux__ || __APPLE__ || defined(__EMSCRIPTEN__)",
+            1,
+        )
+    else:
+        sys.exit(f"build.sh: __linux__/__APPLE__ guard not found in {hdr.name}")
+    hdr.write_text(text)
+    print(f"[build] {desc}")
+
+# ── P533.c: insert __EMSCRIPTEN__ branch ahead of the libp372 dlopen block ────
+p533_static = (
     "#elif defined(__EMSCRIPTEN__)\n"
     "\t\t/* WASM build: libp372 is statically linked — wire pointers directly. */\n"
     "\t\tdllP372Version = P372Version;\n"
@@ -70,19 +96,68 @@ insertion = (
     "\t\tdllInitializeNoise = InitializeNoise;\n"
     "\t"
 )
-if anchor not in src:
-    sys.exit("build.sh: anchor '#elif __linux__ || __APPLE__' not found in P533.c")
-p533.write_text(src.replace(anchor, insertion + anchor, 1))
-print("[build] Patched P533.c — inserted __EMSCRIPTEN__ branch for static P372 linkage.")
+patch_file(
+    src_dir / "P533/Src/P533/P533.c",
+    [
+        (
+            "#elif __linux__ || __APPLE__",
+            p533_static + "#elif __linux__ || __APPLE__",
+            "P533.c — static P372 linkage on Emscripten",
+        ),
+    ],
+)
 
-noise_h = src_dir / "P533/Src/P533/Noise.h"
-nsrc = noise_h.read_text()
-old_guard = "#elif defined(__linux__) || defined(__APPLE__)"
-new_guard = "#elif defined(__linux__) || defined(__APPLE__) || defined(__EMSCRIPTEN__)"
-if old_guard not in nsrc:
-    sys.exit("build.sh: __linux__/__APPLE__ guard not found in Noise.h")
-noise_h.write_text(nsrc.replace(old_guard, new_guard, 1))
-print("[build] Patched Noise.h — declared dll* pointers under __EMSCRIPTEN__.")
+# ── ITURHFProp.c has TWO dlopen blocks: P533 and P372. Anchor on dlopen call
+#    so we can disambiguate them even though both follow `#elif __linux__ …`.
+ituhf_static_p533 = (
+    "#elif defined(__EMSCRIPTEN__)\n"
+    "\t/* WASM build: libp533 is statically linked — wire pointers directly. */\n"
+    "\tdllP533Version = P533Version;\n"
+    "\tdllP533CompileTime = P533CompileTime;\n"
+    "\tdllP533 = P533;\n"
+    "\tdllAllocatePathMemory = AllocatePathMemory;\n"
+    "\tdllFreePathMemory = FreePathMemory;\n"
+    "\tdllInputDump = InputDump;\n"
+    "\tdllBearing = Bearing;\n"
+    "\tdllReadType11Func = ReadType11;\n"
+    "\tdllReadType13Func = ReadType13;\n"
+    "\tdllReadType14Func = ReadType14;\n"
+    "\tdllIsotropicPatternFunc = IsotropicPattern;\n"
+    "\tdllReadIonParametersBinFunc = ReadIonParametersBin;\n"
+    "\tdllReadIonParametersTxtFunc = ReadIonParametersTxt;\n"
+    "\tdllReadP1239Func = ReadP1239;\n"
+)
+ituhf_static_p372 = (
+    "#elif defined(__EMSCRIPTEN__)\n"
+    "\t/* WASM build: libp372 is statically linked — wire pointers directly. */\n"
+    "\tdllReadFamDud = ReadFamDud;\n"
+)
+
+ituhfp_c = src_dir / "ITURHFProp/Src/ITURHFProp/ITURHFProp.c"
+text = ituhfp_c.read_text()
+# Block 1: P533 loader. Anchor on the unique "libp533.so" dlopen call; the
+# enclosing `#elif __linux__ || __APPLE__\n\thLib = dlopen("libp533.so", …`
+# uniquely identifies the block.
+anchor1 = '#elif __linux__ || __APPLE__\n\t#include <dlfcn.h>\n\tvoid * hLib;\n\thLib = dlopen("libp533.so"'
+# Fallback — the v14.3 source has no `#include <dlfcn.h>` inside the .c block
+# (it's in the .h instead), so anchor on the simpler form.
+anchor1_simple = '#elif __linux__ || __APPLE__\n\thLib = dlopen("libp533.so"'
+if anchor1 in text:
+    text = text.replace(anchor1, ituhf_static_p533 + anchor1, 1)
+elif anchor1_simple in text:
+    text = text.replace(anchor1_simple, ituhf_static_p533 + anchor1_simple, 1)
+else:
+    sys.exit("build.sh: libp533.so dlopen block not found in ITURHFProp.c")
+print("[build] Patched ITURHFProp.c — static P533 linkage on Emscripten.")
+
+# Block 2: P372 loader (ReadFamDud). Same approach.
+anchor2 = '#elif __linux__ || __APPLE__\n\tvoid * hLib;\n\thLib = dlopen("libp372.so"'
+if anchor2 not in text:
+    sys.exit("build.sh: libp372.so dlopen block not found in ITURHFProp.c")
+text = text.replace(anchor2, ituhf_static_p372 + anchor2, 1)
+print("[build] Patched ITURHFProp.c — static P372 linkage on Emscripten.")
+
+ituhfp_c.write_text(text)
 PYEOF
 fi
 
