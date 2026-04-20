@@ -244,15 +244,23 @@ def externify(path, guard_match):
     write(path, text)
 
 
+# Both P533/Src/P533/Noise.h and P372/Src/P372/Noise.h contain the same
+# declaration block — each .c file picks whichever is on its include path.
+# Patch both copies so the P372 sources that include the local copy also
+# get extern declarations.
 externify(
     src_dir / "P533/Src/P533/Noise.h",
+    "#elif defined(__linux__) || defined(__APPLE__)",
+)
+externify(
+    src_dir / "P372/Src/P372/Noise.h",
     "#elif defined(__linux__) || defined(__APPLE__)",
 )
 externify(
     src_dir / "ITURHFProp/Src/ITURHFProp/ITURHFProp.h",
     "#elif __linux__ || __APPLE__",
 )
-print("[build] Extern-ified dll* declarations in Noise.h + ITURHFProp.h.")
+print("[build] Extern-ified dll* declarations in Noise.h (x2) + ITURHFProp.h.")
 
 # Emit canonical definitions in a fresh TU.
 wasm_globals = src_dir / "wasm_globals.c"
