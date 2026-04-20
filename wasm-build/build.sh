@@ -98,6 +98,25 @@ patch_file(
     ],
 )
 
+# ── PathMemory.c: same P372-loading pattern as P533.c, called from main()'s
+#    first call to dllAllocatePathMemory(). Without this patch the runtime
+#    hits dlopen("libp372.so") before P533() ever runs and exits.
+pathmem_static = (
+    "#elif defined(__EMSCRIPTEN__)\n"
+    "\t/* WASM build: libp372 is statically linked - wire pointer directly. */\n"
+    "\tdllAllocateNoiseMemory = AllocateNoiseMemory;\n"
+)
+patch_file(
+    src_dir / "P533/Src/P533/PathMemory.c",
+    [
+        (
+            "#elif __linux__ || __APPLE__",
+            pathmem_static + "#elif __linux__ || __APPLE__",
+            "PathMemory.c - static P372 linkage on Emscripten",
+        ),
+    ],
+)
+
 # ── ITURHFProp.c has TWO dlopen blocks: P533 and P372. Anchor on dlopen call
 #    so we can disambiguate them even though both follow `#elif __linux__ …`.
 ituhf_static_p533 = (
