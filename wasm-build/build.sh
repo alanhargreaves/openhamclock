@@ -124,13 +124,14 @@ patch_file(
 #    so we can disambiguate them even though both follow `#elif __linux__ …`.
 ituhf_static_p533 = (
     "#elif defined(__EMSCRIPTEN__)\n"
+    "\t/* P533CompileTime is defined in P533.c but not declared in any header. */\n"
+    "\textern char const * P533CompileTime(void);\n"
     "\t/* WASM build: libp533 is statically linked - wire pointers directly. */\n"
     "\tdllP533Version = P533Version;\n"
     "\tdllP533CompileTime = P533CompileTime;\n"
     "\tdllP533 = P533;\n"
     "\tdllAllocatePathMemory = AllocatePathMemory;\n"
     "\tdllFreePathMemory = FreePathMemory;\n"
-    "\tdllInputDump = InputDump;\n"
     "\tdllBearing = Bearing;\n"
     "\tdllReadType11Func = ReadType11;\n"
     "\tdllReadType13Func = ReadType13;\n"
@@ -139,6 +140,9 @@ ituhf_static_p533 = (
     "\tdllReadIonParametersBinFunc = ReadIonParametersBin;\n"
     "\tdllReadIonParametersTxtFunc = ReadIonParametersTxt;\n"
     "\tdllReadP1239Func = ReadP1239;\n"
+    "\t/* dllInputDump is only declared in the _WIN32 branch of ITURHFProp.h;\n"
+    "\t * the Linux/Apple branch doesn't list it. Upstream code references it\n"
+    "\t * only on Windows so the pointer can stay uninitialized here. */\n"
 )
 ituhf_static_p372 = (
     "#elif defined(__EMSCRIPTEN__)\n"
