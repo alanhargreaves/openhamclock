@@ -147,6 +147,31 @@ text = text.replace(anchor_p372, ituhf_static_p372 + anchor_p372, 1)
 print("[build] Patched ITURHFProp.c - static P372 linkage on Emscripten.")
 
 write(ituhfp_c, text)
+
+# ── Mark duplicate helper functions as static ─────────────────────────────
+# MedianSkywaveFieldStrengthLong.c and DumpPathData.c both define identical
+# helpers degrees/minutes/seconds/hrs/mns. Upstream Linux gets away with this
+# via `-z muldefs`; wasm-ld has no such flag, so force file-local linkage.
+# These helpers are only called from within their defining .c files.
+import re
+
+HELPERS = ("degrees", "minutes", "seconds", "hrs", "mns")
+
+def make_helpers_static(path):
+    text = read(path)
+    for name in HELPERS:
+        # Match "int <name>(" at beginning of a line (prototype or definition).
+        # Only on lines without any leading whitespace so we don't accidentally
+        # hit struct fields or local declarations in function bodies.
+        pattern = re.compile(rf"^int {re.escape(name)}\(", re.MULTILINE)
+        text, n = pattern.subn(f"static int {name}(", text)
+        if n == 0:
+            sys.exit(f"build.sh: couldn't find `int {name}(` at file scope in {path.name}")
+    write(path, text)
+    print(f"[build] Marked {', '.join(HELPERS)} as static in {path.relative_to(src_dir)}.")
+
+make_helpers_static(src_dir / "P533/Src/P533/MedianSkywaveFieldStrengthLong.c")
+make_helpers_static(src_dir / "ITURHFProp/Src/ITURHFProp/DumpPathData.c")
 PYEOF
 fi
 
