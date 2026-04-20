@@ -38,12 +38,14 @@ if [[ ! -d "$SRC_DIR" ]]; then
   rm src/source.tar.gz
 
   # ── Patch upstream for static Emscripten linkage ────────────────────────────
-  # Upstream loads libp533/libp372 via dlopen() at runtime on Linux/macOS. In
-  # the WASM build everything is static-linked into a single module, so we
-  # insert an __EMSCRIPTEN__ branch ahead of each Linux/Apple dlopen block
-  # that assigns the dll* function pointers directly to their real symbols.
-  # Each file's pointer-declaration guard is widened to include Emscripten.
-  # Upstream Linux/Apple branches stay intact so the native build still works.
+  # The build defines -D__linux__ so the existing Linux/Apple branches in
+  # Noise.h and ITURHFProp.h declare the dll* function-pointer globals that
+  # the rest of the code expects. We just need to replace the runtime
+  # dlopen()/dlsym() calls (which would fail on WASM) with direct assignment
+  # to the statically-linked P372/P533 functions. We do this by inserting an
+  # __EMSCRIPTEN__ branch ahead of each `#elif __linux__ || __APPLE__` block.
+  # Because #elif chains match the first true condition, Emscripten hits our
+  # branch first and skips the dlopen entirely.
   python3 - "$SRC_DIR" <<'PYEOF'
 import sys
 from pathlib import Path
@@ -72,30 +74,6 @@ def patch_file(path, edits):
         text = text.replace(anchor, replacement, 1)
         print(f"[build] Patched {path.relative_to(src_dir)} - {desc}.")
     write(path, text)
-
-
-# ── Noise.h / ITURHFProp.h: widen pointer-declaration guards ──────────────────
-for hdr, desc in [
-    (src_dir / "P533/Src/P533/Noise.h", "Noise.h guard widened to __EMSCRIPTEN__"),
-    (src_dir / "ITURHFProp/Src/ITURHFProp/ITURHFProp.h", "ITURHFProp.h guard widened"),
-]:
-    text = read(hdr)
-    if "#elif defined(__linux__) || defined(__APPLE__)" in text:
-        text = text.replace(
-            "#elif defined(__linux__) || defined(__APPLE__)",
-            "#elif defined(__linux__) || defined(__APPLE__) || defined(__EMSCRIPTEN__)",
-            1,
-        )
-    elif "#elif __linux__ || __APPLE__" in text:
-        text = text.replace(
-            "#elif __linux__ || __APPLE__",
-            "#elif __linux__ || __APPLE__ || defined(__EMSCRIPTEN__)",
-            1,
-        )
-    else:
-        sys.exit(f"build.sh: __linux__/__APPLE__ guard not found in {hdr.name}")
-    write(hdr, text)
-    print(f"[build] {desc}")
 
 # ── P533.c: insert __EMSCRIPTEN__ branch ahead of the libp372 dlopen block ────
 p533_static = (
@@ -255,6 +233,12 @@ CFLAGS=(
   # Emscripten doesn't define any of those, leaving DLLEXPORT as an unknown
   # type on every exported prototype. Override to empty - we statically link.
   -DDLLEXPORT=
+  # Pretend we're Linux so Noise.h/ITURHFProp.h declare the dll* function
+  # pointers through their existing Linux/Apple branches. Emscripten already
+  # provides a Linux-ish libc, so the headers themselves compile fine. We'll
+  # then patch out the dlopen()/dlsym() runtime loading and replace it with
+  # direct assignment - see the Python patch step above.
+  -D__linux__
   -std=c99
   -Wno-unused-parameter
   -Wno-unused-variable
