@@ -189,6 +189,27 @@ def make_helpers_static(path):
     write(path, text)
     print(f"[build] Marked {', '.join(HELPERS)} as static in {path.relative_to(src_dir)}.")
 
+# ITURHFProp.h leaks non-static prototypes for these helpers. Remove them
+# so the file-local static versions don't clash. They're only called from
+# DumpPathData.c which gets its own static prototypes prepended below.
+ituhfp_h = src_dir / "ITURHFProp/Src/ITURHFProp/ITURHFProp.h"
+htext = read(ituhfp_h)
+removed = 0
+for proto in (
+    "int degrees(double coord);",
+    "int minutes(double coord);",
+    "int seconds(double coord);",
+    "int hrs(double time);",
+    "int mns(double time);",
+):
+    if proto in htext:
+        htext = htext.replace(proto + "\n", "", 1)
+        removed += 1
+if removed == 0:
+    print("[build] Warning: no helper prototypes removed from ITURHFProp.h")
+write(ituhfp_h, htext)
+print(f"[build] Removed {removed} helper prototypes from ITURHFProp.h.")
+
 make_helpers_static(src_dir / "P533/Src/P533/MedianSkywaveFieldStrengthLong.c")
 make_helpers_static(src_dir / "ITURHFProp/Src/ITURHFProp/DumpPathData.c")
 PYEOF
