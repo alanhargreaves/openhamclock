@@ -42,6 +42,8 @@ export const useSatellites = (observerLocation, satelliteConfig) => {
       return;
     }
 
+    const accentCyan = getComputedStyle(document.documentElement).getPropertyValue('--accent-cyan');
+
     try {
       const now = new Date();
       const gmst = satellite.gstime(now);
@@ -142,7 +144,7 @@ export const useSatellites = (observerLocation, satelliteConfig) => {
             track,
             footprintRadius: Math.round(footprintRadius),
             mode: tle.mode || 'Unknown',
-            color: tle.color || '#00ffff',
+            color: tle.color || accentCyan,
             // Radio metadata from satellites.json
             downlink: tle.downlink || '',
             uplink: tle.uplink || '',
