@@ -117,6 +117,10 @@ INCLUDES=(-I"$P533_SRC" -I"$P372_SRC" -I"$ITU_SRC")
 CFLAGS=(
   -O3
   -DNDEBUG
+  # P533/P372 headers gate DLLEXPORT on _WIN32 / __linux__ / __APPLE__ only.
+  # Emscripten doesn't define any of those, leaving DLLEXPORT as an unknown
+  # type on every exported prototype. Override to empty — we statically link.
+  -DDLLEXPORT=
   -std=c99
   -Wno-unused-parameter
   -Wno-unused-variable
