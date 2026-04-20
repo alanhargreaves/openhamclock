@@ -159,10 +159,29 @@ HELPERS = ("degrees", "minutes", "seconds", "hrs", "mns")
 
 def make_helpers_static(path):
     text = read(path)
+    # Prepend static prototypes so any calls earlier in the file see the
+    # static declaration before clang infers a non-static implicit one
+    # (which then clashes with the later static definition).
+    proto_block = (
+        "/* Static prototypes injected for WASM build to resolve duplicate-symbol\n"
+        " * collisions across translation units. These helpers are only used\n"
+        " * file-locally in both upstream .c files that defined them. */\n"
+        "static int degrees(double coord);\n"
+        "static int minutes(double coord);\n"
+        "static int seconds(double coord);\n"
+        "static int hrs(double time);\n"
+        "static int mns(double time);\n\n"
+    )
+    # Insert after the last #include line near the top of the file.
+    lines = text.splitlines(keepends=True)
+    last_include = 0
+    for i, ln in enumerate(lines[:80]):
+        if ln.startswith("#include"):
+            last_include = i
+    lines.insert(last_include + 1, proto_block)
+    text = "".join(lines)
+    # Now convert each definition to static.
     for name in HELPERS:
-        # Match "int <name>(" at beginning of a line (prototype or definition).
-        # Only on lines without any leading whitespace so we don't accidentally
-        # hit struct fields or local declarations in function bodies.
         pattern = re.compile(rf"^int {re.escape(name)}\(", re.MULTILINE)
         text, n = pattern.subn(f"static int {name}(", text)
         if n == 0:
