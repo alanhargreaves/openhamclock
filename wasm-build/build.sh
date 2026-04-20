@@ -239,6 +239,12 @@ CFLAGS=(
   # then patch out the dlopen()/dlsym() runtime loading and replace it with
   # direct assignment - see the Python patch step above.
   -D__linux__
+  # Noise.h and ITURHFProp.h declare dll* pointer globals without `extern`,
+  # so every TU that includes them gets its own tentative definition. Modern
+  # clang defaults to -fno-common which makes these collide at link time.
+  # The native Linux Makefile dodges this with `-z muldefs` but wasm-ld has
+  # no such flag - -fcommon restores the classic merge-at-link behaviour.
+  -fcommon
   -std=c99
   -Wno-unused-parameter
   -Wno-unused-variable
@@ -261,11 +267,6 @@ LDFLAGS=(
   # ITURHFProp's main() parses argc/argv; expose it for callMain(...).
   -sEXPORTED_FUNCTIONS=_main,_malloc,_free
   -sSTACK_SIZE=1048576
-  # Noise.h and ITURHFProp.h declare dll* pointers as bare (non-extern)
-  # globals, so every translation unit that includes them emits its own
-  # definition. The native Linux Makefile handles this with `-z muldefs`;
-  # the wasm-ld equivalent is --allow-multiple-definition.
-  -Wl,--allow-multiple-definition
   -lm
 )
 
