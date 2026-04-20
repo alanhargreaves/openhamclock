@@ -51,7 +51,7 @@ from pathlib import Path
 src_dir = Path(sys.argv[1])
 
 # Upstream C files have embedded Windows-1252 characters in comments
-# (smart quotes, em dashes). Read/write as latin-1 which is byte-preserving —
+# (smart quotes, em dashes). Read/write as latin-1 which is byte-preserving -
 # we only care about matching anchor strings, not interpreting the content.
 ENC = "latin-1"
 
@@ -70,7 +70,7 @@ def patch_file(path, edits):
         if anchor not in text:
             sys.exit(f"build.sh: anchor not found in {path.name}: {desc}")
         text = text.replace(anchor, replacement, 1)
-        print(f"[build] Patched {path.relative_to(src_dir)} — {desc}.")
+        print(f"[build] Patched {path.relative_to(src_dir)} - {desc}.")
     write(path, text)
 
 
@@ -100,7 +100,7 @@ for hdr, desc in [
 # ── P533.c: insert __EMSCRIPTEN__ branch ahead of the libp372 dlopen block ────
 p533_static = (
     "#elif defined(__EMSCRIPTEN__)\n"
-    "\t\t/* WASM build: libp372 is statically linked — wire pointers directly. */\n"
+    "\t\t/* WASM build: libp372 is statically linked - wire pointers directly. */\n"
     "\t\tdllP372Version = P372Version;\n"
     "\t\tdllP372CompileTime = P372CompileTime;\n"
     "\t\tdllNoise = Noise;\n"
@@ -115,7 +115,7 @@ patch_file(
         (
             "#elif __linux__ || __APPLE__",
             p533_static + "#elif __linux__ || __APPLE__",
-            "P533.c — static P372 linkage on Emscripten",
+            "P533.c - static P372 linkage on Emscripten",
         ),
     ],
 )
@@ -124,7 +124,7 @@ patch_file(
 #    so we can disambiguate them even though both follow `#elif __linux__ …`.
 ituhf_static_p533 = (
     "#elif defined(__EMSCRIPTEN__)\n"
-    "\t/* WASM build: libp533 is statically linked — wire pointers directly. */\n"
+    "\t/* WASM build: libp533 is statically linked - wire pointers directly. */\n"
     "\tdllP533Version = P533Version;\n"
     "\tdllP533CompileTime = P533CompileTime;\n"
     "\tdllP533 = P533;\n"
@@ -142,7 +142,7 @@ ituhf_static_p533 = (
 )
 ituhf_static_p372 = (
     "#elif defined(__EMSCRIPTEN__)\n"
-    "\t/* WASM build: libp372 is statically linked — wire pointers directly. */\n"
+    "\t/* WASM build: libp372 is statically linked - wire pointers directly. */\n"
     "\tdllReadFamDud = ReadFamDud;\n"
 )
 
@@ -152,7 +152,7 @@ text = read(ituhfp_c)
 # enclosing `#elif __linux__ || __APPLE__\n\thLib = dlopen("libp533.so", …`
 # uniquely identifies the block.
 anchor1 = '#elif __linux__ || __APPLE__\n\t#include <dlfcn.h>\n\tvoid * hLib;\n\thLib = dlopen("libp533.so"'
-# Fallback — the v14.3 source has no `#include <dlfcn.h>` inside the .c block
+# Fallback - the v14.3 source has no `#include <dlfcn.h>` inside the .c block
 # (it's in the .h instead), so anchor on the simpler form.
 anchor1_simple = '#elif __linux__ || __APPLE__\n\thLib = dlopen("libp533.so"'
 if anchor1 in text:
@@ -161,14 +161,14 @@ elif anchor1_simple in text:
     text = text.replace(anchor1_simple, ituhf_static_p533 + anchor1_simple, 1)
 else:
     sys.exit("build.sh: libp533.so dlopen block not found in ITURHFProp.c")
-print("[build] Patched ITURHFProp.c — static P533 linkage on Emscripten.")
+print("[build] Patched ITURHFProp.c - static P533 linkage on Emscripten.")
 
 # Block 2: P372 loader (ReadFamDud). Same approach.
 anchor2 = '#elif __linux__ || __APPLE__\n\tvoid * hLib;\n\thLib = dlopen("libp372.so"'
 if anchor2 not in text:
     sys.exit("build.sh: libp372.so dlopen block not found in ITURHFProp.c")
 text = text.replace(anchor2, ituhf_static_p372 + anchor2, 1)
-print("[build] Patched ITURHFProp.c — static P372 linkage on Emscripten.")
+print("[build] Patched ITURHFProp.c - static P372 linkage on Emscripten.")
 
 write(ituhfp_c, text)
 PYEOF
@@ -186,7 +186,7 @@ for d in "$P533_SRC" "$P372_SRC" "$ITU_SRC"; do
 done
 
 # ── Collect translation units ─────────────────────────────────────────────────
-# Order matches the upstream Makefiles — lets the build script stay in lockstep
+# Order matches the upstream Makefiles - lets the build script stay in lockstep
 # with the reference build if file lists change in a future release.
 
 P533_SOURCES=(
@@ -233,15 +233,15 @@ ALL_SOURCES=("${P533_SOURCES[@]}" "${P372_SOURCES[@]}" "${ITU_SOURCES[@]}")
 # -sMODULARIZE=1     emit a factory function, not a global Module
 # -sEXPORT_ES6=1     ES-module output so Vite can tree-shake / lazy-load
 # -sENVIRONMENT=web,worker
-#                    drop the node-only shim paths — frontend use only
+#                    drop the node-only shim paths - frontend use only
 # -sALLOW_MEMORY_GROWTH=1
 #                    coefficient tables push linear memory past the default 16MB
 # -sEXIT_RUNTIME=1   call atexit handlers on main() return (ITURHFProp cleans up)
-# -sINVOKE_RUN=0     don't auto-run main — let JS decide with callMain([...])
+# -sINVOKE_RUN=0     don't auto-run main - let JS decide with callMain([...])
 # -sFORCE_FILESYSTEM=1
 #                    keep FS module available so we can mount coefficient files
 #                    via MEMFS at runtime (see B3)
-# -lnodefs.js        stub — we only need this to appease Emscripten if NODERAWFS
+# -lnodefs.js        stub - we only need this to appease Emscripten if NODERAWFS
 #                    were used. Kept off for browser build.
 #
 # Known upstream warnings we intentionally ignore for B1 (clean up in B2):
@@ -255,7 +255,7 @@ CFLAGS=(
   -DNDEBUG
   # P533/P372 headers gate DLLEXPORT on _WIN32 / __linux__ / __APPLE__ only.
   # Emscripten doesn't define any of those, leaving DLLEXPORT as an unknown
-  # type on every exported prototype. Override to empty — we statically link.
+  # type on every exported prototype. Override to empty - we statically link.
   -DDLLEXPORT=
   -std=c99
   -Wno-unused-parameter
