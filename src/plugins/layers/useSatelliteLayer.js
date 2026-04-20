@@ -256,7 +256,7 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
           let altitudeStr = `${altitude.toLocaleString()} ${distanceUnitsStr}`;
 
           return `
-        <div class="sat-card" style="border-bottom: 1px solid rgba(0, 68, 68, 1); margin-bottom: 10px; padding-bottom: 8px;">
+        <div class="sat-card" style="border-bottom: 1px solid var(--border-color); margin-bottom: 10px; padding-bottom: 8px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
             <strong style="color: var(--text-primary); font-size: 14px;">${sat.name}</strong>
             <button onclick="window.toggleSat('${sat.name}')" 
