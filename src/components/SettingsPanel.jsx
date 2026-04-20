@@ -533,6 +533,9 @@ export const SettingsPanel = ({
     return t == 'imperial' ? 'US Customary' : 'Metric';
   };
 
+  // Set a sane default if we are not a local installation and we have 'udp' set as the dxClusterSource.
+  if (!isLocalInstall && dxClusterSource === 'udp') setDxClusterSource('auto');
+
   return (
     <div
       onClick={onClose}
