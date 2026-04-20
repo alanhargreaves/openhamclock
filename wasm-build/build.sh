@@ -232,14 +232,17 @@ def externify(path, guard_match):
     if end == -1:
         sys.exit(f"build.sh: #endif for guard not found in {path.name}")
     block = text[start:end]
-    patched_block = re.sub(
+    patched_block, n = re.subn(
         r"^(\s*)(void\s*\*|char\s*\*?\s*\(\s*\*|int\s*\(\s*\*|double\s*\(\s*\*|void\s*\(\s*\*)(\s*dll\w+|\s*hLib)",
         r"\1extern \2\3",
         block,
         flags=re.MULTILINE,
     )
-    # Also catch the `iPathMemory dllXxx;` pattern used in _WIN32 branch -
-    # but we're only touching the linux branch so skip that.
+    print(f"[build]   externify: {n} declarations patched in {path.relative_to(src_dir)}")
+    if n == 0:
+        print("[build]   block was:")
+        print(block)
+        sys.exit("build.sh: externify regex matched zero declarations")
     text = text[:start] + patched_block + text[end:]
     write(path, text)
 
