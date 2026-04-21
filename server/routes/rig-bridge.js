@@ -581,7 +581,7 @@ module.exports = function (app, ctx) {
     // Mac / Linux
     const isMac = platform === 'mac';
     const script = [
-      '#!/bin/bash',
+      '#!/usr/bin/env bash',
       '# OpenHamClock Rig Bridge — Installer',
       'set -e',
       '',
@@ -693,7 +693,9 @@ module.exports = function (app, ctx) {
       'echo ""',
       'echo "Before continuing, read rig-bridge/README.md for radio-specific setup requirements."',
       'echo ""',
-      'read -rp "Press Enter to open the Setup UI in your browser... " dummy',
+      'if [ -t 0 ] && [ "${NONINTERACTIVE:-0}" != "1" ]; then',
+      '    read -rp "Press Enter to open the Setup UI in your browser... " dummy',
+      'fi',
       '',
       'if command -v xdg-open &> /dev/null; then',
       '    xdg-open "$SETUP_URL" 2>/dev/null &',
