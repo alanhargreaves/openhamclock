@@ -558,7 +558,7 @@ module.exports = function (app, ctx) {
         '',
         'echo.',
         'if "%UPDATE_MODE%"=="1" (',
-        '    echo   Restarting Rig Bridge (updated)...',
+        '    echo   Rig Bridge updated - restarting...',
         ') else (',
         '    echo   Starting Rig Bridge...',
         ')',
@@ -568,7 +568,7 @@ module.exports = function (app, ctx) {
         'echo   Setup UI: %RB_PROTO%://%RB_HOST%:%RB_PORT%',
         'echo   Opening in your browser now. Press Ctrl+C in this window to stop Rig Bridge.',
         'echo.',
-        'start %RB_PROTO%://%RB_HOST%:%RB_PORT%',
+        'start "" %RB_PROTO%://%RB_HOST%:%RB_PORT%',
         'node rig-bridge.js',
         'pause',
       ].join('\r\n');
