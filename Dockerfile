@@ -21,8 +21,9 @@ COPY . .
 RUN mkdir -p /app/public
 
 # Download vendor assets for self-hosting (fonts, Leaflet — no external CDN at runtime).
-# curl is also used by fetch-wasm.sh below.
-RUN apk add --no-cache curl && bash scripts/vendor-download.sh || true
+# bash + curl are also used by fetch-wasm.sh below. node:22-alpine does NOT ship
+# bash — without this apk add, RUN bash ... fails with "bash: not found".
+RUN apk add --no-cache bash curl && bash scripts/vendor-download.sh || true
 
 # Fetch P.533 WASM from the wasm-latest GitHub Release (public, no auth).
 # On failure (e.g. release doesn't exist yet), script exits 0 and runtime
