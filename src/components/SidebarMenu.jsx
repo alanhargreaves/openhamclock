@@ -30,7 +30,6 @@ export default function SidebarMenu({
   showUpdateButton,
   updateInProgress,
   breakpoint = 'desktop',
-  version,
   // Dockable layout props
   isDockable = false,
   layoutLocked = false,
@@ -62,6 +61,7 @@ export default function SidebarMenu({
       { id: 'profiles', icon: '👤', label: t('station.settings.tab.title.profiles') },
       { id: 'community', icon: '🌐', label: t('station.settings.tab.title.community') },
       { id: 'alerts', icon: '🔔', label: t('station.settings.tab.title.alerts') },
+      { id: 'rig-bridge', icon: '📻', label: t('station.settings.tab.title.rig-bridge') },
     ],
     [t],
   );
@@ -362,23 +362,6 @@ export default function SidebarMenu({
             <IconGear size={14} />
             {isExpanded && 'Settings'}
           </button>
-
-          {/* Version */}
-          {version && isExpanded && (
-            <div
-              onClick={() => window.dispatchEvent(new Event('openhamclock-show-whatsnew'))}
-              style={{
-                fontSize: '10px',
-                color: 'var(--text-muted)',
-                textAlign: 'center',
-                cursor: 'pointer',
-                padding: '4px 0 2px',
-              }}
-              title="What's new in this version"
-            >
-              v{version}
-            </div>
-          )}
         </div>
       </div>
     </>

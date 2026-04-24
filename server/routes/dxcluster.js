@@ -82,7 +82,6 @@ module.exports = function (app, ctx) {
     { host: 'dxspider.co.uk', port: 7300 },
     { host: 'dxc.nc7j.com', port: 7373 },
     { host: 'dxc.ai9t.com', port: 7373 },
-    { host: 'dxc.w6cua.org', port: 7300 },
   ];
   const DXSPIDER_SSID = '-56'; // OpenHamClock SSID
 
@@ -1392,7 +1391,7 @@ module.exports = function (app, ctx) {
         udpSession.lastAccess = now;
         newSpots = (udpSession.spots || []).slice(0, 100).map((s) => ({
           spotter: s.spotter,
-          spotterGrid: s.spotterGrid || null,
+          spotterGrid: s.spotterGrid || CONFIG.gridSquare || null,
           dxCall: s.dxCall,
           dxGrid: s.dxGrid || null,
           freq: s.freq,
