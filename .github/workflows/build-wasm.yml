@@ -64,4 +64,4 @@ jobs:
             wasm-build/dist/p533.mjs
             wasm-build/dist/p533.wasm
             wasm-build/dist/p533.sha256
-          retention-days: 30
+          retention-days: 90
