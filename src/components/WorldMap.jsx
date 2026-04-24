@@ -2222,7 +2222,7 @@ export const WorldMap = ({
                 location: {
                   lat: deLocation.lat,
                   lon: deLocation.lon,
-                  stationAlt: deLocation.stationAlt || 100,
+                  stationAlt: parseInt(deLocation.stationAlt) || 100,
                 },
                 satellite: {
                   minElev: config?.satellite?.minElev ?? layerConfig?.satellite?.minElev ?? 5,
