@@ -15,6 +15,14 @@
 
 const { Readable } = require('node:stream');
 
+// server.js uses node-fetch, whose response.body is already a Node Readable
+// (PassThrough). Node's native fetch returns a Web ReadableStream. Detect and
+// normalize so the proxy works regardless of which one ctx.fetch happens to be.
+function asNodeReadable(body) {
+  if (body && typeof body.pipe === 'function') return body;
+  return Readable.fromWeb(body);
+}
+
 module.exports = function (app, ctx) {
   const { fetch, logWarn, logErrorOnce } = ctx;
 
@@ -52,7 +60,7 @@ module.exports = function (app, ctx) {
 
     // Stream rather than buffering — the ionos*.bin.gz files are ~9 MB each.
     try {
-      Readable.fromWeb(upstreamRes.body).pipe(res);
+      asNodeReadable(upstreamRes.body).pipe(res);
     } catch (err) {
       logErrorOnce('p533-data-stream', err.message);
       if (!res.headersSent) res.status(502).json({ error: 'stream error' });
