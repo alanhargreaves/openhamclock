@@ -10,10 +10,10 @@
 //   predictInWorker(params, opts)  → opts.wasmUrl overrides the module URL
 //   terminateWorker()              → stops the worker and fails any pending calls
 
-const DEFAULT_VERSION = 'v14.3';
-const DEFAULT_WASM_URL =
-  import.meta.env?.VITE_P533_WASM_URL ||
-  `https://github.com/accius/openhamclock/releases/download/p533-wasm-${DEFAULT_VERSION}/p533.mjs`;
+// Default to the same-origin asset bundled by scripts/fetch-wasm.sh.
+// Self-hosters without a local WASM artifact can point this at the public
+// wasm-latest release or their own mirror via VITE_P533_WASM_URL.
+const DEFAULT_WASM_URL = import.meta.env?.VITE_P533_WASM_URL || '/wasm/p533.mjs';
 
 let worker = null;
 let nextId = 1;
