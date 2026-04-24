@@ -213,4 +213,84 @@ describe.skipIf(!INTEGRATION_READY)('predict (integration)', () => {
       expect(r.sdbw).toBeLessThan(0);
     }
   }, 30000); // callMain over 5 bands takes ~30 ms locally; 30 s cap just in case
+
+  // Doug n4hnhradio-ai's problem paths (issue #887, reopened 2026-04-24).
+  // The Phase-A heuristic predicted these wrong. P.533 is supposed to be
+  // physically correct here — these tests pin the behavior so we know if
+  // future upstream changes regress it.
+
+  it("Doug's Kuwait case: US → 9K2ES daytime 80m should be ~closed", async () => {
+    const { default: factory } = await import(/* @vite-ignore */ DIST);
+    const dataFiles = await Promise.all(
+      INTEGRATION_FILES.map(async (name) => ({ name, bytes: new Uint8Array(await readFile(resolve(DATA_DIR, name))) })),
+    );
+    const wasmBinary = new Uint8Array(await readFile(resolve(HERE, '../../../wasm-build/dist/p533.wasm')));
+
+    const result = await predict({
+      createModule: factory,
+      dataFiles,
+      moduleOptions: { wasmBinary },
+      params: {
+        // US East Coast → Kuwait City — ~10,500 km, half in UTC daytime.
+        txLat: 33.749, // Atlanta stand-in for US East
+        txLon: -84.388,
+        rxLat: 29.37, // Kuwait City
+        rxLon: 47.98,
+        year: 2025,
+        month: 1,
+        hour: 14, // 14 UTC = mid-afternoon Kuwait, morning US East — strong D-layer both ends
+        ssn: 120,
+        txPower: 100,
+        frequencies: [3.5, 7.1, 14.1],
+      },
+    });
+
+    const by = Object.fromEntries(result.frequencies.map((r) => [r.freq, r]));
+    // Heuristic falsely showed 80m green on this path. P.533 should show it
+    // as ~closed — D-layer absorption over 10,000 km of daytime path is brutal.
+    // This is the concrete bug Doug flagged; the other bands are just sanity.
+    expect(by[3.5].reliability).toBeLessThan(20);
+    for (const r of result.frequencies) {
+      expect(r.reliability).toBeGreaterThanOrEqual(0);
+      expect(r.reliability).toBeLessThanOrEqual(99);
+    }
+  }, 30000);
+
+  it("Doug's Fiji case: US → 3D2JK multi-hop 40m is not a slam-dunk", async () => {
+    const { default: factory } = await import(/* @vite-ignore */ DIST);
+    const dataFiles = await Promise.all(
+      INTEGRATION_FILES.map(async (name) => ({ name, bytes: new Uint8Array(await readFile(resolve(DATA_DIR, name))) })),
+    );
+    const wasmBinary = new Uint8Array(await readFile(resolve(HERE, '../../../wasm-build/dist/p533.wasm')));
+
+    const result = await predict({
+      createModule: factory,
+      dataFiles,
+      moduleOptions: { wasmBinary },
+      params: {
+        // US East → Yasawa Is. Fiji — ~12,500 km, 3-hop territory.
+        txLat: 33.749,
+        txLon: -84.388,
+        rxLat: -16.77,
+        rxLon: 177.03,
+        year: 2025,
+        month: 1,
+        hour: 6, // Grayline-ish: dawn over US East, afternoon Fiji
+        ssn: 120,
+        txPower: 100,
+        frequencies: [7.1, 14.1, 21.1],
+      },
+    });
+
+    // The heuristic over-promised every band green. We don't assert a tight
+    // number because P.533 multi-hop is sensitive to exact timing, but 40m
+    // especially should not come back as a near-certainty.
+    const by = Object.fromEntries(result.frequencies.map((r) => [r.freq, r]));
+    expect(by[7.1].reliability).toBeLessThan(85);
+    // All reliabilities should be finite 0-99.
+    for (const r of result.frequencies) {
+      expect(r.reliability).toBeGreaterThanOrEqual(0);
+      expect(r.reliability).toBeLessThanOrEqual(99);
+    }
+  }, 30000);
 });
