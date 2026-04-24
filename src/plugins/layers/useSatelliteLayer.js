@@ -266,6 +266,11 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
           let altitude = Math.round(sat.alt * (isMetric ? 1 : km_to_miles_factor));
           let altitudeStr = `${altitude.toLocaleString()} ${distanceUnitsStr}`;
 
+          const attrEscape = (s) =>
+            String(s ?? '')
+              .replace(/&/g, '&amp;')
+              .replace(/"/g, '&quot;');
+
           return `
           <div class="sat-card" style="border-bottom: 1px solid var(--border-color); margin-bottom: 10px; padding-bottom: 8px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
@@ -332,19 +337,19 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
             <!-- section 3: miscellaneous satellite information -->
             <tr style="background-color: var(--bg-secondary); color: var(--text-muted);">
               <td style="padding: 0 2px;">${t('station.settings.satellites.mode')}:</td>
-              <td align="right" style="padding: 0 2px;">${sat.mode || 'N/A'}</td>
+              <td align="right" style="padding: 0 2px;">${attrEscape(sat.mode || 'N/A')}</td>
             </tr>
-            ${sat.downlink ? `<tr style="background-color: var(--bg-secondary); color: var(--text-muted);"><td style="padding: 0 2px;">${t('station.settings.satellites.downlink')}:</td><td align="right" style="padding: 0 2px;">${sat.downlink}</td></tr>` : ''}
-            ${sat.uplink ? `<tr style="background-color: var(--bg-secondary); color: var(--text-muted);"><td style="padding: 0 2px;">${t('station.settings.satellites.uplink')}:</td><td align="right" style="padding: 0 2px;">${sat.uplink}</td></tr>` : ''}
-            ${sat.tone ? `<tr style="background-color: var(--bg-secondary); color: var(--text-muted);"><td style="padding: 0 2px;">${t('station.settings.satellites.tone')}:</td><td align="right" style="padding: 0 2px;">${sat.tone}</td></tr>` : ''}
+            ${sat.downlink ? `<tr style="background-color: var(--bg-secondary); color: var(--text-muted);"><td style="padding: 0 2px;">${t('station.settings.satellites.downlink')}:</td><td align="right" style="padding: 0 2px;">${attrEscape(sat.downlink)}</td></tr>` : ''}
+            ${sat.uplink ? `<tr style="background-color: var(--bg-secondary); color: var(--text-muted);"><td style="padding: 0 2px;">${t('station.settings.satellites.uplink')}:</td><td align="right" style="padding: 0 2px;">${attrEscape(sat.uplink)}</td></tr>` : ''}
+            ${sat.tone ? `<tr style="background-color: var(--bg-secondary); color: var(--text-muted);"><td style="padding: 0 2px;">${t('station.settings.satellites.tone')}:</td><td align="right" style="padding: 0 2px;">${attrEscape(sat.tone)}</td></tr>` : ''}
 
             <tr><td colSpan="2">
               <button
                 class="sat-open-predict"
                 data-action="open-predict"
-                data-sat-name="${sat.name}"
-                data-tle1="${sat.tle1}"
-                data-tle2="${sat.tle2}"
+                data-sat-name="${attrEscape(sat.name)}"
+                data-tle1="${attrEscape(sat.tle1)}"
+                data-tle2="${attrEscape(sat.tle2)}"
                 style="
                   width: 100%;
                   padding: 2px 0;
@@ -361,7 +366,7 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
 
             </table>
 
-            ${sat.notes ? `<div style="font-size:9px; color: var(--text-muted); margin-top:4px; font-style:italic;">${sat.notes}</div>` : ''}
+            ${sat.notes ? `<div style="font-size:9px; color: var(--text-muted); margin-top:4px; font-style:italic;">${attrEscape(sat.notes)}</div>` : ''}
           </div>
       `;
         })
