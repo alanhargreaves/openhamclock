@@ -90,11 +90,14 @@ export async function runBrowserEngine({
   });
 
   let mufForCurrentHour = null;
-  const started = Date.now();
+  const clock = typeof performance !== 'undefined' && performance.now ? performance : Date;
+  const started = clock.now();
+  const hourTimings = []; // ms per predictInWorker call — h=0 includes cold-start
 
   for (let h = 0; h < 24; h++) {
     if (signal?.aborted) throw new Error('runBrowserEngine: aborted');
 
+    const hourStart = clock.now();
     const hourResult = await predictInWorker(
       {
         txLat: deLocation.lat,
@@ -110,6 +113,7 @@ export async function runBrowserEngine({
       },
       wasmUrl ? { wasmUrl } : undefined,
     );
+    hourTimings.push(clock.now() - hourStart);
 
     const perBand = {};
     for (const f of hourResult.frequencies || []) {
@@ -146,7 +150,7 @@ export async function runBrowserEngine({
   return {
     model: 'ITU-R P.533-14',
     engine: 'wasm',
-    elapsed: Date.now() - started,
+    elapsed: Math.round(clock.now() - started),
     muf: mufForCurrentHour,
     currentHour,
     currentBands,
@@ -157,7 +161,29 @@ export async function runBrowserEngine({
     signalMargin: Math.round(signalMarginDb * 10) / 10,
     iturhfprop: { enabled: true, available: true },
     dataSource: 'ITURHFProp (ITU-R P.533-14) — browser WASM',
+    benchmark: summarizeTimings(hourTimings),
   };
 }
 
-export const __internal = { BANDS, UI_FREQS_MHZ, freqToBand };
+// Turn 24 per-hour timings into the small summary we ship in every WASM
+// response. h=0 is special — it includes the one-time cold start (module
+// load + coefficient download) — so we report it separately from the
+// warm-call percentiles.
+function summarizeTimings(hourTimings) {
+  const first = hourTimings[0];
+  const warm = hourTimings.slice(1).sort((a, b) => a - b);
+  const pct = (p) => warm[Math.min(warm.length - 1, Math.floor(warm.length * p))];
+  const total = hourTimings.reduce((s, x) => s + x, 0);
+  return {
+    totalMs: Math.round(total),
+    firstCallMs: Math.round(first ?? 0),
+    warmMinMs: Math.round(warm[0] ?? 0),
+    warmMaxMs: Math.round(warm[warm.length - 1] ?? 0),
+    warmP50Ms: Math.round(pct(0.5) ?? 0),
+    warmP90Ms: Math.round(pct(0.9) ?? 0),
+    warmTotalMs: Math.round(total - (first ?? 0)),
+    samples: hourTimings.length,
+  };
+}
+
+export const __internal = { BANDS, UI_FREQS_MHZ, freqToBand, summarizeTimings };

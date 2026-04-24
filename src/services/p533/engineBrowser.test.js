@@ -8,7 +8,7 @@ vi.mock('./predictInWorker.js', () => ({
 }));
 
 const { runBrowserEngine, __internal } = await import('./engineBrowser.js');
-const { freqToBand, BANDS } = __internal;
+const { freqToBand, BANDS, summarizeTimings } = __internal;
 
 const DE = { lat: 33.75, lon: -84.39 }; // Atlanta
 const DX = { lat: 51.5, lon: -0.12 }; // London
@@ -146,5 +146,47 @@ describe('runBrowserEngine', () => {
     expect(progress).toHaveLength(24);
     expect(progress[0]).toEqual({ hour: 1, total: 24 });
     expect(progress[23]).toEqual({ hour: 24, total: 24 });
+  });
+
+  it('returns a benchmark summary', async () => {
+    predictMock.mockResolvedValue(fakeHourResult());
+    const result = await runBrowserEngine({ deLocation: DE, dxLocation: DX });
+    expect(result.benchmark).toBeDefined();
+    expect(result.benchmark.samples).toBe(24);
+    // Each field is a non-negative integer (ms).
+    for (const k of ['totalMs', 'firstCallMs', 'warmMinMs', 'warmMaxMs', 'warmP50Ms', 'warmP90Ms', 'warmTotalMs']) {
+      expect(Number.isInteger(result.benchmark[k])).toBe(true);
+      expect(result.benchmark[k]).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
+describe('summarizeTimings', () => {
+  it('treats the first call as cold start and the rest as warm samples', () => {
+    const timings = [500, 40, 35, 50, 45, 38, 42, 36, 48, 39]; // 500ms cold + 9 warm
+    const b = summarizeTimings(timings);
+    expect(b.samples).toBe(10);
+    expect(b.firstCallMs).toBe(500);
+    expect(b.warmMinMs).toBe(35);
+    expect(b.warmMaxMs).toBe(50);
+    expect(b.warmTotalMs).toBe(373); // sum of warm samples
+    expect(b.totalMs).toBe(873);
+  });
+
+  it('computes p50 / p90 from the warm samples', () => {
+    // 20 sorted samples: 1..20
+    const timings = [100, ...Array.from({ length: 20 }, (_, i) => i + 1)];
+    const b = summarizeTimings(timings);
+    expect(b.warmP50Ms).toBe(11); // index floor(20 * 0.5) = 10 → sorted[10] = 11
+    expect(b.warmP90Ms).toBe(19); // index floor(20 * 0.9) = 18 → sorted[18] = 19
+  });
+
+  it('handles a single-sample run without crashing', () => {
+    const b = summarizeTimings([42]);
+    expect(b.samples).toBe(1);
+    expect(b.firstCallMs).toBe(42);
+    // With no warm samples these degrade to 0.
+    expect(b.warmMinMs).toBe(0);
+    expect(b.warmP50Ms).toBe(0);
   });
 });

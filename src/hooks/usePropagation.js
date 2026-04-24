@@ -74,6 +74,17 @@ export const usePropagation = (deLocation, dxLocation, propagationConfig = {}) =
           luf: rest?.luf,
           distance: rest?.distance,
         });
+        // Single-line benchmark dump for Doug / field validators — searchable
+        // for "[p533 benchmark]" in the console. Non-DEV builds still emit it
+        // since the whole point of B5c is collecting field timing data.
+        if (wasm.benchmark) {
+          const b = wasm.benchmark;
+          console.info(
+            `[p533 benchmark] total=${b.totalMs}ms first=${b.firstCallMs}ms ` +
+              `warm p50=${b.warmP50Ms}ms p90=${b.warmP90Ms}ms ` +
+              `(min ${b.warmMinMs} / max ${b.warmMaxMs}, n=${b.samples - 1})`,
+          );
+        }
       } catch (err) {
         // Expected when /wasm/p533.mjs is missing (self-hoster) or the 10 MB
         // coefficient download fails — keep the REST data we already rendered.
