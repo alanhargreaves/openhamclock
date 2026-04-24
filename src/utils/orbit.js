@@ -26,7 +26,6 @@ SOFTWARE.
 
 import * as satellitejs from 'satellite.js';
 
-const enableLogging = false; // Set to true to enable detailed logging of the pass calculation process
 const deg2rad = Math.PI / 180;
 const rad2deg = 180 / Math.PI;
 
@@ -115,20 +114,12 @@ export default class Orbit {
       }
       const lookAngles = satellitejs.ecfToLookAngles(groundStation, positionEcf);
       const elevation = lookAngles.elevation / deg2rad;
-      if (enableLogging) {
-        let logMessage = '[Satellite] **********************';
-        logMessage += '\n Date: ' + date.toISOString();
-        logMessage += '\n Elevation (calculated): ' + elevation.toFixed(2) + ' degrees';
-      }
 
       if (elevation > minElevation) {
         // satellite is above minimum elevation, part of a pass
 
         if (!ongoingPass) {
           // Start of new pass
-          if (enableLogging) {
-            logMessage += '\n NEW PASS STARTED';
-          }
           pass = {
             name: this.name,
             start: date.getTime(),
@@ -140,9 +131,6 @@ export default class Orbit {
           ongoingPass = true;
         } else if (elevation > pass.maxElevation) {
           // Ongoing pass, update max elevation and apex time
-          if (enableLogging) {
-            logMessage += '\n RISING Ongoing pass, new max elevation: ' + elevation.toFixed(2) + ' degrees';
-          }
           pass.maxElevation = elevation;
           pass.apex = date.getTime();
           pass.azimuthApex = lookAngles.azimuth;
@@ -150,14 +138,8 @@ export default class Orbit {
 
         // advance 5s in next iteration
         date.setSeconds(date.getSeconds() + 5);
-        if (enableLogging) {
-          logMessage += '\n Advancing time by 5 seconds for next calculation';
-        }
       } else if (ongoingPass) {
         // End of pass
-        if (enableLogging) {
-          logMessage += '\n END OF PASS';
-        }
         pass.end = date.getTime();
         pass.duration = pass.end - pass.start;
         pass.azimuthEnd = lookAngles.azimuth;
@@ -171,9 +153,6 @@ export default class Orbit {
         ongoingPass = false;
         lastElevation = null;
         date.setMinutes(date.getMinutes() + this.orbitalPeriod * 0.5); // skip ahead to next potential pass
-        if (enableLogging) {
-          logMessage += '\n Advancing by half the orbital period';
-        }
       } else {
         // satellite is below minimum elevation and not currently in a pass
         const deltaElevation = elevation - (lastElevation || elevation); // if lastElevation is null then delta will be zero, which will not trigger the descending logic
@@ -182,38 +161,16 @@ export default class Orbit {
           // deltaElevation is negative, satellite is descending, skip ahead to speed up calculation
           lastElevation = null;
           date.setMinutes(date.getMinutes() + this.orbitalPeriod * 0.5); // skip ahead to next potential pass
-          if (enableLogging) {
-            logMessage += '\n Delta is negative, advancing time by half orbital period';
-          }
         } else if (elevation < -60) {
           date.setMinutes(date.getMinutes() + 15);
-          if (enableLogging) {
-            logMessage += '\n Elevation is very low, advancing time by 15 minutes';
-          }
         } else if (elevation < -30) {
           date.setMinutes(date.getMinutes() + 5);
-          if (enableLogging) {
-            logMessage += '\n Elevation is low, advancing time by 5 minutes';
-          }
         } else if (elevation < -10) {
           date.setMinutes(date.getMinutes() + 1);
-          if (enableLogging) {
-            logMessage += '\n Elevation is slightly lower than minimum elevation, advancing time by 1 minute';
-          }
         } else if (elevation < minElevation - 3) {
           date.setSeconds(date.getSeconds() + 30);
-          if (enableLogging) {
-            logMessage += '\n Elevation is close to minimum elevation, advancing time by 30 seconds';
-          }
         } else {
           date.setSeconds(date.getSeconds() + 5);
-          if (enableLogging) {
-            logMessage += '\n Advancing time by 5 seconds';
-          }
-        }
-
-        if (enableLogging) {
-          console.log(logMessage);
         }
       }
     }
