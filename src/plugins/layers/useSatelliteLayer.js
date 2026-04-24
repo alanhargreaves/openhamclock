@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import * as satellite from 'satellite.js';
 import { addMinimizeToggle } from './addMinimizeToggle.js';
 import { replicatePoint, replicatePath } from '../../utils/geo.js';
+import Orbit from '../../utils/orbit.js';
 
 export const metadata = {
   id: 'satellites',
@@ -17,11 +17,20 @@ export const metadata = {
     tailTimeMins: 15,
     showTracks: true,
     showFootprints: true,
+    location: {
+      lat: 0.0,
+      lon: 0.0,
+      stationAlt: 100,
+    },
+    satellite: {
+      minElev: 5,
+    },
   },
 };
 
 export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, config, allUnits }) => {
   const layerGroupRef = useRef(null);
+  const winListenersRef = useRef(null); // Store window event listener references for cleanup
   const { t } = useTranslation();
 
   // 1. Multi-select state (Wipes on browser close)
@@ -42,66 +51,16 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
     setSelectedSats((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
   };
 
-  // Bridge to the popup window HTML
-  useEffect(() => {
-    window.toggleSat = (name) => toggleSatellite(name);
-  }, [selectedSats]);
-
   const fetchSatellites = async () => {
     try {
       const response = await fetch('/api/satellites/tle');
       const data = await response.json();
 
-      const observerGd = {
-        latitude: satellite.degreesToRadians(config?.lat ?? 0.0),
-        longitude: satellite.degreesToRadians(config?.lon ?? 0.0),
-        height: (config?.stationAlt ?? 100) / 1000, // above sea level [km], stationAlt is [m], defaults to 100m
-      };
-
       const satArray = Object.keys(data).map((name) => {
         const satData = data[name];
-        let isVisible = false;
-        let az = 0,
-          el = 0,
-          range = 0;
-        const leadTrack = [];
-
-        if (satData.line1 && satData.line2) {
-          const satrec = satellite.twoline2satrec(satData.line1, satData.line2);
-          const now = new Date();
-          const positionAndVelocity = satellite.propagate(satrec, now);
-          const gmst = satellite.gstime(now);
-
-          if (positionAndVelocity.position) {
-            const positionEcf = satellite.eciToEcf(positionAndVelocity.position, gmst);
-            const lookAngles = satellite.ecfToLookAngles(observerGd, positionEcf);
-
-            az = lookAngles.azimuth * (180 / Math.PI);
-            el = lookAngles.elevation * (180 / Math.PI);
-            range = lookAngles.rangeSat;
-            isVisible = el >= (config?.satellite?.minElev ?? 5.0); // visible only if above minimum elevation
-          }
-
-          const minutesToPredict = config?.leadTimeMins || 45;
-          for (let i = 0; i <= minutesToPredict; i += 2) {
-            const futureTime = new Date(now.getTime() + i * 60000);
-            const posVel = satellite.propagate(satrec, futureTime);
-            if (posVel.position) {
-              const fGmst = satellite.gstime(futureTime);
-              const geodetic = satellite.eciToGeodetic(posVel.position, fGmst);
-              leadTrack.push([satellite.degreesLat(geodetic.latitude), satellite.degreesLong(geodetic.longitude)]);
-            }
-          }
-        }
-
         return {
           ...satData,
           name,
-          visible: isVisible,
-          azimuth: az,
-          elevation: el,
-          range: range,
-          leadTrack,
         };
       });
 
@@ -117,7 +76,22 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
     let win = container.querySelector(`#${winId}`);
 
     if (!selectedSats || selectedSats.length === 0) {
-      if (win) win.remove();
+      if (win) {
+        // Clean up listeners before removing window
+        if (winListenersRef.current) {
+          const { mouseDownHandler, mouseMoveHandler, mouseUpHandler, wheelHandler, propagationHandler } =
+            winListenersRef.current;
+          win.removeEventListener('mousedown', mouseDownHandler);
+          window.removeEventListener('mousemove', mouseMoveHandler, { capture: true });
+          window.removeEventListener('mouseup', mouseUpHandler, { capture: true });
+          win.removeEventListener('wheel', wheelHandler);
+          win.removeEventListener('mousemove', propagationHandler.mousemove);
+          win.removeEventListener('mousedown', propagationHandler.mousedown);
+          win.removeEventListener('mouseup', propagationHandler.mouseup);
+          winListenersRef.current = null;
+        }
+        win.remove();
+      }
       return;
     }
 
@@ -145,13 +119,11 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
 
       let isDragging = false;
 
-      // This panel predates the shared Leaflet control widgets and is positioned
-      // relative to the map container using top/right, so it keeps its own drag
-      // logic instead of makeDraggable()'s fixed-position viewport model.
-      win.onmousedown = (e) => {
+      const handleMouseDown = (e) => {
         if (e.button !== 0) return;
         if (!e.target.closest('.sat-data-window-title')) return;
         if (e.target.closest('button')) return;
+
         isDragging = true;
         win.style.cursor = 'move';
         if (map.dragging) map.dragging.disable();
@@ -159,25 +131,65 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
         e.stopPropagation();
       };
 
-      window.onmousemove = (e) => {
+      const handleMouseMove = (e) => {
         if (!isDragging) return;
+
         const rect = container.getBoundingClientRect();
         const x = rect.right - e.clientX;
         const y = e.clientY - rect.top;
+
         win.style.right = `${x - 10}px`;
         win.style.top = `${y - 10}px`;
       };
 
-      window.onmouseup = () => {
-        if (isDragging) {
-          isDragging = false;
-          win.style.cursor = 'default';
-          if (map.dragging) map.dragging.enable();
-          setWinPos({
-            top: parseInt(win.style.top),
-            right: parseInt(win.style.right),
-          });
-        }
+      const handleMouseUp = () => {
+        if (!isDragging) return;
+
+        isDragging = false;
+        win.style.cursor = 'default';
+        if (map.dragging) map.dragging.enable();
+
+        setWinPos({
+          top: parseInt(win.style.top),
+          right: parseInt(win.style.right),
+        });
+      };
+
+      win.addEventListener('mousedown', handleMouseDown);
+      window.addEventListener('mousemove', handleMouseMove, { capture: true });
+      window.addEventListener('mouseup', handleMouseUp, { capture: true });
+
+      // Named functions for preventing map event capture
+      const handleWheelPropagation = (e) => {
+        e.stopPropagation();
+      };
+      const handleMouseDownPropagation = (e) => {
+        e.stopPropagation();
+      };
+      const handleMouseMovePropagation = (e) => {
+        e.stopPropagation();
+      };
+      const handleMouseUpPropagation = (e) => {
+        e.stopPropagation();
+      };
+
+      // Prevent map from capturing events on the window
+      win.addEventListener('wheel', handleWheelPropagation);
+      win.addEventListener('mousedown', handleMouseDownPropagation);
+      win.addEventListener('mousemove', handleMouseMovePropagation);
+      win.addEventListener('mouseup', handleMouseUpPropagation);
+
+      // Store all listener references for cleanup
+      winListenersRef.current = {
+        mouseDownHandler: handleMouseDown,
+        mouseMoveHandler: handleMouseMove,
+        mouseUpHandler: handleMouseUp,
+        wheelHandler: handleWheelPropagation,
+        propagationHandler: {
+          mousedown: handleMouseDownPropagation,
+          mousemove: handleMouseMovePropagation,
+          mouseup: handleMouseUpPropagation,
+        },
       };
     }
 
@@ -185,9 +197,6 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
     win.style.right = `${winPos.right}px`;
 
     const activeSats = satellites.filter((s) => selectedSats.includes(s.name));
-
-    // Expose minimize toggle so the inline onclick can reach it
-    window.__satWinToggleMinimize = () => setWinMinimized((prev) => !prev);
 
     const titleBar = `
       <div class="sat-data-window-title" style="display:flex; justify-content:space-between; align-items:center;
@@ -206,24 +215,6 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
       </div>
     `;
 
-    if (winMinimized) {
-      win.style.maxHeight = '';
-      win.style.overflowY = 'hidden';
-      win.innerHTML = `${titleBar}<div class="sat-data-window-content"></div>`;
-      addMinimizeToggle(win, 'sat-data-window', {
-        contentClassName: 'sat-data-window-content',
-        buttonClassName: 'sat-data-window-minimize',
-        getIsMinimized: () => winMinimized,
-        onToggle: setWinMinimized,
-        persist: false,
-        manageButtonEvents: false,
-      });
-      return;
-    }
-
-    win.style.maxHeight = 'calc(100% - 80px)';
-    win.style.overflowY = 'auto';
-
     const clearAllBtn = `
       <div style="margin: 10px 12px 8px; display: flex; flex-direction: column; align-items: center; gap: 5px;">
         <button onclick="sessionStorage.removeItem('selected_satellites'); window.location.reload();"
@@ -234,6 +225,24 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
         <span style="font-size: 9px; color: var(--text-muted);">${t('station.settings.satellites.dragTitle')}</span>
       </div>
     `;
+
+    if (winMinimized) {
+      win.style.maxHeight = '';
+      win.style.overflowY = 'hidden';
+      win.innerHTML = `${titleBar}<div class="sat-data-window-content"></div>`;
+      addMinimizeToggle(win, 'sat-data-window', {
+        contentClassName: 'sat-data-window-content',
+        buttonClassName: 'sat-data-window-minimize',
+        getIsMinimized: () => winMinimized,
+        onToggle: setWinMinimized,
+        persist: false,
+        manageButtonEvents: true,
+      });
+      return;
+    }
+
+    win.style.maxHeight = 'calc(100% - 80px)';
+    win.style.overflowY = 'auto';
 
     win.innerHTML =
       titleBar +
@@ -258,12 +267,18 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
           let altitudeStr = `${altitude.toLocaleString()} ${distanceUnitsStr}`;
 
           return `
-        <div class="sat-card" style="border-bottom: 1px solid var(--border-color); margin-bottom: 10px; padding-bottom: 8px;">
+          <div class="sat-card" style="border-bottom: 1px solid var(--border-color); margin-bottom: 10px; padding-bottom: 8px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
             <strong style="color: var(--text-primary); font-size: 14px;">${sat.name}</strong>
-            <button onclick="window.toggleSat('${sat.name}')" 
-                    style="background:none; border:none; color: var(--accent-red); cursor:pointer; font-weight:bold; font-size:20px; padding: 0 5px;">✕</button>
+            <button
+              class="sat-toggle"
+              data-action="toggle-satellite"
+              data-sat-name="${sat.name}"
+              style="background:none; border:none; color: var(--accent-red); cursor:pointer; font-weight:bold; font-size:20px; padding: 0 5px;">
+              ✕
+            </button>
           </div>
+
           <table style="width:100%; font-size:11px; border-collapse: collapse;">
 
             <!-- section 1: satellite position and motion -->
@@ -323,10 +338,31 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
             ${sat.uplink ? `<tr style="background-color: var(--bg-secondary); color: var(--text-muted);"><td style="padding: 0 2px;">${t('station.settings.satellites.uplink')}:</td><td align="right" style="padding: 0 2px;">${sat.uplink}</td></tr>` : ''}
             ${sat.tone ? `<tr style="background-color: var(--bg-secondary); color: var(--text-muted);"><td style="padding: 0 2px;">${t('station.settings.satellites.tone')}:</td><td align="right" style="padding: 0 2px;">${sat.tone}</td></tr>` : ''}
 
+            <tr><td colSpan="2">
+              <button
+                class="sat-open-predict"
+                data-action="open-predict"
+                data-sat-name="${sat.name}"
+                data-tle1="${sat.tle1}"
+                data-tle2="${sat.tle2}"
+                style="
+                  width: 100%;
+                  padding: 2px 0;
+                  min-height: 0;
+                  background: var(--bg-primary);
+                  border: 1px solid var(--accent-red);
+                  border-radius: 3px;
+                  color: var(--accent-red);
+                  font-size: 10px;
+                  font-weight: bold;
+                  text-align: center;
+                  cursor: pointer;">PREDICT</button>
+            </td></tr>
+
             </table>
 
             ${sat.notes ? `<div style="font-size:9px; color: var(--text-muted); margin-top:4px; font-style:italic;">${sat.notes}</div>` : ''}
-        </div>
+          </div>
       `;
         })
         .join('') +
@@ -338,7 +374,7 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
       getIsMinimized: () => winMinimized,
       onToggle: setWinMinimized,
       persist: false,
-      manageButtonEvents: false,
+      manageButtonEvents: true,
     });
   };
 
@@ -458,13 +494,319 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
     } else {
       layerGroupRef.current.clearLayers();
       const win = document.getElementById('sat-data-window');
-      if (win) win.remove();
+      if (win) {
+        // Clean up listeners before removing window
+        if (winListenersRef.current) {
+          const { mouseDownHandler, mouseMoveHandler, mouseUpHandler, wheelHandler, propagationHandler } =
+            winListenersRef.current;
+          win.removeEventListener('mousedown', mouseDownHandler);
+          window.removeEventListener('mousemove', mouseMoveHandler, { capture: true });
+          window.removeEventListener('mouseup', mouseUpHandler, { capture: true });
+          win.removeEventListener('wheel', wheelHandler);
+          win.removeEventListener('mousemove', propagationHandler.mousemove);
+          win.removeEventListener('mousedown', propagationHandler.mousedown);
+          win.removeEventListener('mouseup', propagationHandler.mouseup);
+          winListenersRef.current = null;
+        }
+        win.remove();
+      }
     }
   }, [enabled, map, config]);
 
   useEffect(() => {
     if (enabled) renderSatellites();
   }, [satellites, selectedSats, allUnits, opacity, config, winMinimized]);
+
+  // Delegated click handling for window buttons
+  useEffect(() => {
+    if (!map) return;
+    const container = map.getContainer();
+
+    const handleClick = (e) => {
+      const actionEl = e.target.closest('[data-action]');
+      if (!actionEl || !container.contains(actionEl)) return;
+
+      const action = actionEl.dataset.action;
+
+      if (action === 'open-predict') {
+        e.stopPropagation();
+        e.preventDefault();
+        const name = actionEl.dataset.satName;
+        const tle1 = actionEl.dataset.tle1;
+        const tle2 = actionEl.dataset.tle2;
+        if (name && tle1 && tle2 && window.openSatellitePredict) {
+          window.openSatellitePredict(name, tle1, tle2);
+        }
+        return;
+      }
+
+      if (action === 'clear-all-satellites') {
+        e.stopPropagation();
+        e.preventDefault();
+        sessionStorage.removeItem('selected_satellites');
+        window.location.reload();
+        return;
+      }
+
+      if (action === 'toggle-satellite') {
+        e.stopPropagation();
+        e.preventDefault();
+        const name = actionEl.dataset.satName;
+        if (name) toggleSatellite(name);
+        return;
+      }
+    };
+
+    container.addEventListener('click', handleClick, true); // Use capture phase
+    return () => container.removeEventListener('click', handleClick, true);
+  }, [map, toggleSatellite, satellites]);
+
+  /********************************************************************************************/
+  // Expose satellite prediction panel function
+  useEffect(() => {
+    const openSatellitePredict = (satName, tle1, tle2) => {
+      if (!satName || !satellites) return;
+
+      // Find the satellite data
+      const sat = satellites.find((s) => s.name === satName);
+      if (!sat) {
+        alert(`Satellite ${satName} not found`);
+        return;
+      }
+
+      const orbit = new Orbit(sat.name, `${sat.name}\n${tle1}\n${tle2}`);
+      orbit.error && console.warn('Satellite orbit error:', orbit.error);
+
+      const groundStation = {
+        latitude: config?.location?.lat || 0.0,
+        longitude: config?.location?.lon || 0.0,
+        height: config?.location?.stationAlt || 100, // above sea level [m]
+      };
+
+      const startDate = new Date(); // from now
+      const endDate = new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000); // until 7 days from now
+      const minElevation = config?.satellite?.minElev || 5;
+      const maxPasses = 25;
+      const passes = orbit.computePassesElevation(groundStation, startDate, endDate, minElevation, maxPasses);
+
+      const modalId = 'satellite-predict-modal';
+
+      // Function to generate modal content
+      const generateModalContent = (currentPasses) => {
+        return `
+          <div style="text-align: center; margin-bottom: 16px; border-bottom: 2px solid var(--accent-red); padding-bottom: 12px;">
+            <h2 style="margin: 0; color: var(--accent-cyan); font-size: 24px;">🛰 ${satName}</h2>
+            <p style="margin: 8px 0 0 0; color: var(--text-muted); font-size: 12px;">Satellite Prediction Details</p>
+          </div>
+
+          <div style="margin-top: 16px;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid var(--text-muted);">
+              <thead>
+                <tr style="background: var(--bg-secondary); padding: 2px; border-bottom: 2px solid var(--text-muted);">
+                  <th colspan="3" style="border-right: 3px double var(--text-muted); padding: 4px;">Start</th>
+                  <th colspan="3" style="border-right: 3px double var(--text-muted); padding: 4px;">Apex</th>
+                  <th colspan="2" style="border-right: 3px double var(--text-muted); padding: 4px;">End</th>
+                  <th style="padding: 4px;">Duration</th>
+                </tr>
+                <tr style="background: var(--bg-secondary); padding: 2px; border-bottom: 2px solid var(--text-muted);">
+                  <th style="border-right: 1px solid var(--text-muted); padding: 4px;">Local Time</th>
+                  <th style="border-right: 1px solid var(--text-muted); padding: 4px;">From Now</th>
+                  <th style="border-right: 3px double var(--text-muted); padding: 4px;">Az [°]</th>
+                  <th style="border-right: 1px solid var(--text-muted); padding: 4px;">Local Time</th>
+                  <th style="border-right: 1px solid var(--text-muted); padding: 4px;">Az [°]</th>
+                  <th style="border-right: 3px double var(--text-muted); padding: 4px;">El [°]</th>
+                  <th style="border-right: 1px solid var(--text-muted); padding: 4px;">Local Time</th>
+                  <th style="border-right: 3px double var(--text-muted); padding: 4px;">Az [°]</th>
+                  <th style="padding: 4px;">[mins]</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${currentPasses
+                  .map((pass) => {
+                    const azimuthStart = pass.azimuthStart.toFixed(0);
+                    const azimuthApex = pass.azimuthApex.toFixed(0);
+                    const azimuthEnd = pass.azimuthEnd.toFixed(0);
+                    const maxElevation = pass.maxElevation.toFixed(0);
+                    const durationMins = (pass.duration / 60000).toFixed(1);
+                    const formatLocalTime = (ts) => {
+                      const d = new Date(ts);
+                      const pad = (n) => String(n).padStart(2, '0');
+                      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+                    };
+                    const startTime = formatLocalTime(pass.start);
+                    const apexTime = formatLocalTime(pass.apex);
+                    const endTime = formatLocalTime(pass.end);
+                    const secsFromNow = Math.floor((pass.start - new Date()) / 1000);
+
+                    const isVisibleNow = secsFromNow <= 0 && new Date() < new Date(pass.end);
+                    const isPast = secsFromNow <= 0 && new Date() > new Date(pass.end);
+
+                    if (isPast) {
+                      return ``; // skip past passes
+                    }
+
+                    const timeFromNow = isVisibleNow
+                      ? 'VISIBLE'
+                      : secsFromNow > 3600
+                        ? `+${String(Math.floor(secsFromNow / 3600)).padStart(2, '0')}:${String(Math.floor((secsFromNow % 3600) / 60)).padStart(2, '0')}:${String(secsFromNow % 60).padStart(2, '0')}`
+                        : secsFromNow > 60
+                          ? `+00:${String(Math.floor(secsFromNow / 60)).padStart(2, '0')}:${String(secsFromNow % 60).padStart(2, '0')}`
+                          : `+00:00:${String(secsFromNow).padStart(2, '0')}`;
+
+                    return `<tr style="background: var(--bg-tertiary); text-align: center; border-bottom: 1px solid var(--text-muted);">
+                    <td style="border-right: 1px solid var(--text-muted); padding: 4px;">${startTime}</td>
+                    <td style="border-right: 1px solid var(--text-muted); padding: 4px;">${timeFromNow}</td>
+                    <td style="border-right: 3px double var(--text-muted); padding: 4px;">${azimuthStart}</td>
+                    <td style="border-right: 1px solid var(--text-muted); padding: 4px;">${apexTime}</td>
+                    <td style="border-right: 1px solid var(--text-muted); padding: 4px;">${azimuthApex}</td>
+                    <td style="border-right: 3px double var(--text-muted); padding: 4px;">${maxElevation}</td>
+                    <td style="border-right: 1px solid var(--text-muted); padding: 4px;">${endTime}</td>
+                    <td style="border-right: 3px double var(--text-muted); padding: 4px;">${azimuthEnd}</td>
+                    <td style="padding: 4px;">${durationMins}</td>
+                  </tr>`;
+                  })
+                  .join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <div style="text-align: center; margin-top: 16px;">
+            <button
+              class="sat-predict-close"
+              data-action="close-predict-modal"
+              style="
+                background: var(--accent-cyan);
+                border: 1px solid var(--accent-cyan);
+                color: var(--bg-primary);
+                padding: 8px 16px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: bold;
+                font-size: 12px;
+              ">
+              Close
+            </button>
+          </div>
+        `;
+      };
+
+      // Create a modal overlay
+      let modal = document.getElementById(modalId);
+
+      if (modal) {
+        modal.remove();
+      }
+
+      // Create modal elements
+      modal = document.createElement('div');
+      modal.id = modalId;
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--bg-primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+      `;
+
+      const content = document.createElement('div');
+      content.style.cssText = `
+        background: var(--bg-primary);
+        border: 2px solid var(--accent-red);
+        border-radius: 8px;
+        padding: 20px;
+        min-width: 50vw;
+        max-width: 95vw;
+        min-height: 25vh;
+        max-height: 90vh;
+        overflow-y: auto;
+        overflow-x: auto;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        font-family: 'JetBrains Mono', monospace;
+        color: var(--text-primary);
+      `;
+
+      content.innerHTML = generateModalContent(passes);
+
+      modal.appendChild(content);
+      document.body.appendChild(modal);
+
+      // Named function so it can be removed later
+      const handleModalClick = (e) => {
+        if (e.target === modal) {
+          closeModal();
+        }
+      };
+
+      const currentStartDate = new Date();
+      const currentEndDate = new Date(currentStartDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const currentPasses = orbit.computePassesElevation(
+        groundStation,
+        currentStartDate,
+        currentEndDate,
+        minElevation,
+        maxPasses,
+      );
+
+      // update modal every second, satellite data currentPasses is not updated unless modal is reopened,
+      // or if satellite layer is updated for instance if TLE data changes
+      const updatePasses = () => {
+        content.innerHTML = generateModalContent(currentPasses);
+      };
+
+      const closeModal = () => {
+        // Clean up all event listeners before removing modal
+        content.removeEventListener('click', handleContentClick);
+        modal.removeEventListener('click', handleModalClick);
+        document.removeEventListener('keydown', handleKeyDown);
+
+        modal.remove();
+        if (window.satellitePredictInterval) {
+          clearInterval(window.satellitePredictInterval);
+        }
+      };
+
+      // Use event delegation for close button so it works after HTML regeneration
+      const handleContentClick = (e) => {
+        if (e.target.matches('[data-action="close-predict-modal"]')) {
+          closeModal();
+        }
+      };
+
+      if (window.satellitePredictInterval) {
+        clearInterval(window.satellitePredictInterval);
+      }
+
+      window.satellitePredictInterval = setInterval(updatePasses, 1000); // one second
+
+      // Close on backdrop click
+      modal.addEventListener('click', handleModalClick);
+
+      // Close on Escape key
+      const handleKeyDown = (e) => {
+        if (e.key === 'Escape') {
+          closeModal();
+        }
+      };
+      document.addEventListener('keydown', handleKeyDown);
+
+      // Wire close button using event delegation (one listener for all updates)
+      content.addEventListener('click', handleContentClick);
+    };
+
+    // expose for other callers if needed
+    window.openSatellitePredict = openSatellitePredict;
+
+    // Cleanup: remove the global reference when effect re-runs or component unmounts
+    return () => {
+      delete window.openSatellitePredict;
+    };
+  }, [satellites, config]);
+  /********************************************************************************************/
 
   return null;
 };
