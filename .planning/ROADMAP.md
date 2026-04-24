@@ -3,6 +3,30 @@
 This file tracks internal / backlog items managed via the `/gsd:` workflow.
 The customer-facing roadmap lives at [/ROADMAP.md](../ROADMAP.md).
 
+## Milestone: v26.x polish
+
+### Phase 1: Weather load time — reduce time-to-first-weather for DX/DE
+
+**Goal:** Reduce perceived latency for DX/DE weather without breaking Open-Meteo rate-limit safety. Weather already fetches direct browser-to-Open-Meteo (no OHC proxy). Suspected client-side delays: 30s debounce in `src/hooks/useWeather.js:254`, 550ms hover delay in `src/components/CallsignWeatherOverlay.jsx:88`, exponential backoff on 429s (15s→300s in `useWeather.js:173`), and no batching of DE+DX fetches.
+**Requirements:** TBD
+**Depends on:** —
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 1 to break down)
+
+### Phase 2: DX news multi-source ticker
+
+**Goal:** Expand the DX news ticker from a single source (`dxnews.com`, scraped server-side in `server/routes/dxpeditions.js:282-349`) to multiple sources, rotate through them in the ticker, and filter out stale items so only fresh content appears.
+**Requirements:** TBD
+**Depends on:** —
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 2 to break down)
+
 ## Backlog
 
 ### Phase 999.1: Winlink Express CSV ingestion for EmComm dashboard (BACKLOG)
