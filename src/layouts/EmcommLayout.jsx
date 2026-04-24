@@ -246,9 +246,10 @@ export default function EmcommLayout(props) {
   // Aggregate Winlink rows by callsign, decode location from gridsquare,
   // compute distance from operator's QTH, sort nearest-first. ~4800 rows
   // collapse to ~1200 unique gateways — cheap to recompute per change.
-  const nearbyWinlinkGateways = useMemo(() => {
+  // Used for both the sidebar panel (top 25) and the map overlay (all).
+  const winlinkGateways = useMemo(() => {
     if (!winlinkRows.length) return [];
-    if (config.location?.lat == null || config.location?.lon == null) return [];
+    const haveQth = config.location?.lat != null && config.location?.lon != null;
     const byCall = new Map();
     for (const r of winlinkRows) {
       if (!r.callsign || !r.gridsquare) continue;
@@ -261,7 +262,7 @@ export default function EmcommLayout(props) {
           gridsquare: r.gridsquare,
           lat: pos.lat,
           lon: pos.lon,
-          distance: calculateDistance(config.location.lat, config.location.lon, pos.lat, pos.lon),
+          distance: haveQth ? calculateDistance(config.location.lat, config.location.lon, pos.lat, pos.lon) : null,
           channels: [],
           hasEmcomm: false,
         };
@@ -276,7 +277,9 @@ export default function EmcommLayout(props) {
       });
       if ((r.serviceCode || '').toUpperCase().includes('EMCOMM')) entry.hasEmcomm = true;
     }
-    return [...byCall.values()].sort((a, b) => a.distance - b.distance).slice(0, 50);
+    const list = [...byCall.values()];
+    if (haveQth) list.sort((a, b) => a.distance - b.distance);
+    return list;
   }, [winlinkRows, config.location]);
 
   // Sort alerts by severity
@@ -418,6 +421,48 @@ export default function EmcommLayout(props) {
       overlayLayersRef.current.push(marker);
     });
 
+    // Winlink gateway markers — match the panel data exactly. Closest 25 get
+    // a thin EMCOMM-aware ring; the rest are small mode-coloured dots so the
+    // dashboard shows full coverage without drowning out APRS/shelter pins.
+    winlinkGateways.forEach((gw, idx) => {
+      const channelsByFreq = gw.channels.slice().sort((a, b) => a.frequency - b.frequency);
+      const dominantMode = channelsByFreq[0]?.mode;
+      const color = winlinkModeColor(dominantMode);
+      const isNearby = idx < 25;
+      const marker = L.circleMarker([gw.lat, gw.lon], {
+        radius: isNearby ? 5 : 3,
+        color: gw.hasEmcomm ? '#ef4444' : color,
+        fillColor: color,
+        fillOpacity: isNearby ? 0.7 : 0.45,
+        weight: gw.hasEmcomm ? 2 : 1,
+      });
+      const channelRows = channelsByFreq
+        .slice(0, 6)
+        .map(
+          (c) =>
+            `<tr><td style="padding:1px 6px 1px 0;color:#aaa">${(c.frequency / 1e6).toFixed(3)}</td>` +
+            `<td style="padding:1px 6px 1px 0;color:${winlinkModeColor(c.mode)};font-weight:600">${esc(c.modeLabel)}</td>` +
+            `<td style="padding:1px 0;color:#888;font-size:9px">${esc(c.serviceCode)}</td></tr>`,
+        )
+        .join('');
+      const moreCount = channelsByFreq.length - 6;
+      const distanceLine =
+        gw.distance != null
+          ? `<br><span style="color:#888">${formatDistance(gw.distance, config.allUnits?.dist || 'imperial')} away</span>`
+          : '';
+      const popupHtml = `
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;min-width:180px">
+          <b style="color:#3b82f6">📬 ${esc(gw.callsign)}</b>
+          ${gw.hasEmcomm ? ' <span style="color:#ef4444;font-size:9px;font-weight:700">EMCOMM</span>' : ''}
+          <br><span style="color:#888;font-size:10px">Grid ${esc(gw.gridsquare)}</span>${distanceLine}
+          <table style="border-collapse:collapse;font-size:10px;margin-top:4px">${channelRows}</table>
+          ${moreCount > 0 ? `<div style="color:#666;font-size:9px;margin-top:3px">+${moreCount} more channel${moreCount === 1 ? '' : 's'}</div>` : ''}
+        </div>`;
+      marker.bindPopup(popupHtml);
+      marker.addTo(map);
+      overlayLayersRef.current.push(marker);
+    });
+
     return () => {
       overlayLayersRef.current.forEach((layer) => {
         try {
@@ -428,7 +473,7 @@ export default function EmcommLayout(props) {
       });
       overlayLayersRef.current = [];
     };
-  }, [config.location, alerts, shelters, emcommStationsWithDistance]);
+  }, [config.location, alerts, shelters, emcommStationsWithDistance, winlinkGateways]);
 
   // Click shelter to pan map
   const panToShelter = useCallback((shelter) => {
@@ -786,13 +831,13 @@ export default function EmcommLayout(props) {
           </PanelSection>
 
           {/* Winlink Gateways Panel */}
-          <PanelSection title="Nearby Winlink Gateways" count={nearbyWinlinkGateways.length} color="#3b82f6">
+          <PanelSection title="Nearby Winlink Gateways" count={winlinkGateways.length} color="#3b82f6">
             {!winlinkServerHasKey ? (
               <EmptyState text="Winlink API not configured on server" />
-            ) : nearbyWinlinkGateways.length === 0 ? (
+            ) : winlinkGateways.length === 0 ? (
               <EmptyState text={winlinkRows.length ? 'No gateways within range' : 'Loading gateways…'} />
             ) : (
-              nearbyWinlinkGateways.slice(0, 25).map((gw) => {
+              winlinkGateways.slice(0, 25).map((gw) => {
                 // Show up to 3 channels closest to the operator (sorted by freq);
                 // the rest are summarized as "+N more". Avoids tall rows when a
                 // single gateway publishes 9+ channels.
