@@ -95,9 +95,8 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
       return;
     }
 
-    const accentCyan = getComputedStyle(document.documentElement).getPropertyValue('--accent-cyan').trim();
-
     if (!win) {
+      const accentCyan = getComputedStyle(document.documentElement).getPropertyValue('--accent-cyan').trim();
       win = document.createElement('div');
       win.id = winId;
       win.className = 'sat-data-window leaflet-bar';
