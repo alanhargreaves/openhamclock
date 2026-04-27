@@ -437,24 +437,24 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
   // Create stats panel control
   useEffect(() => {
     if (!map || typeof L === 'undefined') {
-      console.log('[Lightning] Cannot create stats panel - map or Leaflet not available');
+      console.debug('[Lightning] Cannot create stats panel - map or Leaflet not available');
       return;
     }
     if (!enabled) {
-      console.log('[Lightning] Stats panel not created - plugin not enabled');
+      console.debug('[Lightning] Stats panel not created - plugin not enabled');
       return;
     }
     if (statsControl) {
-      console.log('[Lightning] Stats panel already created');
+      console.debug('[Lightning] Stats panel already created');
       return; // Already created
     }
 
-    console.log('[Lightning] Creating stats panel control...');
+    console.info('[Lightning] Creating stats panel control...');
 
     const StatsControl = L.Control.extend({
       options: { position: 'topright' },
       onAdd: function () {
-        console.log('[Lightning] StatsControl onAdd called');
+        console.debug('[Lightning] StatsControl onAdd called');
         const panelWrapper = L.DomUtil.create('div', 'panel-wrapper');
         const div = L.DomUtil.create('div', 'lightning-stats', panelWrapper);
 
@@ -467,21 +467,21 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
         L.DomEvent.disableClickPropagation(div);
         L.DomEvent.disableScrollPropagation(div);
 
-        console.log('[Lightning] Stats panel div created');
+        console.debug('[Lightning] Stats panel div created');
         return panelWrapper;
       },
     });
 
     const control = new StatsControl();
     map.addControl(control);
-    console.log('[Lightning] Stats control added to map');
+    console.debug('[Lightning] Stats control added to map');
     setStatsControl(control);
 
     // Make draggable and add minimize toggle after a short delay
     setTimeout(() => {
       const container = document.querySelector('.lightning-stats');
       if (container) {
-        console.log('[Lightning] Found stats panel container, making draggable...');
+        console.debug('[Lightning] Found stats panel container, making draggable...');
         // Apply saved position IMMEDIATELY before making draggable
         const saved = localStorage.getItem('lightning-stats-position');
         if (saved) {
@@ -492,7 +492,7 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
             container.style.left = left + 'px';
             container.style.right = 'auto';
             container.style.bottom = 'auto';
-            console.log('[Lightning] Applied saved position:', { top, left });
+            console.debug('[Lightning] Applied saved position:', { top, left });
           } catch (e) {
             console.error('[Lightning] Error applying saved position:', e);
           }
@@ -512,7 +512,7 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
     return () => {
       if (control && map) {
         try {
-          console.log('[Lightning] Removing stats control from map');
+          console.debug('[Lightning] Removing stats control from map');
           map.removeControl(control);
         } catch (e) {
           console.warn('[Lightning] Error removing stats control:', e);
@@ -544,7 +544,7 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
     const positiveStrikes = lightningData.filter((s) => s.polarity === 'positive').length;
     const negativeStrikes = total - positiveStrikes;
 
-    console.log('[Lightning] Stats panel updated:', { fresh, recent, total });
+    console.debug('[Lightning] Stats panel updated:', { fresh, recent, total });
 
     const contentHTML = `
       <table style="width: 100%; font-size: 11px;">
@@ -633,7 +633,7 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
 
   // Create proximity panel control (within radius of PROXIMITY_RADIUS_KM)
   useEffect(() => {
-    console.log(
+    console.debug(
       '[Lightning] Proximity effect triggered - enabled:',
       enabled,
       'map:',
@@ -643,19 +643,19 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
     );
 
     if (!map || typeof L === 'undefined') {
-      console.log('[Lightning] Proximity: No map or Leaflet');
+      console.debug('[Lightning] Proximity: No map or Leaflet');
       return;
     }
     if (!enabled) {
-      console.log('[Lightning] Proximity: Not enabled');
+      console.debug('[Lightning] Proximity: Not enabled');
       return;
     }
     if (proximityControlRef.current) {
-      console.log('[Lightning] Proximity: Already exists, skipping');
+      console.debug('[Lightning] Proximity: Already exists, skipping');
       return; // Already created
     }
 
-    console.log('[Lightning] Proximity: Getting station config from localStorage...');
+    console.debug('[Lightning] Proximity: Getting station config from localStorage...');
 
     // Get config from localStorage directly (more reliable than window.hamclockConfig)
     let config;
@@ -663,11 +663,11 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
       const stored = localStorage.getItem('openhamclock_config');
       if (stored) {
         config = JSON.parse(stored);
-        console.log('[Lightning] Proximity: Config loaded from localStorage');
+        console.info('[Lightning] Proximity: Config loaded from localStorage');
       } else {
-        console.log('[Lightning] Proximity: No config in localStorage, setting retry timer');
+        console.debug('[Lightning] Proximity: No config in localStorage, setting retry timer');
         const retryTimer = setTimeout(() => {
-          console.log('[Lightning] Proximity: Retry timer fired, triggering re-render');
+          console.debug('[Lightning] Proximity: Retry timer fired, triggering re-render');
           setLightningData((prev) => [...prev]); // Trigger re-render
         }, 2000);
         return () => clearTimeout(retryTimer);
@@ -680,14 +680,14 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
     const stationLat = config.location?.lat ?? config.latitude;
     const stationLon = config.location?.lon ?? config.longitude;
 
-    console.log('[Lightning] Proximity: Station location:', { stationLat, stationLon });
+    console.debug('[Lightning] Proximity: Station location:', { stationLat, stationLon });
 
     if (!Number.isFinite(stationLat) || !Number.isFinite(stationLon)) {
-      console.log('[Lightning] Proximity: No station location - aborting');
+      console.warn('[Lightning] Proximity: No station location - aborting');
       return;
     }
 
-    console.log('[Lightning] Proximity: ALL CHECKS PASSED - Creating panel now!');
+    console.debug('[Lightning] Proximity: ALL CHECKS PASSED - Creating panel now!');
 
     const ProximityControl = L.Control.extend({
       options: { position: 'bottomright' },
@@ -708,22 +708,22 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
     });
 
     const control = new ProximityControl();
-    console.log('[Lightning] Proximity: ProximityControl instance created');
+    console.debug('[Lightning] Proximity: ProximityControl instance created');
     map.addControl(control);
-    console.log('[Lightning] Proximity: Control added to map');
+    console.debug('[Lightning] Proximity: Control added to map');
 
     // Make draggable and add minimize toggle - retry until found
     let retries = 0;
     const maxRetries = 20; // Try for up to 2 seconds
     const retryInterval = setInterval(() => {
       retries++;
-      console.log(
+      console.debug(
         `[Lightning] Proximity: Looking for .lightning-proximity container... (attempt ${retries}/${maxRetries})`,
       );
       const container = document.querySelector('.lightning-proximity');
       if (container) {
         clearInterval(retryInterval);
-        console.log('[Lightning] Proximity: Container found! Making draggable...');
+        console.debug('[Lightning] Proximity: Container found! Making draggable...');
 
         // Default to CENTER of screen (not corner!)
         container.style.position = 'fixed';
@@ -733,7 +733,7 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
         container.style.bottom = 'auto';
         container.style.zIndex = '1001'; // Ensure it's on top
 
-        console.log('[Lightning] Proximity: Panel positioned at center of screen');
+        console.debug('[Lightning] Proximity: Panel positioned at center of screen');
 
         // Try to load saved position (but validate it's on-screen)
         const saved = localStorage.getItem('lightning-proximity-position');
@@ -749,7 +749,7 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
               container.style.left = data.leftPercent + '%';
               container.style.transform = 'none';
               positionLoaded = true;
-              console.log('[Lightning] Proximity: Applied saved position (percentage):', {
+              console.debug('[Lightning] Proximity: Applied saved position (percentage):', {
                 topPercent: data.topPercent,
                 leftPercent: data.leftPercent,
               });
@@ -767,9 +767,9 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
                 container.style.left = leftPercent + '%';
                 container.style.transform = 'none';
                 positionLoaded = true;
-                console.log('[Lightning] Proximity: Converted pixel to percentage:', { topPercent, leftPercent });
+                console.debug('[Lightning] Proximity: Converted pixel to percentage:', { topPercent, leftPercent });
               } else {
-                console.log('[Lightning] Proximity: Saved pixel position off-screen, using default');
+                console.debug('[Lightning] Proximity: Saved pixel position off-screen, using default');
                 localStorage.removeItem('lightning-proximity-position');
               }
             }
@@ -788,7 +788,7 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
 
         // IMPORTANT: Set ref AFTER setup is complete
         proximityControlRef.current = control;
-        console.log('[Lightning] Proximity: Ref updated with control');
+        console.debug('[Lightning] Proximity: Ref updated with control');
       } else if (retries >= maxRetries) {
         clearInterval(retryInterval);
         console.error('[Lightning] Proximity: Container NOT FOUND after 20 retries!');

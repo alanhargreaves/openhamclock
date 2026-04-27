@@ -75,7 +75,7 @@ export function useLayer({ enabled = false, opacity = 0.9, map = null, lowMemory
     setMarkersRef([]);
 
     if (!enabled || earthquakeData.length === 0) {
-      console.log('Earthquakes: enabled=', enabled, 'data count=', earthquakeData.length);
+      console.log('[Earthquakes] enabled=', enabled, 'data count=', earthquakeData.length);
       return;
     }
 
