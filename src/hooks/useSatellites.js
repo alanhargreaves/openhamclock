@@ -224,7 +224,8 @@ export const useSatellites = (observerLocation, satelliteConfig) => {
         const endTimes = [];
         passes.forEach((pass) => {
           if (pass.start && pass.end) {
-            (startTimes.push(pass.start), endTimes.push(pass.end));
+            startTimes.push(pass.start);
+            endTimes.push(pass.end);
           }
         });
 
