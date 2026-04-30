@@ -219,7 +219,7 @@ export const useSatellites = (observerLocation, satelliteConfig) => {
         if (!line1 || !line2) return;
 
         const orbit = new Orbit(name, `${name}\n${line1}\n${line2}`);
-        orbit.error && console.warn('Satellite orbit error:', orbit.error);
+        if (orbit.error) console.warn('Satellite orbit error:', orbit.error);
         const passes = orbit.computePassesElevation(groundStation, startDate, endDate, minElevation, maxPasses);
 
         const startTimes = [];
