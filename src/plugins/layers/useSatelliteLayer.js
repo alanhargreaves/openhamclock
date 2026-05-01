@@ -51,6 +51,15 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
     setSelectedSats((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
   };
 
+  // Helper to format seconds from now into a string representation e.g. "00:12:34"
+  const formatSecsFromNow = (secsFromNow) => {
+    return secsFromNow > 3600
+      ? `${String(Math.floor(secsFromNow / 3600)).padStart(2, '0')}:${String(Math.floor((secsFromNow % 3600) / 60)).padStart(2, '0')}:${String(secsFromNow % 60).padStart(2, '0')}`
+      : secsFromNow > 60
+        ? `00:${String(Math.floor(secsFromNow / 60)).padStart(2, '0')}:${String(secsFromNow % 60).padStart(2, '0')}`
+        : `00:00:${String(secsFromNow).padStart(2, '0')}`;
+  };
+
   const fetchSatellites = async () => {
     try {
       const response = await fetch('/api/satellites/tle');
@@ -265,6 +274,19 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
           let altitude = Math.round(sat.alt * (isMetric ? 1 : km_to_miles_factor));
           let altitudeStr = `${altitude.toLocaleString()} ${distanceUnitsStr}`;
 
+          const nextPassStartTimes = sat.nextPassStartTimes || [];
+
+          let nextPassSecsFromNow = null;
+          let nextPassEndingSecsFromNow = null;
+          nextPassStartTimes.forEach((startTime, i) => {
+            const secsFromNow = Math.floor((new Date(startTime) - new Date()) / 1000);
+            const secsEndingFromNow = Math.floor((new Date(sat.nextPassEndTimes?.[i]) - new Date()) / 1000);
+            if (secsEndingFromNow > 0 && nextPassSecsFromNow === null) {
+              nextPassSecsFromNow = secsFromNow;
+              nextPassEndingSecsFromNow = secsEndingFromNow;
+            }
+          });
+
           const attrEscape = (s) =>
             String(s ?? '')
               .replace(/&/g, '&amp;')
@@ -340,6 +362,28 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
                 }
               </td>
             </tr>
+
+            ${
+              !isVisible && nextPassSecsFromNow !== null
+                ? `
+                <tr style="background-color: var(--bg-primary); color: var(--text-secondary);">
+                  <td style="padding: 0 2px;">Next Pass:</td>
+                  <td align="right" style="padding: 0 2px;">${formatSecsFromNow(nextPassSecsFromNow)}</td>
+                </tr>
+                `
+                : ``
+            }
+
+            ${
+              isVisible && nextPassEndingSecsFromNow !== null
+                ? `
+                <tr style="background-color: var(--accent-green); color: #000;">
+                  <td style="padding: 0 2px;">Ending:</td>
+                  <td align="right" style="padding: 0 2px;">${formatSecsFromNow(nextPassEndingSecsFromNow)}</td>
+                </tr>
+                `
+                : ``
+            }
 
             <!-- section 3: miscellaneous satellite information -->
             <tr style="background-color: var(--bg-secondary); color: var(--text-muted);">
@@ -573,7 +617,6 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
     return () => container.removeEventListener('click', handleClick, true);
   }, [map, toggleSatellite, satellites]);
 
-  /********************************************************************************************/
   // Expose satellite prediction panel function
   useEffect(() => {
     const openSatellitePredict = (satName, tle1, tle2) => {
@@ -660,10 +703,10 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
                     const timeFromNow = isVisibleNow
                       ? 'VISIBLE'
                       : secsFromNow > 3600
-                        ? `+${String(Math.floor(secsFromNow / 3600)).padStart(2, '0')}:${String(Math.floor((secsFromNow % 3600) / 60)).padStart(2, '0')}:${String(secsFromNow % 60).padStart(2, '0')}`
+                        ? `${String(Math.floor(secsFromNow / 3600)).padStart(2, '0')}:${String(Math.floor((secsFromNow % 3600) / 60)).padStart(2, '0')}:${String(secsFromNow % 60).padStart(2, '0')}`
                         : secsFromNow > 60
-                          ? `+00:${String(Math.floor(secsFromNow / 60)).padStart(2, '0')}:${String(secsFromNow % 60).padStart(2, '0')}`
-                          : `+00:00:${String(secsFromNow).padStart(2, '0')}`;
+                          ? `00:${String(Math.floor(secsFromNow / 60)).padStart(2, '0')}:${String(secsFromNow % 60).padStart(2, '0')}`
+                          : `00:00:${String(secsFromNow).padStart(2, '0')}`;
 
                     return `<tr style="background: var(--bg-tertiary); text-align: center; border-bottom: 1px solid var(--text-muted);">
                     <td style="border-right: 1px solid var(--text-muted); padding: 4px;">${startTime}</td>
@@ -818,7 +861,6 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
       delete window.openSatellitePredict;
     };
   }, [satellites, config]);
-  /********************************************************************************************/
 
   return null;
 };

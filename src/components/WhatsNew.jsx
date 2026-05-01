@@ -29,6 +29,64 @@ const ANNOUNCEMENT = {
 
 const CHANGELOG = [
   {
+    version: '26.3.0',
+    date: '2026-05-05',
+    heading:
+      'VOACAP-grade propagation predictions in your browser, Winlink gateway map layer, satellite next-pass countdown, multi-source DX news ticker, custom TX power, faster weather load, and a wave of bug fixes and security updates.',
+    features: [
+      {
+        icon: '📡',
+        title: 'VOACAP-Grade Propagation Predictions (P.533)',
+        desc: 'The Propagation panel now runs the real ITU-R P.533 model directly in your browser using a WebAssembly build of ITURHFProp v14.3 — the same engine VOACAP uses. A small badge in the panel header shows which engine produced the prediction: WASM (full P.533), REST (proppy fallback), or EST (heuristic). Predictions match VOACAP closely on the long-haul daylight paths where the old heuristic over-predicted (e.g. US→Kuwait 80m midday now correctly closed).',
+      },
+      {
+        icon: '🛰️',
+        title: 'Winlink Gateway Map Layer',
+        desc: 'A new map layer plugin shows 4,800+ Winlink gateways worldwide, color-coded by mode family. Draggable filter panel for band, service, and mode; press "k" to toggle. The EmComm layout adds a "Nearby Winlink Gateways" panel and rings the closest 25 gateways on the EmComm map. All powered by a server-side cache so the map renders instantly without hammering Winlink.',
+      },
+      {
+        icon: '🛰️',
+        title: 'Satellite Next Pass and Ending Countdown',
+        desc: 'When a satellite is below your minimum elevation, the info window now shows a "Next Pass:" countdown to its next visible window. When a satellite is currently visible, an "Ending:" countdown shows how much time you have before it drops below minimum elevation. Computed for the next 7 days and refreshed hourly. Also fixes an off-by-one in the orbit prediction that returned one extra pass.',
+      },
+      {
+        icon: '📰',
+        title: 'DX News from Three Sources',
+        desc: 'The DX News ticker now aggregates DXNews.com, DX-World RSS, and NG3K into a single 24-hour feed with callsign-based deduplication. The source label rotates to show where each item came from and links to the source homepage; clicking an item opens its article. NG3K contest-reminder noise that was leaking into entry titles is now cleaned out.',
+      },
+      {
+        icon: '⚡',
+        title: 'Custom TX Power in the Propagation Panel',
+        desc: 'The Propagation panel\'s VOACAP view now offers a "Custom…" power option that reveals an inline 0.1–2000 W input, so you can model anything from QRP to legal-limit and beyond without the four preset buttons. The Settings panel keeps the quick-pick buttons and shows a read-only hint when a custom value is in use.',
+      },
+      {
+        icon: '🌅',
+        title: 'Local Sunrise/Sunset in Propagation Panel',
+        desc: 'The day/night badge in the Propagation panel now uses your actual local sunrise and sunset instead of a fixed UTC 06:00–18:00 window. Sunrise/sunset times display in your local timezone with a label (UTC for DX). Polar night and midnight sun are handled gracefully.',
+      },
+      {
+        icon: '⛅',
+        title: 'Faster Weather Load',
+        desc: 'Weather data now appears within a couple of seconds of changing your location instead of waiting 30 seconds for a settle window. First fetch fires immediately on initial DE / first DX target. When Open-Meteo rate-limits, retries use a tighter backoff and the error UI now shows a "Get higher limits ↗" hint pointing to the optional API key escape hatch.',
+      },
+      {
+        icon: '🛰️',
+        title: 'Satellite TLE Failover Hardening',
+        desc: "When CelesTrak's egress IP is rate-limited (which has happened repeatedly), the per-satellite SatNOGS and CelesTrak-CATNR fallback now runs without an arbitrary cap when the primary group fetch returns nothing — exactly when the safety net needs to fire hardest. Empty TLE responses now also send Cache-Control: no-store so a CDN miss doesn't pin failure for an hour.",
+      },
+      {
+        icon: '🔒',
+        title: 'Security and Dependencies',
+        desc: 'rig-bridge migrated off the deprecated vercel/pkg (which had an unfixable LPE CVE) to the actively-maintained @yao-pkg/pkg fork; build targets bumped from Node 18 to Node 20. Root project picked up Vite 5→6.4 and Vitest 2→3.2, closing the remaining root CVEs. Postcss, path-to-regexp, and picomatch alerts cleared via npm audit fix.',
+      },
+      {
+        icon: '🐛',
+        title: 'Bug Fixes',
+        desc: 'DXFavorites dropdown no longer clips off-screen near viewport edges. Duplicate version label removed from the expanded left sidebar. MUF column is now read by name from ITURHFProp output instead of a fragile regex, restoring the MUF readout after the WASM swap. NG3K news ticker descriptions no longer contain stray "Check here for pericontest" text. ITURHFProp log noise on Staging silenced after one informational line.',
+      },
+    ],
+  },
+  {
     version: '26.2.1',
     date: '2026-04-06',
     heading:
