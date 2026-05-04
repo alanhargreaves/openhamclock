@@ -29,6 +29,39 @@ const ANNOUNCEMENT = {
 
 const CHANGELOG = [
   {
+    version: '26.3.1',
+    date: '2026-05-04',
+    heading:
+      'Server-side security and resource hardening from the May audit — Cloud Relay credential overhaul, presence-spoof protection, /api/health lockdown, Dial-A-Moon SSRF guard, and four cache memory leaks closed. Plus extended grid-locator utilities and a quieter browser console.',
+    features: [
+      {
+        icon: '🔒',
+        title: 'Rig Bridge Cloud Relay — Credential Overhaul',
+        desc: 'Cloud Relay credentials are no longer the raw RIG_BRIDGE_RELAY_KEY — each rig-bridge instance now gets a 256-bit per-session token persisted to data/relay-tokens.json so it survives server restarts and deploys without re-pairing. The /api/rig-bridge/status endpoint now validates the host (preventing SSRF) and connects to the resolved IP to defeat DNS-rebinding. Long-poll connections capped at 10 per IP. Installer-script URL injection closed with new URL() validation. Cloud-relay plugin bumped to v2.1.3 with TLS-aware loopback and proper error handlers so a TLS-enabled rig-bridge no longer crashes when commands arrive. Heads-up: existing Cloud Relay users will need to re-run Connect Cloud Relay in Settings → Rig Bridge once after this update to generate fresh credentials.',
+      },
+      {
+        icon: '🔒',
+        title: 'API Surface Hardening',
+        desc: "/api/presence now binds each callsign to its source IP and rate-limits to 1 update per minute — anyone spoofing a POST with someone else's callsign now gets locked out and the prior pin is removed. /api/health stops leaking endpoint counts, byte totals, MQTT broker state, in-flight upstream counters, and visitor history to unauthenticated requests; only basic status, version, and uptime remain visible without auth. The Dial-A-Moon image fetch now validates that the upstream-supplied URL parses as https://*.nasa.gov before following it, closing the SSRF vector noted in the audit.",
+      },
+      {
+        icon: '♻️',
+        title: 'Server Cache Memory Leaks Closed',
+        desc: 'The error-deduplication map (errorLogState), the EmComm caches (NWS alerts, FEMA open shelters, disaster declarations), and the MUF map cache all now have periodic purges and hard size caps (200 entries each, with TTL-based eviction). Previous behavior left them growing unbounded over weeks of uptime — invisible on small self-hosted instances, but a real slow bleed on the public site over time.',
+      },
+      {
+        icon: '📐',
+        title: 'Extended Maidenhead Grid Utilities',
+        desc: 'src/utils/geo.js now fully supports the Maidenhead standard at all four sizes — field (DM), square (DM12), subsquare (DM12kv), and extended-square (DM12kv99) — plus a new maidenheadToBoundingBox() helper for plugin authors who want to draw grid overlays at any precision. Backed by a new geo.test.js with 169 cases covering both hemispheres. The legacy parseGridSquare and calculateGridSquare entry points still work as thin wrappers, so existing plugins keep working unchanged.',
+      },
+      {
+        icon: '🧹',
+        title: 'Cleaner Browser Console',
+        desc: 'Routine per-event log lines across the client (lightning, WSPR, RBN, weather, wake-lock, version-check, POTA/SOTA/WWFF/WWBOTA spots, earthquake markers, plugin loader, layer states, etc.) moved from console.log to console.debug, with one-shot lifecycle messages going to console.info. Open DevTools at the default level and you now see signal instead of noise — verbose tracing is still available by toggling the Debug filter, or by appending ?log=debug to the URL.',
+      },
+    ],
+  },
+  {
     version: '26.3.0',
     date: '2026-05-05',
     heading:
