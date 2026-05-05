@@ -18,7 +18,7 @@ module.exports = function (app, ctx) {
     for (const [key, user] of activeUsers) {
       if (user.lastSeen < cutoff) activeUsers.delete(key);
     }
-  }, 60000);
+  }, 60 * 1000); // every minute
 
   // map of POST operation IP remote addresses, with periodic cleanup
   const remoteAddresses = new Map();
