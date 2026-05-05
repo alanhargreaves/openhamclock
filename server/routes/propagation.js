@@ -16,6 +16,7 @@ module.exports = function (app, ctx) {
     upstream,
     maidenheadToLatLon,
     n0nbhCache,
+    maintainCache,
   } = ctx;
 
   const {
@@ -596,35 +597,6 @@ module.exports = function (app, ctx) {
     solarCache = { sfi, ssn, kIndex, timestamp: now };
     return { sfi, ssn, kIndex };
   }
-
-  const maintainCache = (cache, ttlMs, maxEntries, label = 'Cache') => {
-    const now = Date.now();
-    let purged = 0;
-
-    // Remove stale entries
-    for (const key of Object.keys(cache)) {
-      if (now - cache[key].timestamp > ttlMs * 2) {
-        delete cache[key];
-        purged++;
-      }
-    }
-
-    // Enforce max size by evicting oldest
-    const remaining = Object.keys(cache);
-    if (remaining.length > maxEntries) {
-      remaining
-        .sort((a, b) => cache[a].timestamp - cache[b].timestamp)
-        .slice(0, remaining.length - maxEntries)
-        .forEach((key) => {
-          delete cache[key];
-          purged++;
-        });
-    }
-
-    if (purged > 0) {
-      logDebug(`[${label}] purged ${purged} stale entries, ${Object.keys(cache).length} remaining`);
-    }
-  };
 
   const PROP_HEATMAP_CACHE = {};
   const PROP_HEATMAP_TTL = 15 * 60 * 1000; // 15 minutes — propagation changes slowly
