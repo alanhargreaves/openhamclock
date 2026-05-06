@@ -783,22 +783,16 @@ module.exports = function (app, ctx) {
         uptimeFormatted: `${Math.floor(process.uptime() / 86400)}d ${Math.floor((process.uptime() % 86400) / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m`,
         timestamp: new Date().toISOString(),
 
+        // SECURITY: Only expose file paths and detailed internals to authenticated requests
         // everything after this point is not output unless (isAuthed === true)
         ...(isAuthed
           ? {
-              // SECURITY: Only expose file paths and detailed internals to authenticated requests
-              persistence: isAuthed
-                ? {
-                    enabled: !!STATS_FILE,
-                    file: STATS_FILE || null,
-                    lastSaved: visitorStats.lastSaved,
-                  }
-                : { enabled: !!STATS_FILE },
-              // SECURITY: Session details include partially anonymized IPs — only expose to authenticated requests.
-              // Unauthenticated requests get aggregate counts only.
-              sessions: isAuthed
-                ? sessionTracker.getStats()
-                : { concurrent: sessionTracker.activeSessions.size, peakConcurrent: sessionTracker.peakConcurrent },
+              persistence: {
+                enabled: !!STATS_FILE,
+                file: STATS_FILE || null,
+                lastSaved: visitorStats.lastSaved,
+              },
+              sessions: sessionTracker.getStats(),
               visitors: {
                 today: {
                   date: visitorStats.today,
@@ -846,8 +840,7 @@ module.exports = function (app, ctx) {
                 totalInFlight: upstream.inFlight.size,
                 pskMqttProxy: {
                   connected: pskMqtt.connected,
-                  // SECURITY: Only expose active callsigns to authenticated requests
-                  activeCallsigns: isAuthed ? [...pskMqtt.subscribedCalls] : pskMqtt.subscribedCalls.size,
+                  activeCallsigns: [...pskMqtt.subscribedCalls],
                   sseClients: [...pskMqtt.subscribers.values()].reduce((n, s) => n + s.size, 0),
                   spotsReceived: pskMqtt.stats.spotsReceived,
                   spotsRelayed: pskMqtt.stats.spotsRelayed,
