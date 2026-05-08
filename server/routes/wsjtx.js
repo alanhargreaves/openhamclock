@@ -7,7 +7,7 @@ const dgram = require('dgram');
 const fs = require('fs');
 const path = require('path');
 const { initCtyData, getCtyData, lookupCall } = require('../../src/server/ctydat.js');
-const { gridToLatLon, getBandFromHz } = require('../utils/grid');
+const { maidenheadToLatLon, gridToLatLon, getBandFromHz } = require('../utils/grid');
 
 module.exports = function (app, ctx) {
   const {
@@ -21,7 +21,6 @@ module.exports = function (app, ctx) {
     logErrorOnce,
     writeLimiter,
     requireWriteAuth,
-    maidenheadToLatLon,
     extractBaseCallsign,
     estimateLocationFromPrefix,
     extractGridFromComment,

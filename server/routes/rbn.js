@@ -4,7 +4,14 @@
  */
 
 const net = require('net');
-const { gridToLatLon, latLonToGrid, getBandFromHz, getBandFromKHz, haversineDistance } = require('../utils/grid');
+const {
+  maidenheadToLatLon,
+  gridToLatLon,
+  latLonToGrid,
+  getBandFromHz,
+  getBandFromKHz,
+  haversineDistance,
+} = require('../utils/grid');
 
 module.exports = function (app, ctx) {
   const {
@@ -16,7 +23,6 @@ module.exports = function (app, ctx) {
     logWarn,
     logErrorOnce,
     upstream,
-    maidenheadToLatLon,
     extractBaseCallsign,
     hamqthLookup,
     callsignLookupCache,

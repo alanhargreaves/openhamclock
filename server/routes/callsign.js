@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const { lookupCall } = require('../../src/server/ctydat.js');
+const { maidenheadToLatLon } = require('../utils/grid.js');
 
 module.exports = function (app, ctx) {
   const {
@@ -603,58 +604,6 @@ module.exports = function (app, ctx) {
       res.status(500).json({ error: 'Lookup failed' });
     }
   });
-
-  // Convert Maidenhead grid locator to lat/lon (center of grid square)
-  function maidenheadToLatLon(grid) {
-    if (!grid || typeof grid !== 'string') return null;
-
-    grid = grid.toUpperCase().trim();
-
-    // Validate grid format (2, 4, 6, or 8 characters)
-    if (!/^[A-R]{2}([0-9]{2}([A-X]{2}([0-9]{2})?)?)?$/.test(grid)) return null;
-
-    let lon = -180;
-    let lat = -90;
-
-    // Field (2 chars): 20° lon x 10° lat
-    lon += (grid.charCodeAt(0) - 65) * 20;
-    lat += (grid.charCodeAt(1) - 65) * 10;
-
-    if (grid.length >= 4) {
-      // Square (2 digits): 2° lon x 1° lat
-      lon += parseInt(grid[2]) * 2;
-      lat += parseInt(grid[3]) * 1;
-    }
-
-    if (grid.length >= 6) {
-      // Subsquare (2 chars): 5' lon x 2.5' lat
-      lon += (grid.charCodeAt(4) - 65) * (5 / 60);
-      lat += (grid.charCodeAt(5) - 65) * (2.5 / 60);
-    }
-
-    if (grid.length >= 8) {
-      // Extended square (2 digits): 0.5' lon x 0.25' lat
-      lon += parseInt(grid[6]) * (0.5 / 60);
-      lat += parseInt(grid[7]) * (0.25 / 60);
-    }
-
-    // Add offset to center of the grid square
-    if (grid.length === 2) {
-      lon += 10;
-      lat += 5;
-    } else if (grid.length === 4) {
-      lon += 1;
-      lat += 0.5;
-    } else if (grid.length === 6) {
-      lon += 2.5 / 60;
-      lat += 1.25 / 60;
-    } else if (grid.length === 8) {
-      lon += 0.25 / 60;
-      lat += 0.125 / 60;
-    }
-
-    return { lat, lon, grid };
-  }
 
   // Try to extract grid locators from a comment string
   // Returns { spotterGrid, dxGrid } - may have one, both, or neither
@@ -1974,7 +1923,6 @@ module.exports = function (app, ctx) {
     extractBaseCallsign,
     extractOperatingPrefix,
     estimateLocationFromPrefix,
-    maidenheadToLatLon,
     extractGridFromComment,
     extractGridsFromComment,
     isValidGrid,
