@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseGridSquare, calculateGridSquare } from './geo.js';
+import { calculateGridSquare } from './geo.js';
 import { validateGridLocator, latLonToMaidenhead, maidenheadToLatLon, maidenheadToBoundingBox } from './geo.js';
 
 describe('Maidenhead Grid tests', () => {
@@ -139,7 +139,6 @@ describe('Maidenhead Grid tests', () => {
 
 describe('Maidenhead Grid tests - legacy functions', () => {
   // legacy functions
-  // export const parseGridSquare = (grid) => { return { lat, lon }; }
   // export const calculateGridSquare = (lat, lon) => { return string; }
 
   const gridCases = [
@@ -158,12 +157,6 @@ describe('Maidenhead Grid tests - legacy functions', () => {
     it('should convert Lat/Lon to Maidenhead precision 6', () => {
       const result = calculateGridSquare(actualLatLon[0], actualLatLon[1]);
       expect(result).toBe(grid6);
-    });
-
-    it('should convert Maidenhead to Lat/Lon', () => {
-      const { lat, lon } = parseGridSquare(grid6);
-      expect(lat).toBeCloseTo(actualLatLon[0], 1);
-      expect(lon).toBeCloseTo(actualLatLon[1], 1);
     });
   }
 });

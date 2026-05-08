@@ -23,7 +23,6 @@ export {
   latLonToMaidenhead,
   maidenheadToLatLon,
   maidenheadToBoundingBox,
-  parseGridSquare,
   calculateGridSquare,
   calculateBearing,
   calculateDistance,
