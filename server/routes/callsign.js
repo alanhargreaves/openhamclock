@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const { lookupCall } = require('../../src/server/ctydat.js');
-const { maidenheadToLatLon } = require('../utils/grid.js');
+const { maidenheadToLatLon, validateGridLocator } = require('../utils/grid.js');
 
 module.exports = function (app, ctx) {
   const {
@@ -618,7 +618,7 @@ module.exports = function (app, ctx) {
       const grid1 = dualGridMatch[1].toUpperCase();
       const grid2 = dualGridMatch[2].toUpperCase();
       // Validate both are real grids
-      if (isValidGrid(grid1) && isValidGrid(grid2)) {
+      if (validateGridLocator(grid1) && validateGridLocator(grid2)) {
         return { spotterGrid: grid1, dxGrid: grid2 };
       }
     }
@@ -629,7 +629,7 @@ module.exports = function (app, ctx) {
     let match;
     while ((match = gridPattern.exec(comment)) !== null) {
       const grid = match[1].toUpperCase();
-      if (isValidGrid(grid)) {
+      if (validateGridLocator(grid)) {
         grids.push(grid);
       }
     }
@@ -645,15 +645,6 @@ module.exports = function (app, ctx) {
     }
 
     return { spotterGrid: null, dxGrid: null };
-  }
-
-  // Validate a grid square is realistic (not "CQ00", "DE12", etc)
-  function isValidGrid(grid) {
-    if (!grid || grid.length < 4) return false;
-    const firstChar = grid.charCodeAt(0);
-    const secondChar = grid.charCodeAt(1);
-    // First char should be A-R, second char should be A-R
-    return firstChar >= 65 && firstChar <= 82 && secondChar >= 65 && secondChar <= 82;
   }
 
   // Legacy single-grid extraction (kept for compatibility)
@@ -1925,7 +1916,6 @@ module.exports = function (app, ctx) {
     estimateLocationFromPrefix,
     extractGridFromComment,
     extractGridsFromComment,
-    isValidGrid,
     getCountryFromPrefix,
     cacheCallsignLookup,
     callsignLookupCache,
