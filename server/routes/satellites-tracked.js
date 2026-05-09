@@ -1,5 +1,5 @@
 // Curated list of active ham radio and amateur-accessible satellites
-// Last audited: March 2026
+// Last audited: May 9, 2026
 //
 // REMOVED (dead/decayed/not ham):
 //   AO-92 (43137) — re-entered Feb 2024
@@ -34,9 +34,19 @@
 //
 // FIXED: TEVEL NORAD IDs corrected per AMSAT TLE bulletin
 //
+// notes,
+// use https://celestrak.org/NORAD/elements/master-gp-index.php?FORMAT=tle to determine status of satellite by NORAD ID and to which group satellite may belong.
+// use https://www.space-track.org/#/gp to determine status at Space-Track
+//
+// (audit of May 9, 2026)
+// disabled satellites with no record on CelesTrak, and with no record on Space-Track for period starting Jan 1, 2026.
+// removed TEVEL satellites, added TEVEL2 satellites
+//
+
 const HAM_SATELLITES = {
   // ── High Priority — Popular FM Satellites ──────────────────────
   ISS: {
+    // CelesTrak group: amateur
     norad: 25544,
     name: 'ISS (ZARYA)',
     color: '#00ffff',
@@ -47,6 +57,7 @@ const HAM_SATELLITES = {
     tone: '67.0 Hz',
   },
   'SO-50': {
+    // CelesTrak group: amateur
     norad: 27607,
     name: 'SO-50',
     color: '#00ff00',
@@ -58,6 +69,7 @@ const HAM_SATELLITES = {
     armTone: '74.4 Hz',
   },
   'AO-91': {
+    // CelesTrak group: amateur
     norad: 43017,
     name: 'AO-91 (Fox-1B)',
     color: '#ff6600',
@@ -68,6 +80,7 @@ const HAM_SATELLITES = {
     tone: '67.0 Hz',
   },
   'AO-123': {
+    // CelesTrak group: amateur
     norad: 61781,
     name: 'AO-123 (ASRTU-1)',
     color: '#ff3399',
@@ -78,6 +91,8 @@ const HAM_SATELLITES = {
     tone: '67.0 Hz',
   },
   'SO-124': {
+    // CelesTrak: NONE
+    // Space-Track OK
     norad: 62690,
     name: 'SO-124 (HADES-R)',
     color: '#ff44aa',
@@ -85,6 +100,7 @@ const HAM_SATELLITES = {
     mode: 'FM',
   },
   'SO-125': {
+    // CelesTrak group: amateur
     norad: 63492,
     name: 'SO-125 (HADES-ICM)',
     color: '#ff55bb',
@@ -95,6 +111,7 @@ const HAM_SATELLITES = {
     tone: '67.0 Hz',
   },
   'QMR-KWT-2': {
+    // CelesTrak group: active
     norad: 67291,
     name: 'QMR-KWT-2',
     color: '#ff88dd',
@@ -105,6 +122,7 @@ const HAM_SATELLITES = {
     tone: '67.0 Hz',
   },
   'PO-101': {
+    // CelesTrak group: amateur
     norad: 43678,
     name: 'PO-101 (DIWATA-2B)',
     color: '#cc66ff',
@@ -117,6 +135,7 @@ const HAM_SATELLITES = {
 
   // ── Weather Satellites — GOES & METEOR ─────────────────────────
   'GOES-18': {
+    // CelesTrak group: weather
     norad: 51850,
     name: 'GOES-18',
     color: '#66ff66',
@@ -126,6 +145,7 @@ const HAM_SATELLITES = {
     grbFrequency: '1686.600 MHz',
   },
   'GOES-19': {
+    // CelesTrak group: weather
     norad: 60133,
     name: 'GOES-19',
     color: '#33cc33',
@@ -135,6 +155,7 @@ const HAM_SATELLITES = {
     grbFrequency: '1686.600 MHz',
   },
   'METOP-B': {
+    // CelesTrak group: weather
     norad: 38771,
     name: 'MetOp-B',
     color: '#FF6600',
@@ -143,6 +164,7 @@ const HAM_SATELLITES = {
     hrptFrequency: '1701.300 MHz',
   },
   'METOP-C': {
+    // CelesTrak group: weather
     norad: 43689,
     name: 'MetOp-C',
     color: '#FF8800',
@@ -151,6 +173,7 @@ const HAM_SATELLITES = {
     hrptFrequency: '1701.300 MHz',
   },
   'METEOR-M2-3': {
+    // CelesTrak group: weather
     norad: 57166,
     name: 'METEOR M2-3',
     color: '#FF0000',
@@ -160,6 +183,7 @@ const HAM_SATELLITES = {
     hrptFrequency: '1700.000 MHz',
   },
   'METEOR-M2-4': {
+    // CelesTrak group: weather
     norad: 59051,
     name: 'METEOR M2-4',
     color: '#FF0000',
@@ -171,6 +195,8 @@ const HAM_SATELLITES = {
 
   // ── Weather Satellites — Geostationary (non-GOES) ─────────────
   'EWS-G1': {
+    // CelesTrak group: NONE
+    // Space-Track OK
     norad: 29155,
     name: 'EWS-G1 (GOES-13)',
     color: '#0066ff',
@@ -180,6 +206,7 @@ const HAM_SATELLITES = {
     sdFrequency: '1676.000 MHz',
   },
   'EWS-G2': {
+    // CelesTrak group: weather
     norad: 36411,
     name: 'EWS-G2 (GOES-15)',
     color: '#0044cc',
@@ -189,6 +216,7 @@ const HAM_SATELLITES = {
     sdFrequency: '1676.000 MHz',
   },
   'ELEKTRO-L2': {
+    // CelesTrak group: weather
     norad: 41105,
     name: 'ELEKTRO-L2',
     color: '#ffcc00',
@@ -197,6 +225,7 @@ const HAM_SATELLITES = {
     frequency: '1691.000 MHz',
   },
   'ELEKTRO-L3': {
+    // CelesTrak group: active
     norad: 44903,
     name: 'ELEKTRO-L3',
     color: '#ff9900',
@@ -205,6 +234,7 @@ const HAM_SATELLITES = {
     frequency: '1691.000 MHz',
   },
   'GK-2A': {
+    // CelesTrak group: weather
     norad: 43823,
     name: 'GK-2A',
     color: '#ff33cc',
@@ -213,6 +243,7 @@ const HAM_SATELLITES = {
     frequency: '1692.140 MHz',
   },
   'HIMAWARI-9': {
+    // CelesTrak group: weather
     norad: 41836,
     name: 'HIMAWARI-9',
     color: '#9900cc',
@@ -223,6 +254,7 @@ const HAM_SATELLITES = {
 
   // ── Weather Satellites — Polar (X-Band) ───────────────────────
   'NOAA-20': {
+    // CelesTrak group: weather
     norad: 43013,
     name: 'NOAA-20',
     color: '#00ccff',
@@ -231,6 +263,7 @@ const HAM_SATELLITES = {
     frequency: '7812.000 MHz',
   },
   'NOAA-21': {
+    // CelesTrak group: weather
     norad: 54234,
     name: 'NOAA-21',
     color: '#0099ff',
@@ -241,6 +274,7 @@ const HAM_SATELLITES = {
 
   // ── Linear Transponder Satellites ──────────────────────────────
   'RS-44': {
+    // CelesTrak group: amateur
     norad: 44909,
     name: 'RS-44 (DOSAAF)',
     color: '#ff0066',
@@ -250,6 +284,7 @@ const HAM_SATELLITES = {
     uplink: '145.935 - 145.995 MHz',
   },
   'QO-100': {
+    // CelesTrak group: amateur
     norad: 43700,
     name: "QO-100 (Es'hail-2)",
     color: '#ffff00',
@@ -259,6 +294,7 @@ const HAM_SATELLITES = {
     uplink: '2400.050 - 2400.300 MHz',
   },
   'AO-7': {
+    // CelesTrak group: amateur
     norad: 7530,
     name: 'AO-7',
     color: '#ffcc00',
@@ -268,6 +304,7 @@ const HAM_SATELLITES = {
     uplink: '432.125 - 432.175 MHz',
   },
   'FO-29': {
+    // CelesTrak group: amateur
     norad: 24278,
     name: 'FO-29 (JAS-2)',
     color: '#ff6699',
@@ -277,6 +314,7 @@ const HAM_SATELLITES = {
     uplink: '145.900 - 146.000 MHz',
   },
   'JO-97': {
+    // CelesTrak group: amateur
     norad: 43803,
     name: 'JO-97 (JY1Sat)',
     color: '#cc99ff',
@@ -286,6 +324,7 @@ const HAM_SATELLITES = {
     uplink: '435.100 - 435.120 MHz',
   },
   'AO-73': {
+    // CelesTrak group: amateur
     norad: 39444,
     name: 'AO-73 (FUNcube-1)',
     color: '#ffcc66',
@@ -294,16 +333,20 @@ const HAM_SATELLITES = {
     downlink: '145.950 - 145.970 MHz',
     uplink: '435.130 - 435.150 MHz',
   },
-  'EO-88': {
+  /*'EO-88': {
+    // CelesTrak group: NONE
+    // Space-Track: NONE
     norad: 42017,
     name: 'EO-88 (Nayif-1)',
     color: '#ffaa66',
     priority: 3,
     mode: 'Linear/Telemetry',
-  },
+  },*/
 
   // ── CAS (Chinese Amateur Satellites) ───────────────────────────
-  'CAS-4A': {
+  /*'CAS-4A': {
+    // CelesTrak group: NONE
+    // Space-Track NOK
     norad: 42761,
     name: 'CAS-4A',
     color: '#9966ff',
@@ -311,8 +354,10 @@ const HAM_SATELLITES = {
     mode: 'Linear',
     downlink: '145.910 - 145.930 MHz',
     uplink: '435.210 - 435.230 MHz',
-  },
-  'CAS-4B': {
+  },*/
+  /*'CAS-4B': {
+    // CelesTrak group: NONE
+    // Space-Track NOK
     norad: 42759,
     name: 'CAS-4B',
     color: '#9933ff',
@@ -320,8 +365,9 @@ const HAM_SATELLITES = {
     mode: 'Linear',
     downlink: '145.915 - 145.935 MHz',
     uplink: '435.270 - 435.290 MHz',
-  },
+  },*/
   'CAS-6': {
+    // CelesTrak group: amateur
     norad: 44881,
     name: 'CAS-6 (TO-108)',
     color: '#cc66ff',
@@ -332,7 +378,9 @@ const HAM_SATELLITES = {
   },
 
   // ── XW-2 Constellation (CAS-3) — intermittent ─────────────────
-  'XW-2A': {
+  /*'XW-2A': {
+    // CelesTrak group: NONE
+    // Space-Track NOK
     norad: 40903,
     name: 'XW-2A (CAS-3A)',
     color: '#66ff99',
@@ -340,8 +388,10 @@ const HAM_SATELLITES = {
     mode: 'Linear',
     downlink: '145.660 - 145.680 MHz',
     uplink: '435.030 - 435.050 MHz',
-  },
-  'XW-2B': {
+  },*/
+  /*'XW-2B': {
+    // CelesTrak group: NONE
+    // Space-Track NOK
     norad: 40911,
     name: 'XW-2B (CAS-3B)',
     color: '#66ffcc',
@@ -349,8 +399,10 @@ const HAM_SATELLITES = {
     mode: 'Linear',
     downlink: '145.730 - 145.750 MHz',
     uplink: '435.090 - 435.110 MHz',
-  },
-  'XW-2C': {
+  },*/
+  /*'XW-2C': {
+    // CelesTrak group: NONE
+    // Space-Track NOK
     norad: 40906,
     name: 'XW-2C (CAS-3C)',
     color: '#99ffcc',
@@ -358,8 +410,10 @@ const HAM_SATELLITES = {
     mode: 'Linear',
     downlink: '145.795 - 145.815 MHz',
     uplink: '435.150 - 435.170 MHz',
-  },
-  'XW-2F': {
+  },*/
+  /*'XW-2F': {
+    // CelesTrak group: NONE
+    // Space-Track NOK
     norad: 40910,
     name: 'XW-2F (CAS-3F)',
     color: '#ccffcc',
@@ -367,10 +421,11 @@ const HAM_SATELLITES = {
     mode: 'Linear',
     downlink: '145.975 - 145.995 MHz',
     uplink: '435.330 - 435.350 MHz',
-  },
+  },*/
 
   // ── Digipeaters ────────────────────────────────────────────────
   'IO-86': {
+    // CelesTrak group: amateur
     norad: 40931,
     name: 'IO-86 (LAPAN-A2/ORARI)',
     color: '#33ccaa',
@@ -380,6 +435,7 @@ const HAM_SATELLITES = {
     uplink: '145.825 MHz',
   },
   'IO-117': {
+    // CelesTrak group: satnogs
     norad: 53106,
     name: 'IO-117 (GreenCube)',
     color: '#00ff99',
@@ -389,63 +445,69 @@ const HAM_SATELLITES = {
     uplink: '435.310 MHz',
   },
 
-  // ── TEVEL Constellation — activated periodically ───────────────
-  // NORAD IDs corrected per AMSAT TLE bulletin Dec 2022
-  'TEVEL-1': {
-    norad: 51013,
-    name: 'TEVEL-1',
+  // ── TEVEL2 Constellation — activated periodically ───────────────
+  'TEVEL2-1': {
+    // CelesTrak group: amateur
+    norad: 63217,
+    name: 'TEVEL2-1',
     color: '#66ccff',
     priority: 3,
-    mode: 'FM',
   },
-  'TEVEL-2': {
-    norad: 51069,
-    name: 'TEVEL-2',
-    color: '#66ddff',
+  'TEVEL2-2': {
+    // CelesTrak group: amateur
+    norad: 63219,
+    name: 'TEVEL2-2',
+    color: '#66ccff',
     priority: 3,
-    mode: 'FM',
   },
-  'TEVEL-3': {
-    norad: 50988,
-    name: 'TEVEL-3',
-    color: '#66eeff',
+  'TEVEL2-3': {
+    // CelesTrak group: amateur
+    norad: 63218,
+    name: 'TEVEL2-3',
+    color: '#66ccff',
     priority: 3,
-    mode: 'FM',
   },
-  'TEVEL-4': {
-    norad: 51063,
-    name: 'TEVEL-4',
-    color: '#77ccff',
+  'TEVEL2-4': {
+    // CelesTrak group: amateur
+    norad: 63213,
+    name: 'TEVEL2-4',
+    color: '#66ccff',
     priority: 3,
-    mode: 'FM',
   },
-  'TEVEL-5': {
-    norad: 50998,
-    name: 'TEVEL-5',
-    color: '#77ddff',
+  'TEVEL2-5': {
+    // CelesTrak group: amateur
+    norad: 63214,
+    name: 'TEVEL2-5',
+    color: '#66ccff',
     priority: 3,
-    mode: 'FM',
   },
-  'TEVEL-6': {
-    norad: 50999,
-    name: 'TEVEL-6',
-    color: '#77eeff',
+  'TEVEL2-6': {
+    // CelesTrak group: amateur
+    norad: 63215,
+    name: 'TEVEL2-6',
+    color: '#66ccff',
     priority: 3,
-    mode: 'FM',
   },
-  'TEVEL-7': {
-    norad: 51062,
-    name: 'TEVEL-7',
-    color: '#88ccff',
+  'TEVEL2-7': {
+    // CelesTrak group: amateur
+    norad: 63238,
+    name: 'TEVEL2-7',
+    color: '#66ccff',
     priority: 3,
-    mode: 'FM',
   },
-  'TEVEL-8': {
-    norad: 50989,
-    name: 'TEVEL-8',
-    color: '#88ddff',
+  'TEVEL2-8': {
+    // CelesTrak group: amateur
+    norad: 63239,
+    name: 'TEVEL2-8',
+    color: '#66ccff',
     priority: 3,
-    mode: 'FM',
+  },
+  'TEVEL2-9': {
+    // CelesTrak group: amateur
+    norad: 63237,
+    name: 'TEVEL2-9',
+    color: '#66ccff',
+    priority: 3,
   },
 };
 
