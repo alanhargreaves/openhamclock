@@ -367,7 +367,7 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
               !isVisible && nextPassSecsFromNow !== null
                 ? `
                 <tr style="background-color: var(--bg-primary); color: var(--text-secondary);">
-                  <td style="padding: 0 2px;">Next Pass:</td>
+                  <td style="padding: 0 2px;">${t('station.settings.satellites.nextPass')}:</td>
                   <td align="right" style="padding: 0 2px;">${formatSecsFromNow(nextPassSecsFromNow)}</td>
                 </tr>
                 `
@@ -412,7 +412,7 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
                   font-size: 10px;
                   font-weight: bold;
                   text-align: center;
-                  cursor: pointer;">PREDICT</button>
+                  cursor: pointer;">${t('station.settings.satellites.predict')}</button>
             </td></tr>
 
             </table>
@@ -651,28 +651,28 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
         return `
           <div style="text-align: center; margin-bottom: 16px; border-bottom: 2px solid var(--accent-red); padding-bottom: 12px;">
             <h2 style="margin: 0; color: var(--accent-cyan); font-size: 24px;">🛰 ${satName}</h2>
-            <p style="margin: 8px 0 0 0; color: var(--text-muted); font-size: 12px;">Satellite Prediction Details</p>
+            <p style="margin: 8px 0 0 0; color: var(--text-muted); font-size: 12px;">${t('station.settings.satellites.predictionDetails')}</p>
           </div>
 
           <div style="margin-top: 16px;">
             <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid var(--text-muted);">
               <thead>
                 <tr style="background: var(--bg-secondary); padding: 2px; border-bottom: 2px solid var(--text-muted);">
-                  <th colspan="3" style="border-right: 3px double var(--text-muted); padding: 4px;">Start</th>
-                  <th colspan="3" style="border-right: 3px double var(--text-muted); padding: 4px;">Apex</th>
-                  <th colspan="2" style="border-right: 3px double var(--text-muted); padding: 4px;">End</th>
-                  <th style="padding: 4px;">Duration</th>
+                  <th colspan="3" style="border-right: 3px double var(--text-muted); padding: 4px;">${t('station.settings.satellites.start')}</th>
+                  <th colspan="3" style="border-right: 3px double var(--text-muted); padding: 4px;">${t('station.settings.satellites.apex')}</th>
+                  <th colspan="2" style="border-right: 3px double var(--text-muted); padding: 4px;">${t('station.settings.satellites.end')}</th>
+                  <th style="padding: 4px;">${t('station.settings.satellites.duration')}</th>
                 </tr>
                 <tr style="background: var(--bg-secondary); padding: 2px; border-bottom: 2px solid var(--text-muted);">
-                  <th style="border-right: 1px solid var(--text-muted); padding: 4px;">Local Time</th>
-                  <th style="border-right: 1px solid var(--text-muted); padding: 4px;">From Now</th>
-                  <th style="border-right: 3px double var(--text-muted); padding: 4px;">Az [°]</th>
-                  <th style="border-right: 1px solid var(--text-muted); padding: 4px;">Local Time</th>
-                  <th style="border-right: 1px solid var(--text-muted); padding: 4px;">Az [°]</th>
-                  <th style="border-right: 3px double var(--text-muted); padding: 4px;">El [°]</th>
-                  <th style="border-right: 1px solid var(--text-muted); padding: 4px;">Local Time</th>
-                  <th style="border-right: 3px double var(--text-muted); padding: 4px;">Az [°]</th>
-                  <th style="padding: 4px;">[mins]</th>
+                  <th style="border-right: 1px solid var(--text-muted); padding: 4px;">${t('station.settings.satellites.localTime')}</th>
+                  <th style="border-right: 1px solid var(--text-muted); padding: 4px;">${t('station.settings.satellites.fromNow')}</th>
+                  <th style="border-right: 3px double var(--text-muted); padding: 4px;">${t('station.settings.satellites.azimuthAbbreviation')} [°]</th>
+                  <th style="border-right: 1px solid var(--text-muted); padding: 4px;">${t('station.settings.satellites.localTime')}</th>
+                  <th style="border-right: 1px solid var(--text-muted); padding: 4px;">${t('station.settings.satellites.azimuthAbbreviation')} [°]</th>
+                  <th style="border-right: 3px double var(--text-muted); padding: 4px;">${t('station.settings.satellites.elevationAbbreviation')} [°]</th>
+                  <th style="border-right: 1px solid var(--text-muted); padding: 4px;">${t('station.settings.satellites.localTime')}</th>
+                  <th style="border-right: 3px double var(--text-muted); padding: 4px;">${t('station.settings.satellites.azimuthAbbreviation')} [°]</th>
+                  <th style="padding: 4px;">[${t('station.settings.satellites.minutesAbbreviation')}]</th>
                 </tr>
               </thead>
               <tbody>
@@ -739,7 +739,7 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
                 font-weight: bold;
                 font-size: 12px;
               ">
-              Close
+              ${t('station.settings.satellites.close')}
             </button>
           </div>
         `;
