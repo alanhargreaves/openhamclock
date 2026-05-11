@@ -1356,13 +1356,13 @@ export default function WhatsNew({ showWhatsNew }) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        className="whats-new-modal"
         style={{
           background: 'var(--bg-secondary, #1a1a2e)',
           border: '1px solid var(--border-color, #333)',
           borderRadius: '12px',
           maxWidth: '560px',
           width: '100%',
-          maxHeight: '85vh',
           display: 'flex',
           flexDirection: 'column',
           boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
@@ -1451,6 +1451,8 @@ export default function WhatsNew({ showWhatsNew }) {
             overflowY: 'auto',
             padding: '16px 24px',
             flex: 1,
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
           }}
         >
           {entry.features.map((f, i) => (
@@ -1540,6 +1542,10 @@ export default function WhatsNew({ showWhatsNew }) {
             opacity: 1;
             transform: translateY(0) scale(1);
           }
+        }
+        .whats-new-modal {
+          max-height: 85vh;
+          max-height: calc(100svh - 40px);
         }
       `}</style>
     </div>
