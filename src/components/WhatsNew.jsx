@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react';
 // Set to null to hide. Shown at the top of the What's New modal.
 const ANNOUNCEMENT = {
   emoji: '🎪',
-  text: "Surprise pre-Hamvention drop! A hotfix for the VOACAP propagation panel plus a brand-new MeshCom LoRa mesh integration — see below for details.\n\nApologies — we also missed including all of our 26.3.0 updates on the last production release. They're listed below in this What's New so you can see exactly what changed.\n\nNext week is Hamvention 2026, May 15–17 in Dayton, Ohio! Come visit OpenHamClock in the Flea Market area — Booth #9518. Say hi, see a live demo, and grab some stickers. We look forward to seeing some of you there!",
+  text: 'Mid-week update before Hamvention. Adds a new Band Activity heatmap panel, a customizable monospace font in Settings, a one-click clear for PSK Reporter spots, plus assorted fixes — including a TV-standby workaround for Display Schedule, an N1MM UDP spot-line direction fix, and a significant satellite TLE resolver overhaul that was occasionally stranding ISS and other birds.\n\nHamvention 2026 is THIS WEEKEND, May 15–17 in Dayton, Ohio! Come visit OpenHamClock in the Flea Market area — Booth #9518. Say hi, see a live demo, and grab some stickers. We look forward to seeing some of you there!',
   color: '#ff6b35',
   bg: 'rgba(255, 107, 53, 0.10)',
   border: 'rgba(255, 107, 53, 0.30)',
@@ -28,6 +28,69 @@ const ANNOUNCEMENT = {
 // The jump to v26 resets the scheme to something meaningful going forward.
 
 const CHANGELOG = [
+  {
+    version: '26.3.3',
+    date: '2026-05-12',
+    heading:
+      'Mid-week follow-up release before Hamvention. Headline addition: a new Band Activity heatmap dockable panel. Also new: a user-selectable monospace font in Settings, and a one-click clear-all button in the PSK Reporter panel. On the fix side: a TV-standby workaround so scheduled-sleep installs stay awake on HDMI, a correction to N1MM UDP spot-line direction, localized "VISIBLE" badge text in the satellite prediction table, and a substantial overhaul of the satellite TLE resolver that was occasionally stranding ISS and a handful of other birds in the cache for hours at a time.',
+    features: [
+      {
+        icon: '📊',
+        title: 'NEW: Band Activity Heatmap Panel',
+        desc: "A new dockable panel modeled on DX-Heat's Band Activity matrix. It plots a continent×band grid with gaussian-blurred SVG heatmap blobs over the last 15, 30, or 60 minutes of DX-cluster spots, so you can see where the bands are alive at a glance. The 'Your continent' picker defaults to whichever continent your callsign belongs to (looked up against the DXCC table) and your override is persisted to localStorage. Open it from the panel picker in any layout — it's not in the default layout yet, but you can drag it in wherever it makes sense.",
+      },
+      {
+        icon: '🔤',
+        title: 'NEW: Customizable Monospace Font',
+        desc: 'Settings → Display now lets you pick the monospace font used across the app — JetBrains Mono (the default, dotted 0), Fira Code (slashed 0), or IBM Plex Mono (slashed 0, slightly wider). One CSS variable drives every monospace surface in the project. Self-hosted users: rerun vendor-download.sh once after this update to fetch the Fira Code and IBM Plex Mono font files, otherwise the new picker falls back to whatever system monospace your browser chooses.',
+      },
+      {
+        icon: '🧹',
+        title: 'PSK Reporter — One-Click Clear All Spots',
+        desc: "The PSK Reporter panel header now has a small trash-can button that wipes all TX and RX spots from local state. Useful when you change bands or rigs and don't want stale dots cluttering the map. Translated into all 16 languages.",
+      },
+      {
+        icon: '📺',
+        title: 'Display Schedule — TV-Standby Workaround',
+        desc: "If you use the Display Schedule feature to schedule the screen to sleep at night, some TVs latched into standby when the OS dropped the HDMI signal and wouldn't come back when the schedule ended. There's now a 'Keep display signal active during sleep' checkbox (default on, in Settings → Display Schedule) that holds the wake lock through the whole sleep window. The TV stays awake but you only see the black overlay you'd see anyway — the signal never drops, so the TV never goes to standby. Opt out if you actually do want the monitor to power down.",
+      },
+      {
+        icon: '🛰️',
+        title: 'Satellite TLE Resolver — Reliability Fix',
+        desc: "Some users intermittently saw ISS, SO-50, AO-91, and a handful of weather geo satellites disappear from the satellite layer for hours at a time. Root cause: when CelesTrak rate-limited us, the resolver poisoned its 12-hour cache with a partial result. The resolver now uses gentler parallelism, won't overwrite a healthy cache with a materially worse one, deduplicates concurrent refresh attempts, and serves the existing cache immediately while refreshing in the background — so a slow upstream fetch can't translate into a blank satellite layer for end users. Reported by Alan.",
+      },
+      {
+        icon: '🐛',
+        title: 'DX Cluster — N1MM UDP Spot Lines Were Pointing the Wrong Way',
+        desc: "If you were receiving spot announcements from N1MM via UDP, the great-circle line was drawing DX → your station instead of DX → the spotter (who actually heard the DX). An April change had added a fallback that filled in your own grid square when the spotter's grid wasn't present, which was wrong for any spot that wasn't a self-spot. The fallback is now restricted to self-spots only, so non-self spots draw from DX to the real spotter as expected. Reported by VK3GA.",
+      },
+      {
+        icon: '🌍',
+        title: 'Satellite Layer — Localized "VISIBLE" Badge',
+        desc: 'The satellite prediction table\'s green "VISIBLE" badge that lights up during a pass was hardcoded in English. It now reads from the language table along with the rest of the satellite UI, with new translations added across all 16 languages. Thanks Michael Wheeley.',
+      },
+      {
+        icon: '📱',
+        title: "What's New — OK Button Reachable on Mobile",
+        desc: "The What's New modal on iOS Safari and some Android browsers had the OK button sitting just below the visible area with no way to scroll to it. Switched the height units from vh to svh (small viewport height, which excludes the browser toolbar) and enabled iOS momentum scrolling inside the modal. The OK button is now always reachable. Thanks Jörg (DO1HOZ).",
+      },
+      {
+        icon: '📐',
+        title: 'Grid Square Display Fix',
+        desc: 'A small regression where the grid-square display was being passed a bare lat/lon pair instead of a location object — the field would render blank in certain layouts. Now passes the proper object so Maidenhead computes correctly. Thanks Jörg (DO1HOZ).',
+      },
+      {
+        icon: '🔧',
+        title: 'Rotator — Configuration Cleanup',
+        desc: "Two dead environment variables (ROTATOR_HOST and ROTATOR_PORT) that were exported but never read by the rotator code have been removed. ROTATOR_PROVIDER now validates against the supported set ({none, pstrotator_udp}) and warns + disables on unknown values instead of silently doing nothing — so a typo like 'pstrotator_http' tells you, instead of leaving you wondering why your rotator isn't responding. The hardcoded 192.168.1.43 fallback in the PSTRotator host config has also been removed; if PSTROTATOR_HOST isn't set, the integration warns and disables rather than trying to reach a random LAN IP.",
+      },
+      {
+        icon: '🌐',
+        title: 'Translation Files — CI Sort Gate',
+        desc: "The 16 language JSON files in src/lang/ are now checked in CI for consistent key ordering using VSCode's native sort. New npm scripts lang:sort (auto-fix) and lang:check (verify) are available for contributors before submitting language changes. Prevents the kind of merge churn that used to happen when two contributors' editors disagreed on sort order. Thanks Michael Wheeley.",
+      },
+    ],
+  },
   {
     version: '26.3.2',
     date: '2026-05-10',
