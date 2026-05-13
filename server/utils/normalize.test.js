@@ -8,6 +8,7 @@ describe('normalizeNumber', () => {
     expect(normalizeNumber('-1.2E-7')).toBe(-1.2e-7);
     expect(normalizeNumber('.00000001')).toBe(1e-8);
     expect(normalizeNumber('hello')).toBe('hello');
+    expect(normalizeNumber(1)).toBe(1);
   });
 });
 
