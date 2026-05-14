@@ -2738,6 +2738,79 @@ export const SettingsPanel = ({
                     />
                   </div>
                 </div>
+
+                <details style={{ marginTop: 10 }}>
+                  <summary
+                    style={{
+                      cursor: 'pointer',
+                      color: 'var(--accent-amber)',
+                      fontSize: 12,
+                      userSelect: 'none',
+                    }}
+                  >
+                    Learn how
+                  </summary>
+
+                  <div
+                    style={{
+                      marginTop: 8,
+                      color: 'var(--text-secondary)',
+                      fontSize: 12,
+                      lineHeight: 1.55,
+                    }}
+                  >
+                    <div style={{ marginBottom: 6 }}>
+                      <b>Quick start (Local Only):</b>
+                    </div>
+
+                    <ol style={{ margin: 0, paddingLeft: 18 }}>
+                      <li>
+                        Run OpenHamClock locally:
+                        <div style={{ fontFamily: 'var(--font-mono)', marginTop: 4 }}>npm start</div>
+                        Open the local URL shown in your terminal (example: http://127.0.0.1:3001).
+                      </li>
+
+                      <li style={{ marginTop: 6 }}>
+                        Install the N3FJP bridge on the same PC (or LAN machine) that can access your N3FJP logger.
+                      </li>
+
+                      <li style={{ marginTop: 6 }}>
+                        Edit the bridge <b>config.json</b> file and set:
+                        <div style={{ fontFamily: 'var(--font-mono)', marginTop: 4 }}>
+                          "OHC_BASE_URL": "http://127.0.0.1:3001"
+                        </div>
+                        (Use the exact URL printed by OpenHamClock.)
+                      </li>
+
+                      <li style={{ marginTop: 6 }}>
+                        Ensure:
+                        <div style={{ fontFamily: 'var(--font-mono)', marginTop: 4 }}>"ENABLE_OHC_HTTP": true</div>
+                      </li>
+
+                      <li style={{ marginTop: 6 }}>
+                        Start the bridge script (PowerShell or VBS launcher). You should see log messages when QSOs are
+                        entered.
+                      </li>
+
+                      <li style={{ marginTop: 6 }}>
+                        Enable this integration here, then turn on
+                        <b> Logged QSOs (N3FJP)</b> in
+                        <b> Settings → Map Layers</b>.
+                      </li>
+                    </ol>
+
+                    <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-muted)' }}>
+                      Tip: If you see “connection refused,” verify that OpenHamClock is running locally and that the
+                      port matches your
+                      <b> OHC_BASE_URL</b> setting.
+                    </div>
+
+                    <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+                      Note: This integration cannot work on the hosted site because it requires access to your local
+                      N3FJP logger and LAN services.
+                    </div>
+                  </div>
+                </details>
               </div>
 
               {/* QRZ.com XML API Credentials */}
@@ -2946,79 +3019,6 @@ export const SettingsPanel = ({
                   </>
                 )}
               </div>
-
-              <details style={{ marginTop: 10 }}>
-                <summary
-                  style={{
-                    cursor: 'pointer',
-                    color: 'var(--accent-amber)',
-                    fontSize: 12,
-                    userSelect: 'none',
-                  }}
-                >
-                  Learn how
-                </summary>
-
-                <div
-                  style={{
-                    marginTop: 8,
-                    color: 'var(--text-secondary)',
-                    fontSize: 12,
-                    lineHeight: 1.55,
-                  }}
-                >
-                  <div style={{ marginBottom: 6 }}>
-                    <b>Quick start (Local Only):</b>
-                  </div>
-
-                  <ol style={{ margin: 0, paddingLeft: 18 }}>
-                    <li>
-                      Run OpenHamClock locally:
-                      <div style={{ fontFamily: 'var(--font-mono)', marginTop: 4 }}>npm start</div>
-                      Open the local URL shown in your terminal (example: http://127.0.0.1:3001).
-                    </li>
-
-                    <li style={{ marginTop: 6 }}>
-                      Install the N3FJP bridge on the same PC (or LAN machine) that can access your N3FJP logger.
-                    </li>
-
-                    <li style={{ marginTop: 6 }}>
-                      Edit the bridge <b>config.json</b> file and set:
-                      <div style={{ fontFamily: 'var(--font-mono)', marginTop: 4 }}>
-                        "OHC_BASE_URL": "http://127.0.0.1:3001"
-                      </div>
-                      (Use the exact URL printed by OpenHamClock.)
-                    </li>
-
-                    <li style={{ marginTop: 6 }}>
-                      Ensure:
-                      <div style={{ fontFamily: 'var(--font-mono)', marginTop: 4 }}>"ENABLE_OHC_HTTP": true</div>
-                    </li>
-
-                    <li style={{ marginTop: 6 }}>
-                      Start the bridge script (PowerShell or VBS launcher). You should see log messages when QSOs are
-                      entered.
-                    </li>
-
-                    <li style={{ marginTop: 6 }}>
-                      Enable this integration here, then turn on
-                      <b> Logged QSOs (N3FJP)</b> in
-                      <b> Settings → Map Layers</b>.
-                    </li>
-                  </ol>
-
-                  <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-muted)' }}>
-                    Tip: If you see “connection refused,” verify that OpenHamClock is running locally and that the port
-                    matches your
-                    <b> OHC_BASE_URL</b> setting.
-                  </div>
-
-                  <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>
-                    Note: This integration cannot work on the hosted site because it requires access to your local N3FJP
-                    logger and LAN services.
-                  </div>
-                </div>
-              </details>
             </div>
           </div>
         )}
