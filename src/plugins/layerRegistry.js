@@ -29,6 +29,7 @@ import * as ActiveUsersPlugin from './layers/useActiveUsers.js';
 import * as IBPLayerPlugin from './layers/useIBPLayer.js';
 import * as WinlinkGatewaysPlugin from './layers/useWinlinkGateways.js';
 import * as AircraftPlugin from './layers/useAircraft.js';
+import * as ATCSectorsPlugin from './layers/useATCSectors.js';
 
 // Auto-discover local/custom plugins (gitignored — survive updates)
 const localPluginModules = import.meta.glob('./local/*.js', { eager: true });
@@ -71,6 +72,7 @@ const layerPlugins = [
   IBPLayerPlugin,
   WinlinkGatewaysPlugin,
   AircraftPlugin,
+  ATCSectorsPlugin,
   ...localPlugins,
 ];
 
@@ -102,6 +104,7 @@ const PINNED_SHORTCUTS = {
   'active-users': 'u',
   'winlink-gateways': 'k',
   aircraft: 'x',
+  'atc-sectors': 'z',
 };
 
 export function getAllLayers() {
