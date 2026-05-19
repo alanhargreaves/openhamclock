@@ -395,14 +395,38 @@ export function useLayer({ map, enabled, opacity, locator }) {
     // seams and is significantly faster for hundreds of rectangles
     const renderer = L.canvas({ padding: 0.5 });
 
-    // The 3-world-copies trick is a Mercator wraparound aid — on the azimuthal
-    // equidistant projection (#990, reported by VK4LWH), longitude offsets of
-    // ±360° project to the same point, so the extra copies just overdraw the
-    // base copy and produce visual smears near the antipode where the
-    // projection's `k = c / sin(c)` factor blows up. Use a single copy on
-    // azimuthal; keep the 3-copy fan-out for Mercator.
+    // 3-world-copies for Mercator wraparound continuity. On the azimuthal
+    // equidistant projection (#990) longitude offsets of ±360° project to the
+    // same point as offset 0, so the extra copies just overdraw and amplify
+    // the projection distortion near the antipode where `k = c/sin(c)` blows
+    // up. Use a single copy on azimuthal; keep the fan-out on Mercator.
     const isAzimuthal = map.options?.crs?.code === 'AzimuthalEquidistant';
     const offsets = isAzimuthal ? [0] : [-360, 0, 360];
+
+    // Build cell polygons with subdivided edges instead of L.rectangle. A
+    // rectangle in lat/lon space projects to a curved shape under azimuthal,
+    // but L.rectangle draws it as a 4-vertex polygon with STRAIGHT pixel-space
+    // edges — which is why Dan's screenshot in #990 showed blocky/distorted
+    // cells across the disc. With ~5 subdivisions per edge (20 vertices per
+    // cell perimeter) the polygon follows the projection's curvature smoothly
+    // on azimuthal AND still renders correctly on Mercator.
+    //
+    // ~5 subdivisions × 4 edges × ~650 cells × up-to-3 world copies ≈ 39k
+    // vertices total — well within Canvas2D's comfort zone.
+    const SUBDIVISIONS = 5;
+    const buildCellPolygon = (centerLat, centerLon, h, lonOffset) => {
+      const pts = [];
+      const step = (2 * h) / SUBDIVISIONS;
+      // S edge, W → E
+      for (let i = 0; i <= SUBDIVISIONS; i++) pts.push([centerLat - h, centerLon - h + i * step + lonOffset]);
+      // E edge, S → N (skip duplicate corner)
+      for (let i = 1; i <= SUBDIVISIONS; i++) pts.push([centerLat - h + i * step, centerLon + h + lonOffset]);
+      // N edge, E → W (skip duplicate corner)
+      for (let i = 1; i <= SUBDIVISIONS; i++) pts.push([centerLat + h, centerLon + h - i * step + lonOffset]);
+      // W edge, N → S (skip duplicate corners on both ends)
+      for (let i = 1; i < SUBDIVISIONS; i++) pts.push([centerLat + h - i * step, centerLon - h + lonOffset]);
+      return pts;
+    };
 
     data.cells.forEach((cell) => {
       const { color, alpha } = reliabilityColor(cell.r);
@@ -411,12 +435,7 @@ export function useLayer({ map, enabled, opacity, locator }) {
       const cellAlpha = alpha * (opacity / 0.6);
 
       for (const offset of offsets) {
-        const bounds = [
-          [cell.lat - half, cell.lon - half + offset],
-          [cell.lat + half, cell.lon + half + offset],
-        ];
-
-        const rect = L.rectangle(bounds, {
+        const poly = L.polygon(buildCellPolygon(cell.lat, cell.lon, half, offset), {
           stroke: false,
           fillColor: color,
           fillOpacity: Math.min(1, cellAlpha),
@@ -426,8 +445,8 @@ export function useLayer({ map, enabled, opacity, locator }) {
           renderer,
         });
 
-        rect.addTo(map);
-        newLayers.push(rect);
+        poly.addTo(map);
+        newLayers.push(poly);
       }
     });
 
