@@ -24,6 +24,7 @@ import useLocalInstall from '../hooks/app/useLocalInstall.js';
 import { emojiToIso2 } from '../utils/countryFlags';
 import { getAlertSettings, saveAlertSettings, playTone, TONE_PRESETS, ALERT_FEEDS } from '../utils/audioAlerts';
 import { setRelaySessionId, setRelayConfigured, clearRelaySession } from '../utils/relaySession';
+import { CALLBOOKS, getCallbook } from '../utils/callbook.js';
 
 export const SettingsPanel = ({
   isOpen,
@@ -162,6 +163,9 @@ export const SettingsPanel = ({
       return "'JetBrains Mono', monospace";
     }
   });
+  // Callbook used when clicking a callsign in the UI (#989)
+  const [callbook, setCallbook] = useState(() => getCallbook());
+
   const { t, i18n } = useTranslation();
 
   // Layer controls
@@ -2283,6 +2287,55 @@ export const SettingsPanel = ({
                 </div>
               </div>
             )}
+
+            {/* Callbook for callsign lookups (#989) */}
+            <div style={{ marginBottom: '20px' }}>
+              <label
+                htmlFor="callbook-select"
+                style={{
+                  display: 'block',
+                  marginBottom: '8px',
+                  color: 'var(--text-muted)',
+                  fontSize: '11px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '1px',
+                }}
+              >
+                {t('station.settings.callbook.title')}
+              </label>
+              <select
+                id="callbook-select"
+                value={callbook}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setCallbook(next);
+                  try {
+                    localStorage.setItem('ohc_callbook', next);
+                  } catch {}
+                  window.dispatchEvent(new Event('ohc-callbook-changed'));
+                }}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  background: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  color: 'var(--accent-green)',
+                  fontSize: '14px',
+                  fontFamily: 'var(--font-mono)',
+                  cursor: 'pointer',
+                }}
+              >
+                {CALLBOOKS.map((cb) => (
+                  <option key={cb.id} value={cb.id}>
+                    {cb.label}
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                {t('station.settings.callbook.describe')}
+              </div>
+            </div>
 
             {/* Language */}
             <div style={{ marginBottom: '20px' }}>
