@@ -87,6 +87,16 @@ node server.js
 npm run dev
 ```
 
+### Enabling Client-side Propagation Calculation (without having to build it)
+
+If you want your clients (using your local server) to use the p533 modules for client side propagation calculation rather than the very rough esitimates (which are based on band and time of day), run
+
+```bash
+scripts/fetch-wasm.sh
+```
+
+from the top-level distribution directory, and restart the server.
+
 ---
 
 ## Table of Contents
