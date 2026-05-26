@@ -1318,7 +1318,7 @@ export const WorldMap = ({
           iconAnchor: [14, 14],
         });
         const m = L.marker([sunPos.lat, sunPos.lon + offset], { icon: sunIcon })
-          .bindPopup(`<b>Subsolar Point</b><br>${sunPos.lat.toFixed(2)}°, ${sunPos.lon.toFixed(2)}°`)
+          .bindPopup(`<b>Subsolar Point</b><br>${sunPos.lat.toFixed(1)}°, ${sunPos.lon.toFixed(1)}°`)
           .addTo(map);
         sunMarkerRef.current.push(m);
       }
@@ -2838,7 +2838,7 @@ export const WorldMap = ({
         </div>
       )}
       <style>{`
-        ${mapUiHidden ? '.leaflet-control-container,.grayline-control,.muf-map-control,.voacap-heatmap-control,.rbn-control,.lightning-stats,.lightning-proximity,.wspr-filter-control,.wspr-stats,.wspr-legend,.wspr-chart,.sat-data-window{display:none !important;}' : ''}
+        ${mapUiHidden ? '.leaflet-control-container,.grayline-control,.muf-map-control,.voacap-heatmap-control,.rbn-control,.lightning-stats,.lightning-proximity,.wspr-filter-control,.wspr-stats,.wspr-legend,.wspr-chart{display:none !important;}' : ''}
         .ohc-rotator-bearing {
           stroke-dasharray: 10 10;
           animation: ohcRotDash 2.8s linear infinite, ohcRotPulse 3.2s ease-in-out infinite;
