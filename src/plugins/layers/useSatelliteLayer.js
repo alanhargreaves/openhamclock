@@ -62,8 +62,8 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
 
   const fetchSatellites = async () => {
     try {
-      const response = await fetch('/api/satellites/tle');
-      const data = await response.json();
+      const response = await fetch('/api/satellites/data');
+      const { timestamp: newTimestamp, data } = await response.json();
 
       const satArray = Object.keys(data).map((name) => {
         const satData = data[name];
@@ -181,7 +181,7 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
       };
 
       // Prevent map from capturing events on the window
-      win.addEventListener('wheel', handleWheelPropagation);
+      win.addEventListener('wheel', handleWheelPropagation, { passive: true });
       win.addEventListener('mousedown', handleMouseDownPropagation);
       win.addEventListener('mousemove', handleMouseMovePropagation);
       win.addEventListener('mouseup', handleMouseUpPropagation);
@@ -410,8 +410,7 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
                 class="sat-open-predict"
                 data-action="open-predict"
                 data-sat-name="${attrEscape(sat.name)}"
-                data-tle1="${attrEscape(sat.tle1)}"
-                data-tle2="${attrEscape(sat.tle2)}"
+                data-omm="${attrEscape(sat.omm ? JSON.stringify(sat.omm) : '')}"
                 style="
                   width: 100%;
                   padding: 2px 0;
@@ -599,10 +598,16 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
         e.stopPropagation();
         e.preventDefault();
         const name = actionEl.dataset.satName;
-        const tle1 = actionEl.dataset.tle1;
-        const tle2 = actionEl.dataset.tle2;
-        if (name && tle1 && tle2 && window.openSatellitePredict) {
-          window.openSatellitePredict(name, tle1, tle2);
+        let omm = null;
+        if (actionEl.dataset.omm) {
+          try {
+            omm = JSON.parse(actionEl.dataset.omm);
+          } catch (err) {
+            console.warn('Failed to parse satellite OMM data:', err);
+          }
+        }
+        if (name && omm && window.openSatellitePredict) {
+          window.openSatellitePredict(name, omm);
         }
         return;
       }
@@ -630,7 +635,7 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
 
   // Expose satellite prediction panel function
   useEffect(() => {
-    const openSatellitePredict = (satName, tle1, tle2) => {
+    const openSatellitePredict = (satName, omm) => {
       if (!satName || !satellites) return;
 
       // Find the satellite data
@@ -640,7 +645,7 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
         return;
       }
 
-      const orbit = new Orbit(sat.name, `${sat.name}\n${tle1}\n${tle2}`);
+      const orbit = new Orbit(sat.name, omm);
       orbit.error && console.warn('Satellite orbit error:', orbit.error);
 
       const groundStation = {
@@ -819,7 +824,7 @@ export const useLayer = ({ map, enabled, satellites, setSatellites, opacity, con
       );
 
       // update modal every second, satellite data currentPasses is not updated unless modal is reopened,
-      // or if satellite layer is updated for instance if TLE data changes
+      // or if satellite layer is updated for instance if satellite data changes
       const updatePasses = () => {
         content.innerHTML = generateModalContent(currentPasses);
       };
