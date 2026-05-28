@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { getBandColor } from '../utils/callsign.js';
 import { IconSearch, IconRefresh, IconMap, IconTrash } from './Icons.jsx';
 import CallsignLink from './CallsignLink.jsx';
+import { useCallsignPopup } from './CallsignPopupManager.jsx';
 
 const PSKReporterPanel = ({
   callsign,
@@ -43,6 +44,7 @@ const PSKReporterPanel = ({
   wsjtxRelayMulticast = { enabled: false, address: '224.0.0.1' },
 }) => {
   const { t } = useTranslation();
+  const { showPopup } = useCallsignPopup();
   const [panelMode, setPanelMode] = useState(() => {
     try {
       const s = localStorage.getItem('openhamclock_pskPanelMode');
@@ -619,7 +621,13 @@ const PSKReporterPanel = ({
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      <CallsignLink call={displayCall} color="var(--text-primary)" fontWeight="600" fontSize="11px" />
+                      <CallsignLink
+                        call={displayCall}
+                        color="var(--text-primary)"
+                        fontWeight="600"
+                        fontSize="11px"
+                        onPopup={showPopup}
+                      />
                       {showMutualReception && isMutual(report) && (
                         <span
                           style={{ color: '#fbbf24', marginLeft: '3px', fontSize: '10px' }}
@@ -893,7 +901,7 @@ const PSKReporterPanel = ({
                         {d.dt != null ? `${Number(d.dt) >= 0 ? '+' : ''}${Number(d.dt).toFixed(1)}` : ''}
                       </span>
                       <span style={{ color: '#22d3ee', fontWeight: '600', minWidth: '65px' }}>
-                        <CallsignLink call={d.callsign} color="#22d3ee" fontWeight="600" />
+                        <CallsignLink call={d.callsign} color="#22d3ee" fontWeight="600" onPopup={showPopup} />
                       </span>
                       {d.grid && <span style={{ color: '#a78bfa', fontSize: '10px', minWidth: '35px' }}>{d.grid}</span>}
                       <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
@@ -939,6 +947,7 @@ const PSKReporterPanel = ({
                           call={q.dxCall}
                           color={q.band ? getBandColor(q.frequency / 1000000) : 'var(--accent-green)'}
                           fontWeight="600"
+                          onPopup={showPopup}
                         />
                       </span>
                       <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>{q.band}</span>

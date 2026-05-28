@@ -1,14 +1,19 @@
 /**
  * CallsignLink — clickable callsign that opens the user's chosen callbook
+ * or shows a popup with station info.
  *
- * Usage:
- *   <CallsignLink call="K1ABC" color="#fff" fontWeight="700" />
+ * Usage (popup mode — recommended):
+ *   const { showPopup } = useCallsignPopup();
+ *   <CallsignLink call={spot.call} onPopup={showPopup} />
+ *
+ * Usage (legacy tab mode):
+ *   <CallsignLink call={spot.call} />
  *
  * Reads the global toggle from localStorage (ohc_qrz_links).
- * When enabled, clicking opens the callsign's page on the selected callbook
- * (QRZ.com by default — see src/utils/callbook.js) in a new tab.
+ * When enabled and `onPopup` is provided, clicking shows the station info popup.
+ * When enabled and `onPopup` is NOT provided, clicking opens the callbook in a new tab.
  */
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { getCallbookUrl } from '../utils/callbook.js';
 
 // ── Extract base callsign from decorated/portable calls ──
@@ -16,7 +21,7 @@ import { getCallbookUrl } from '../utils/callbook.js';
 // OE1XYZ-12 → OE1XYZ  (MeshCom / APRS SSID suffix stripped before QRZ lookup)
 // Picks the segment that looks most like a home callsign.
 const MODIFIERS = new Set(['M', 'P', 'QRP', 'MM', 'AM', 'R', 'T', 'B', 'BCN', 'LH', 'A', 'E', 'J', 'AG', 'AE', 'KT']);
-function extractBaseCall(raw) {
+export function extractBaseCall(raw) {
   if (!raw) return '';
   // Strip SSID suffix (-12, -99, etc.) used by MeshCom and APRS
   const withoutSsid = raw.replace(/-\d+$/, '');
@@ -86,6 +91,7 @@ export function QRZToggle({ style }) {
 }
 
 // ── The callsign link itself ──
+// onPopup(call, anchorEl) — optional callback for popup mode
 export default function CallsignLink({
   call,
   color = 'inherit',
@@ -93,8 +99,10 @@ export default function CallsignLink({
   fontSize = 'inherit',
   style = {},
   children,
+  onPopup,
 }) {
   const { enabled } = useQRZ();
+  const spanRef = useRef(null);
 
   if (!call) return children || null;
 
@@ -104,11 +112,19 @@ export default function CallsignLink({
   const handleClick = (e) => {
     if (!enabled) return;
     e.stopPropagation();
-    window.open(getCallbookUrl(baseCall), '_blank', 'noopener,noreferrer');
+
+    if (onPopup) {
+      // Popup mode — show the info popup
+      onPopup(call, spanRef.current);
+    } else {
+      // Legacy mode — open callbook in new tab
+      window.open(getCallbookUrl(baseCall), '_blank', 'noopener,noreferrer');
+    }
   };
 
   return (
     <span
+      ref={spanRef}
       onClick={handleClick}
       style={{
         color,

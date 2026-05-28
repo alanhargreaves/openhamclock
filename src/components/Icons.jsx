@@ -340,6 +340,25 @@ export const IconShrink = ({ size = defaults.size, color = defaults.color, ...pr
   </svg>
 );
 
+// External link (arrow pointing up-right)
+export const IconExternalLink = ({ size = defaults.size, color = defaults.color, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke={color}
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M6 3H3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3" strokeDasharray="0" />
+    <polyline points="8 5 12 5 12 9" />
+    <line x1="9" y1="12" x2="14" y2="7" />
+  </svg>
+);
+
 export default {
   IconSearch,
   IconRefresh,
@@ -358,4 +377,5 @@ export default {
   IconExpand,
   IconShrink,
   IconTrash,
+  IconExternalLink,
 };
