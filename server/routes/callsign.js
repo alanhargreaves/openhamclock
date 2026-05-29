@@ -416,8 +416,8 @@ module.exports = function (app, ctx) {
         lat: parseFloat(latMatch[1]),
         lon: parseFloat(lonMatch[1]),
         country: countryMatch ? countryMatch[1] : 'Unknown',
-        cqZone: cqMatch ? cqMatch[1] : '',
-        ituZone: ituMatch ? ituMatch[1] : '',
+        cqZone: cqMatch ? String(parseInt(cqMatch[1], 10)) : '',
+        ituZone: ituMatch ? String(parseInt(ituMatch[1], 10)) : '',
         source: 'hamqth',
       };
     } catch (err) {
