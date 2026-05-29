@@ -21,7 +21,7 @@ import usePopupPosition from '../hooks/app/usePopupPosition.js';
 import { getCallbookUrl, getCallbook, CALLBOOKS } from '../utils/callbook.js';
 import { ctyLookup } from '../utils/ctyLookup.js';
 import { esc } from '../utils/escapeHtml.js';
-import { IconExternalLink } from './Icons.jsx';
+import { IconGlobe } from './Icons.jsx';
 import { extractBaseCall } from './CallsignLink.jsx';
 
 // Approximate height for initial positioning (actual measured via ResizeObserver)
@@ -108,7 +108,7 @@ function CallsignPopup({ anchorRef, call, onClose, popupHeightRef }) {
   // Build display values
   const name = data?.name || data?.fname || null;
   const grid = data?.grid || cty?.grid || null;
-  const country = data?.country || cty?.entity || null;
+  const country = data?.country && data?.country !== 'Unknown' ? data.country : cty?.entity || null;
   const state = data?.state || null;
   const lat = data?.lat || cty?.lat || null;
   const lon = data?.lon || cty?.lon || null;
@@ -194,7 +194,7 @@ function CallsignPopup({ anchorRef, call, onClose, popupHeightRef }) {
             e.target.style.opacity = '0.7';
           }}
         >
-          <IconExternalLink size={12} color={accentColor} />
+          <IconGlobe size={12} color={accentColor} />
         </a>
       </div>
 
