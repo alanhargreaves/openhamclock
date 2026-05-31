@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { DXNewsTicker, WorldMap } from '../components';
 import { DXGridInput } from '../components/DXGridInput.jsx';
+import { DXCallsignInput } from '../components/DXCallsignInput.jsx';
 import { DXFavorites } from '../components/DXFavorites.jsx';
 import { getBandColor, getBandColorForBand } from '../utils';
 import { calculateBearing, calculateDistance, formatDistance } from '../utils/geo.js';
@@ -2168,19 +2169,16 @@ export default function ClassicLayout(props) {
                 dxLocked={dxLocked}
                 style={{ color: 'var(--text-muted)', fontSize: '14px' }}
               />
-              {dxCallsign && (
-                <span
-                  style={{
-                    color: 'var(--accent-amber)',
-                    fontSize: '14px',
-                    fontFamily: 'var(--font-mono)',
-                    fontWeight: '900',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {dxCallsign}
-                </span>
-              )}
+              <DXCallsignInput
+                dxCallsign={dxCallsign}
+                onDXChange={handleDXChange}
+                dxLocked={dxLocked}
+                style={{
+                  color: 'var(--accent-amber)',
+                  fontSize: '14px',
+                  fontWeight: '900',
+                }}
+              />
               <DXFavorites dxLocation={dxLocation} dxGrid={dxGrid} onDXChange={handleDXChange} dxLocked={dxLocked} /> •{' '}
               {dxLocked ? t('app.dxLock.lockedShort') : t('app.dxLock.clickToSet')}
             </span>
