@@ -50,21 +50,30 @@ function Check-Git {
 # Setup repository
 function Setup-Repository {
     Write-Host ">>> Setting up OpenHamClock..." -ForegroundColor Blue
-    
+
     if (Test-Path $InstallDir) {
         Write-Host "Updating existing installation..."
         Set-Location $InstallDir
         git pull
+        Write-Host "Installing dependencies..."
+        $env:ELECTRON_SKIP_BINARY_DOWNLOAD = "1"
+        npm ci --ignore-scripts
+        if ($LASTEXITCODE -ne 0) { npm install }
+        Write-Host "Building frontend..."
+        if (Test-Path "dist") { Remove-Item "dist" -Recurse -Force }
+        npm run build
     }
     else {
         Write-Host "Cloning repository..."
         git clone https://github.com/accius/openhamclock.git $InstallDir
         Set-Location $InstallDir
+        Write-Host "Installing dependencies..."
+        $env:ELECTRON_SKIP_BINARY_DOWNLOAD = "1"
+        npm ci --ignore-scripts
+        Write-Host "Building frontend..."
+        npm run build
     }
-    
-    Write-Host "Installing dependencies..."
-    npm install
-    
+
     Write-Host "✓ Installation complete" -ForegroundColor Green
 }
 
@@ -86,6 +95,13 @@ function Create-Launcher {
     $batchContent = @"
 @echo off
 cd /d "$InstallDir"
+if not exist "node_modules" (
+    echo node_modules not found - running npm install...
+    call npm install
+    if errorlevel 1 ( echo Install failed & pause & exit /b 1 )
+    call npm run build
+    if errorlevel 1 ( echo Build failed & pause & exit /b 1 )
+)
 echo Starting OpenHamClock...
 echo Open http://localhost:3000 in your browser
 npm start

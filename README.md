@@ -993,12 +993,22 @@ sudo journalctl -u openhamclock -f     # View logs
 
 > **macOS note:** macOS does not use systemd, so the `--service` flag is not supported. Use `~/openhamclock/run.sh` to start manually, or run `npm run electron` for a native desktop window.
 
-**Manual install (all platforms including Windows):**
+**Windows:**
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force
+.\scripts\setup-windows.ps1
+```
+
+This clones the repo to `%USERPROFILE%\openhamclock`, installs dependencies, builds the frontend, creates a `start.bat` launcher, and adds a desktop shortcut. After install, edit `%USERPROFILE%\openhamclock\.env` to set your `CALLSIGN` and `LOCATOR`, then start with `start.bat` or `npm start`.
+
+**Manual install (all platforms):**
 
 ```bash
 git clone https://github.com/accius/openhamclock.git
 cd openhamclock
 npm install
+npm run build
 npm start
 ```
 
@@ -1154,7 +1164,7 @@ The relay agent has zero npm dependencies (uses only Node.js built-ins), batches
 
 ## Updating
 
-### Git installations (local/Pi)
+### Linux / macOS / Pi
 
 ```bash
 cd ~/openhamclock
@@ -1169,7 +1179,7 @@ sudo systemctl restart openhamclock
 ./restart.sh
 ```
 
-### Windows (Git installations)
+### Windows
 
 Run the bundled update script from your openhamclock directory:
 
@@ -1179,7 +1189,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force
 .\scripts\update.ps1
 ```
 
-The script backs up your `.env` → pulls latest code → installs new dependencies → rebuilds the frontend → restores your `.env`. Then restart:
+The script backs up your `.env` → pulls latest code → installs any new dependencies → rebuilds the frontend → restores your `.env`. Then restart:
 
 ```powershell
 npm start
