@@ -8,9 +8,9 @@
 $ErrorActionPreference = "Stop"
 
 Write-Host ""
-Write-Host "╔═══════════════════════════════════════════════════════════╗" -ForegroundColor Blue
-Write-Host "║         OpenHamClock Update Script (Windows)              ║" -ForegroundColor Blue
-Write-Host "╚═══════════════════════════════════════════════════════════╝" -ForegroundColor Blue
+Write-Host "===========================================================" -ForegroundColor Blue
+Write-Host "         OpenHamClock Update Script (Windows)              " -ForegroundColor Blue
+Write-Host "===========================================================" -ForegroundColor Blue
 Write-Host ""
 
 # Must be run from the openhamclock directory
@@ -43,21 +43,21 @@ catch {
 
 # Save current version
 $oldVersion = (Get-Content package.json | Select-String '"version"' | Select-Object -First 1) -replace '.*"version":\s*"([^"]+)".*', '$1'
-Write-Host "📋 Current version: $oldVersion"
+Write-Host "Current version: $oldVersion"
 Write-Host ""
 
-Write-Host "🛡️  Backing up configuration..."
+Write-Host "Backing up configuration..."
 if (Test-Path ".env") {
     Copy-Item ".env" ".env.backup" -Force
-    Write-Host "   ✓ .env → .env.backup" -ForegroundColor Green
+    Write-Host "   [OK] .env -> .env.backup" -ForegroundColor Green
 }
 if (Test-Path "config.json") {
     Copy-Item "config.json" "config.json.backup" -Force
-    Write-Host "   ✓ config.json → config.json.backup" -ForegroundColor Green
+    Write-Host "   [OK] config.json -> config.json.backup" -ForegroundColor Green
 }
 Write-Host ""
 
-Write-Host "⬇️  Pulling latest changes..."
+Write-Host "Pulling latest changes..."
 git pull
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: git pull failed. Check your internet connection." -ForegroundColor Red
@@ -65,7 +65,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host ""
 
-Write-Host "📦 Installing dependencies..."
+Write-Host "Installing dependencies..."
 $env:ELECTRON_SKIP_BINARY_DOWNLOAD = "1"
 npm ci --ignore-scripts
 if ($LASTEXITCODE -ne 0) {
@@ -78,7 +78,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host ""
 
-Write-Host "🔨 Building frontend..."
+Write-Host "Building frontend..."
 if (Test-Path "dist") { Remove-Item "dist" -Recurse -Force }
 npm run build
 if ($LASTEXITCODE -ne 0) {
@@ -87,29 +87,29 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host ""
 
-Write-Host "🔄 Restoring configuration..."
+Write-Host "Restoring configuration..."
 if ((Test-Path ".env.backup") -and -not (Test-Path ".env")) {
     Copy-Item ".env.backup" ".env" -Force
-    Write-Host "   ✓ .env restored from backup" -ForegroundColor Green
+    Write-Host "   [OK] .env restored from backup" -ForegroundColor Green
 }
 if ((Test-Path "config.json.backup") -and -not (Test-Path "config.json")) {
     Copy-Item "config.json.backup" "config.json" -Force
-    Write-Host "   ✓ config.json restored from backup" -ForegroundColor Green
+    Write-Host "   [OK] config.json restored from backup" -ForegroundColor Green
 }
 
 $newVersion = (Get-Content package.json | Select-String '"version"' | Select-Object -First 1) -replace '.*"version":\s*"([^"]+)".*', '$1'
 
 Write-Host ""
 if ($oldVersion -eq $newVersion) {
-    Write-Host "📋 Version: $newVersion (unchanged)" -ForegroundColor Yellow
+    Write-Host "Version: $newVersion (unchanged)" -ForegroundColor Yellow
 } else {
-    Write-Host "📋 Updated: $oldVersion → $newVersion" -ForegroundColor Green
+    Write-Host "Updated: $oldVersion -> $newVersion" -ForegroundColor Green
 }
 
 Write-Host ""
-Write-Host "╔═══════════════════════════════════════════════════════════╗" -ForegroundColor Green
-Write-Host "║                  ✅ Update Complete!                      ║" -ForegroundColor Green
-Write-Host "╚═══════════════════════════════════════════════════════════╝" -ForegroundColor Green
+Write-Host "===========================================================" -ForegroundColor Green
+Write-Host "                  Update Complete!                         " -ForegroundColor Green
+Write-Host "===========================================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Restart the server to apply changes:" -ForegroundColor Blue
 Write-Host ""
