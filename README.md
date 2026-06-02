@@ -1169,6 +1169,23 @@ sudo systemctl restart openhamclock
 ./restart.sh
 ```
 
+### Windows (Git installations)
+
+Run the bundled update script from your openhamclock directory:
+
+```bat
+cd C:\Users\YourName\openhamclock
+scripts\update.bat
+```
+
+The script backs up your `.env` → pulls latest code → installs new dependencies → rebuilds the frontend → restores your `.env`. Then restart:
+
+```bat
+npm start
+```
+
+Or double-click `start.bat` if you created it during setup.
+
 ### Auto-update (Git installations)
 
 Enable automatic updates by setting the following in `.env`:
@@ -1270,7 +1287,8 @@ openhamclock/
 │   ├── setup-pi.sh               # Raspberry Pi one-line installer
 │   ├── setup-linux.sh            # Linux / macOS installer (--service for systemd)
 │   ├── setup-windows.ps1         # Windows PowerShell installer
-│   └── update.sh                 # Update script (backup → pull → rebuild → restore)
+│   ├── update.bat                # Windows update script (backup → pull → rebuild → restore)
+│   └── update.sh                 # Linux/Pi update script (backup → pull → rebuild → restore)
 ├── Dockerfile                # Multi-stage Docker build
 ├── docker-compose.yml        # Docker Compose configuration
 ├── railway.toml              # Railway deployment configuration
