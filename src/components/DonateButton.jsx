@@ -26,8 +26,9 @@ export default function DonateButton({ compact = false, fontSize = '12px', paddi
   return (
     <>
       <button
+        type="button"
         onClick={() => setOpen(true)}
-        title="Support OpenHamClock"
+        aria-label="Support OpenHamClock"
         tabIndex={tabIndex}
         style={{
           background: 'linear-gradient(135deg, #ff813f 0%, #ffdd00 100%)',
@@ -65,6 +66,9 @@ export default function DonateButton({ compact = false, fontSize = '12px', paddi
           }}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="donate-modal-title"
             onClick={(e) => e.stopPropagation()}
             style={{
               background: 'var(--bg-secondary, #1a1a2e)',
@@ -80,9 +84,13 @@ export default function DonateButton({ compact = false, fontSize = '12px', paddi
             <div
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}
             >
-              <h3 style={{ margin: 0, color: 'var(--text-primary, #eee)', fontSize: '18px' }}>Support OpenHamClock</h3>
+              <h3 id="donate-modal-title" style={{ margin: 0, color: 'var(--text-primary, #eee)', fontSize: '18px' }}>
+                Support OpenHamClock
+              </h3>
               <button
+                type="button"
                 onClick={close}
+                aria-label="Close support dialog"
                 style={{
                   background: 'none',
                   border: 'none',
@@ -92,9 +100,8 @@ export default function DonateButton({ compact = false, fontSize = '12px', paddi
                   padding: '2px 6px',
                   lineHeight: 1,
                 }}
-                title="Close"
               >
-                ✕
+                <span aria-hidden="true">✕</span>
               </button>
             </div>
 
@@ -110,6 +117,7 @@ export default function DonateButton({ compact = false, fontSize = '12px', paddi
                 href={COFFEE_URL}
                 target="_blank"
                 rel="noopener noreferrer"
+                aria-label="Buy Me a Coffee — one-time or monthly support (opens in new tab)"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -137,6 +145,7 @@ export default function DonateButton({ compact = false, fontSize = '12px', paddi
                 href={PAYPAL_URL}
                 target="_blank"
                 rel="noopener noreferrer"
+                aria-label="Donate via PayPal — secure one-time donation (opens in new tab)"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -182,6 +191,7 @@ export default function DonateButton({ compact = false, fontSize = '12px', paddi
                   href={MERCH_URL}
                   target="_blank"
                   rel="noopener noreferrer"
+                  aria-label="OpenHamClock Merch — shirts, mugs, stickers and more (opens in new tab)"
                   style={{
                     display: 'flex',
                     alignItems: 'center',

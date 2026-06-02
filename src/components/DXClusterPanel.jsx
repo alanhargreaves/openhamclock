@@ -206,8 +206,9 @@ export const DXClusterPanel = ({
             <option value="call">Call</option>
           </select>
           <button
+            type="button"
             onClick={onOpenFilters}
-            title={t('dxClusterPanel.filterTooltip')}
+            aria-label={t('dxClusterPanel.filterTooltip')}
             style={{
               background: filterCount > 0 ? 'rgba(255, 170, 0, 0.3)' : 'rgba(100, 100, 100, 0.3)',
               border: `1px solid ${filterCount > 0 ? '#ffaa00' : '#666'}`,
@@ -241,6 +242,7 @@ export const DXClusterPanel = ({
             de
           </button>
           <button
+            type="button"
             onClick={onToggleMap}
             title={showOnMap ? t('dxClusterPanel.mapToggleHide') : t('dxClusterPanel.mapToggleShow')}
             aria-label={showOnMap ? t('dxClusterPanel.mapToggleHide') : t('dxClusterPanel.mapToggleShow')}
@@ -264,7 +266,11 @@ export const DXClusterPanel = ({
 
       {/* Quick search */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+        <label htmlFor="dx-cluster-search" className="visually-hidden">
+          {t('dxClusterPanel.quickSearchLabel', { defaultValue: 'Search DX cluster spots by callsign' })}
+        </label>
         <input
+          id="dx-cluster-search"
           type="text"
           placeholder={t('dxClusterPanel.quickSearch')}
           value={filters?.callsign || ''}
@@ -281,7 +287,6 @@ export const DXClusterPanel = ({
           }}
         />
       </div>
-
       {/* Spots list */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
@@ -348,6 +353,12 @@ export const DXClusterPanel = ({
                 onMouseLeave={() => onHoverSpot?.(null)}
                 onClick={() => {
                   onSpotClick?.(spot);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSpotClick?.(spot);
+                  }
                 }}
                 style={{
                   display: 'grid',

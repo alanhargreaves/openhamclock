@@ -668,7 +668,8 @@ const App = () => {
   }, []);
 
   return (
-    <div
+    <main
+      id="main-content"
       style={{
         width: '100vw',
         height: '100vh',
@@ -803,7 +804,7 @@ const App = () => {
         onClose={() => setShowWwbotaFilters(false)}
       />
       <WhatsNew showWhatsNew={config.showWhatsNew} />
-    </div>
+    </main>
   );
 };
 

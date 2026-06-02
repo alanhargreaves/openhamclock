@@ -65,23 +65,32 @@ export function useQRZ() {
 export function QRZToggle({ style }) {
   const { enabled, toggle } = useQRZ();
   return (
-    <span
+    <button
+      type="button"
       onClick={(e) => {
         e.stopPropagation();
         toggle();
       }}
       title={enabled ? 'Click callsigns to open the callbook lookup (ON)' : 'Callsign links disabled (OFF)'}
+      aria-label={
+        enabled ? 'QRZ callsign links enabled — click to disable' : 'QRZ callsign links disabled — click to enable'
+      }
+      aria-pressed={enabled}
       style={{
         cursor: 'pointer',
         fontSize: '11px',
         opacity: enabled ? 1 : 0.4,
         userSelect: 'none',
         transition: 'opacity 0.2s',
+        background: 'none',
+        border: 'none',
+        padding: 0,
+        lineHeight: 1,
         ...style,
       }}
     >
-      🔍
-    </span>
+      <span aria-hidden="true">🔍</span>
+    </button>
   );
 }
 
@@ -101,31 +110,44 @@ export default function CallsignLink({
   // Strip portable suffixes and prefixes for QRZ lookup (5Z4/OZ6ABL → OZ6ABL, UA1TAN/M → UA1TAN)
   const baseCall = extractBaseCall(call);
 
-  const handleClick = (e) => {
-    if (!enabled) return;
-    e.stopPropagation();
-    window.open(getCallbookUrl(baseCall), '_blank', 'noopener,noreferrer');
-  };
+  if (enabled) {
+    return (
+      <a
+        href={getCallbookUrl(baseCall)}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        aria-label={`Look up ${call} in callbook (opens in new tab)`}
+        style={{
+          color,
+          fontWeight,
+          fontSize,
+          cursor: 'pointer',
+          borderBottom: '1px dotted rgba(255,255,255,0.15)',
+          transition: 'color 0.15s',
+          textDecoration: 'none',
+          ...style,
+        }}
+        onMouseEnter={(e) => {
+          e.target.style.color = 'var(--accent-cyan)';
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.color = color;
+        }}
+      >
+        {children || call}
+      </a>
+    );
+  }
 
   return (
     <span
-      onClick={handleClick}
       style={{
         color,
         fontWeight,
         fontSize,
-        cursor: enabled ? 'pointer' : 'inherit',
-        borderBottom: enabled ? '1px dotted rgba(255,255,255,0.15)' : 'none',
-        transition: 'color 0.15s',
         ...style,
       }}
-      onMouseEnter={(e) => {
-        if (enabled) e.target.style.color = 'var(--accent-cyan)';
-      }}
-      onMouseLeave={(e) => {
-        if (enabled) e.target.style.color = color;
-      }}
-      title={enabled ? `Look up ${call}` : call}
     >
       {children || call}
     </span>
