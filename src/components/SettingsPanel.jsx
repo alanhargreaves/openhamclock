@@ -5505,11 +5505,19 @@ export const SettingsPanel = ({
                         Linux
                       </a>
                       <a
-                        href={
-                          /^https?:\/\//i.test(rigHost)
-                            ? `${rigHost.replace(/\/$/, '')}:${rigPort}`
-                            : `http://localhost:${rigPort}`
-                        }
+                        href={(() => {
+                          const fallback = `http://localhost:${rigPort}`;
+                          if (typeof rigHost !== 'string' || !rigHost) return fallback;
+                          try {
+                            const parsed = new URL(rigHost);
+                            if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                              return `${rigHost.replace(/\/$/, '')}:${rigPort}`;
+                            }
+                          } catch {
+                            /* invalid URL — fall through to localhost */
+                          }
+                          return fallback;
+                        })()}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{

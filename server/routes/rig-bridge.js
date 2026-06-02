@@ -208,8 +208,13 @@ module.exports = function (app, ctx) {
     if (!RIG_BRIDGE_RELAY_KEY) {
       return res.status(503).json({ error: 'Cloud relay not configured — set RIG_BRIDGE_RELAY_KEY in .env' });
     }
-    const sessionId = req.headers['x-relay-session'] || req.query.session || req.body?.session;
-    const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    // Coerce to string: Express returns arrays for repeated query/body params
+    // (e.g. ?session[]=a&session[]=b), which would type-confuse sessionId.slice()
+    // and the rate-limit key derivation below.
+    const rawSessionId = req.headers['x-relay-session'] || req.query.session || req.body?.session;
+    const sessionId = typeof rawSessionId === 'string' ? rawSessionId : undefined;
+    const rawAuth = req.headers.authorization;
+    const token = (typeof rawAuth === 'string' ? rawAuth : '').replace(/^Bearer\s+/i, '');
     const entry = sessionId ? relayIssuedTokens.get(sessionId) : undefined;
     if (!sessionId || !token || !entry || token !== entry.token) {
       const warnKey = sessionId ? sessionId.slice(0, 8) : '(none)';
