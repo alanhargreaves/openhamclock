@@ -1,0 +1,13 @@
+{
+  "name": "tle-fetcher",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Internal Railway service: relays TLE/OMM fetches to CelesTrak/AMSAT/SatNOGS with an isolated egress IP",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

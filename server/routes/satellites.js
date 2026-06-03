@@ -76,13 +76,29 @@ module.exports = function (app, ctx) {
     logInfo(`[Satellites] Merged radio metadata — ${Object.keys(HAM_SATELLITES).length} satellites in registry`);
   }
 
+  // Upstream URL routing. When TLE_FETCHER_URL is set, CelesTrak / AMSAT /
+  // SatNOGS fetches go through an internal Railway proxy so they egress from
+  // that service's IP. CelesTrak silently drops requests from this app's main
+  // egress (#1057); the proxy gives the fetches a fresh IP.
+  const TLE_FETCHER_URL = CONFIG.satellites.tleFetcherUrl || '';
+  const CELESTRAK_GP_URL = TLE_FETCHER_URL
+    ? `${TLE_FETCHER_URL}/celestrak/NORAD/elements/gp.php`
+    : 'https://celestrak.org/NORAD/elements/gp.php';
+  const AMSAT_NASABARE_URL = TLE_FETCHER_URL
+    ? `${TLE_FETCHER_URL}/amsat/tle/current/nasabare.txt`
+    : 'https://www.amsat.org/tle/current/nasabare.txt';
+  const SATNOGS_TLE_URL = TLE_FETCHER_URL ? `${TLE_FETCHER_URL}/satnogs/api/tle/` : 'https://db.satnogs.org/api/tle/';
+  if (TLE_FETCHER_URL) {
+    logInfo(`[Satellites] Routing CelesTrak/AMSAT/SatNOGS fetches via ${TLE_FETCHER_URL}`);
+  }
+
   const fetchOmmFromCelesTrakGroups = async (group) => {
     let httpStatusCode = 0;
     let ommJson = {};
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000); // 20s hard timeout
     try {
-      const res = await fetch(`https://celestrak.org/NORAD/elements/gp.php?GROUP=${group}&FORMAT=csv`, {
+      const res = await fetch(`${CELESTRAK_GP_URL}?GROUP=${group}&FORMAT=csv`, {
         headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
         signal: controller.signal,
       });
@@ -114,7 +130,7 @@ module.exports = function (app, ctx) {
     const timeout = setTimeout(() => controller.abort(), 20000); // 20s hard timeout
 
     try {
-      const res = await fetch(`https://celestrak.org/NORAD/elements/gp.php?CATNR=${noradId}&FORMAT=json`, {
+      const res = await fetch(`${CELESTRAK_GP_URL}?CATNR=${noradId}&FORMAT=json`, {
         headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
         signal: controller.signal,
       });
@@ -151,7 +167,7 @@ module.exports = function (app, ctx) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000); // 20s hard timeout
     try {
-      const res = await fetch('https://www.amsat.org/tle/current/nasabare.txt', {
+      const res = await fetch(AMSAT_NASABARE_URL, {
         headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
         signal: controller.signal,
       });
@@ -185,7 +201,7 @@ module.exports = function (app, ctx) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000); // 20s hard timeout
     try {
-      const res = await fetch(`https://db.satnogs.org/api/tle/?norad_cat_id=${noradId}&format=json`, {
+      const res = await fetch(`${SATNOGS_TLE_URL}?norad_cat_id=${noradId}&format=json`, {
         headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
         signal: controller.signal,
       });
