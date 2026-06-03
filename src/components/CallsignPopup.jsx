@@ -2,7 +2,7 @@
  * CallsignPopup — floating info popup for station lookup.
  *
  * Shown when a user clicks a callsign in the UI. Displays station info
- * (name, grid, country, CQ/ITU zones, coordinates) and includes a
+ * (name, grid, country, state) and includes a
  * clickable icon to open the callsign in the user's configured callbook.
  *
  * Auto-dismisses after 15s. Dismisses on outside click or Escape key.
@@ -67,7 +67,7 @@ function CallsignPopup({ anchorRef, call, onClose, popupHeightRef, location }) {
   // Fetch rich data from server
   const { data, loading: apiLoading, error } = useCallsignLookup(call);
 
-  // Synchronous ctyLookup for instant CQ/ITU zones
+  // Synchronous ctyLookup for grid and country/entity
   const cty = ctyLookup(call);
 
   // Extract base call for callbook URL
@@ -109,8 +109,6 @@ function CallsignPopup({ anchorRef, call, onClose, popupHeightRef, location }) {
   const grid = data?.grid || cty?.grid || null;
   const country = data?.country && data?.country !== 'Unknown' ? data.country : cty?.entity || null;
   const state = data?.state || null;
-  const cqZone = data?.cqZone || cty?.cq || null;
-  const ituZone = data?.ituZone || cty?.itu || null;
 
   // Local time from geo-time API
   // Priority: location prop (spot grid/coords) > callsign lookup grid > cty grid
@@ -302,14 +300,6 @@ function CallsignPopup({ anchorRef, call, onClose, popupHeightRef, location }) {
             </span>
           )}
         </div>
-
-        {/* CQ / ITU zones */}
-        {(cqZone || ituZone) && (
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '3px', fontSize: '11px', opacity: 0.8 }}>
-            {cqZone != null && <span>CQ {esc(String(cqZone))}</span>}
-            {ituZone != null && <span>ITU {esc(String(ituZone))}</span>}
-          </div>
-        )}
       </div>
     </div>
   );
