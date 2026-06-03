@@ -394,7 +394,7 @@ module.exports = function (app, ctx) {
   // any satellites downloaded that are part of the target list HAM_SATELLITES
   let ommUnusedCache = {};
 
-  const OMM_CACHE_DURATION = 12 * 60 * 60 * 1000; // 12 hours, period after which OMM data considered stale
+  const OMM_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours, matches NORAD's daily TLE release cadence
   const SPACE_TRACK_BACKOFF = 120 * 60 * 1000; // 2 hour, any satellite not allowed to repeat query to Space-Track within this period
   const CELESTRAK_BACKOFF = 120 * 60 * 1000; // 2 hour, any satellite not allowed to repeat query to CelesTrak within this period
   const CELESTRAK_GROUP_MIN_DOWNLOAD_SIZE = 3; // minimum number of satellites to trigger group download as, if fewer, then more efficient to perform individual download
