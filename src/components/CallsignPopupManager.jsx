@@ -12,34 +12,35 @@
  */
 import { createContext, useContext, useState, useCallback, useRef } from 'react';
 import CallsignPopup from './CallsignPopup.jsx';
+import { POPUP_HEIGHT_ESTIMATE } from '../hooks/app/usePopupPosition.js';
 
 const CallsignPopupContext = createContext(null);
 
 export function CallsignPopupProvider({ children }) {
-  const [popupState, setPopupState] = useState({ open: false, call: null, anchorRef: null, location: null });
-  const anchorRef = useRef(null);
-  const popupHeightRef = useRef(160); // default estimate, updated by popup after render
+  const [popupState, setPopupState] = useState({ open: false, call: null, anchorEl: null, location: null });
+  const popupHeightRef = useRef(POPUP_HEIGHT_ESTIMATE); // initial estimate, updated by popup after render
 
   const showPopup = useCallback((call, anchorEl, location) => {
-    anchorRef.current = anchorEl;
-    setPopupState({ open: true, call, anchorRef, location });
+    setPopupState({ open: true, call, anchorEl, location });
   }, []);
 
   const hidePopup = useCallback(() => {
-    setPopupState({ open: false, call: null, anchorRef: null, location: null });
+    setPopupState({ open: false, call: null, anchorEl: null, location: null });
   }, []);
 
   return (
     <CallsignPopupContext.Provider value={{ showPopup, hidePopup }}>
       {children}
       {popupState.open && popupState.call && (
-        <CallsignPopup
-          anchorRef={popupState.anchorRef}
-          call={popupState.call}
-          location={popupState.location}
-          onClose={hidePopup}
-          popupHeightRef={popupHeightRef}
-        />
+        <div aria-live="polite">
+          <CallsignPopup
+            anchorRef={popupState.anchorEl}
+            call={popupState.call}
+            location={popupState.location}
+            onClose={hidePopup}
+            popupHeightRef={popupHeightRef}
+          />
+        </div>
       )}
     </CallsignPopupContext.Provider>
   );

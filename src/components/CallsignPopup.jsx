@@ -14,9 +14,10 @@
  *     onClose={() => setShowPopup(false)}
  *   />
  */
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import useCallsignLookup from '../hooks/app/useCallsignLookup.js';
-import usePopupPosition from '../hooks/app/usePopupPosition.js';
+import usePopupPosition, { POPUP_HEIGHT_ESTIMATE } from '../hooks/app/usePopupPosition.js';
+import useTimezone from '../hooks/app/useTimezone.js';
 import { getCallbookUrl, getCallbook, CALLBOOKS } from '../utils/callbook.js';
 import { ctyLookup } from '../utils/ctyLookup.js';
 import { latLonToMaidenhead } from '../utils/index.js';
@@ -24,12 +25,6 @@ import { esc } from '../utils/escapeHtml.js';
 
 import { IconGlobe, IconRefresh } from './Icons.jsx';
 import { extractBaseCall } from './CallsignLink.jsx';
-
-// ── Timezone cache (module-level, survives remounts) ──────────────────
-const tzCache = new Map(); // grid → timezone string
-
-// Approximate height for initial positioning (actual measured via ResizeObserver)
-const POPUP_HEIGHT_ESTIMATE = 120;
 
 // Styling helpers
 const accentColor = 'var(--accent-cyan)';
@@ -80,9 +75,8 @@ function CallsignPopup({ anchorRef, call, onClose, popupHeightRef, location }) {
   // Extract base call for callbook URL
   const baseCall = extractBaseCall(call);
 
-  // Get configured callbook name
+  // Get configured callbook ID
   const callbookId = getCallbook();
-  const callbookLabel = CALLBOOKS.find((cb) => cb.id === callbookId)?.label || 'QRZ.com';
 
   // Close on outside click
   const handleClickOutside = useCallback(
@@ -119,59 +113,33 @@ function CallsignPopup({ anchorRef, call, onClose, popupHeightRef, location }) {
 
   // Local time — cache timezone by grid, format with Intl on demand
   // Convert lat/lon to Maidenhead grid for stable cache keys
-  let effectiveGrid = null;
+  // Debug: track source for hover tooltip
+  const effectiveGrid =
+    location?.grid ??
+    (location?.lat != null && location?.lon != null
+      ? latLonToMaidenhead({ lat: location.lat, lon: location.lon })
+      : null) ??
+    (data?.lat != null && data?.lon != null ? latLonToMaidenhead({ lat: data.lat, lon: data.lon }) : null) ??
+    grid ??
+    null;
+
+  // Debug: time source string for hover tooltip
+  let timeSource = null;
   if (location?.grid) {
-    effectiveGrid = location.grid;
+    timeSource = 'spot grid';
   } else if (location?.lat != null && location?.lon != null) {
-    effectiveGrid = latLonToMaidenhead({ lat: location.lat, lon: location.lon });
+    timeSource = `spot ${location.lat}, ${location.lon}`;
   } else if (data?.lat != null && data?.lon != null) {
-    effectiveGrid = latLonToMaidenhead({ lat: data.lat, lon: data.lon });
+    timeSource = `callbook ${data.lat}, ${data.lon}`;
   } else if (grid) {
-    effectiveGrid = grid;
+    timeSource = 'callbook/cty grid';
   }
 
-  const [localTime, setLocalTime] = useState(null);
+  const { timezone } = useTimezone(effectiveGrid);
+  const tooltipParts = [effectiveGrid, timezone, timeSource].filter(Boolean);
+  const timeTooltip = tooltipParts.length > 1 ? tooltipParts.join(' · ') : null;
 
-  useEffect(() => {
-    if (!effectiveGrid) {
-      setLocalTime(null);
-      return;
-    }
-
-    // Check cache first
-    const cached = tzCache.get(effectiveGrid);
-    if (cached) {
-      setLocalTime(
-        new Intl.DateTimeFormat(undefined, {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-          timeZone: cached,
-        }).format(new Date()),
-      );
-      return;
-    }
-
-    // Cache miss — fetch timezone from API
-    fetch(`/api/geo-time?grid=${encodeURIComponent(effectiveGrid)}`, {
-      signal: AbortSignal.timeout(5000),
-    })
-      .then((r) => r.json())
-      .then((result) => {
-        if (result.timezone) {
-          tzCache.set(effectiveGrid, result.timezone);
-          setLocalTime(
-            new Intl.DateTimeFormat(undefined, {
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: false,
-              timeZone: result.timezone,
-            }).format(new Date()),
-          );
-        }
-      })
-      .catch(() => {});
-  }, [effectiveGrid]);
+  const { localTime } = useTimezone(effectiveGrid);
 
   const handleCallbookClick = (e) => {
     e.preventDefault();
@@ -229,6 +197,7 @@ function CallsignPopup({ anchorRef, call, onClose, popupHeightRef, location }) {
           </span>
           {localTime && (
             <span
+              title={timeTooltip}
               style={{
                 fontFamily: 'var(--font-mono, monospace)',
                 fontSize: '12px',
@@ -245,14 +214,19 @@ function CallsignPopup({ anchorRef, call, onClose, popupHeightRef, location }) {
             <IconRefresh size={12} color={accentColor} style={{ animation: 'spin 1s linear infinite' }} />
           )}
           {error && !data && !apiLoading && (
-            <span title={esc(error)} style={{ cursor: 'help', opacity: 0.7 }}>
+            <span
+              title={esc(error)}
+              aria-label={`Lookup error: ${esc(error)}`}
+              style={{ cursor: 'help', opacity: 0.7 }}
+            >
               <IconRefresh size={12} color="var(--accent-red)" />
             </span>
           )}
           <a
             href={getCallbookUrl(baseCall)}
             onClick={handleCallbookClick}
-            title={`Open ${call} in ${callbookLabel}`}
+            title={`Open ${call} in ${CALLBOOKS.find((cb) => cb.id === callbookId)?.label || 'QRZ.com'}`}
+            aria-label={`Open ${call} in ${CALLBOOKS.find((cb) => cb.id === callbookId)?.label || 'QRZ.com'}`}
             rel="noopener noreferrer"
             style={{
               color: accentColor,
@@ -263,10 +237,10 @@ function CallsignPopup({ anchorRef, call, onClose, popupHeightRef, location }) {
               transition: 'opacity 0.15s',
             }}
             onMouseEnter={(e) => {
-              e.target.style.opacity = '1';
+              e.currentTarget.style.opacity = '1';
             }}
             onMouseLeave={(e) => {
-              e.target.style.opacity = '0.7';
+              e.currentTarget.style.opacity = '0.7';
             }}
           >
             <IconGlobe size={12} color={accentColor} />

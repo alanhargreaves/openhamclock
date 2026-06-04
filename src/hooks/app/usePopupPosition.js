@@ -9,19 +9,24 @@
  * overflow.
  *
  * Usage:
- *   const pos = usePopupPosition(anchorRef, popupWidth);
+ *   const pos = usePopupPosition(anchorEl, popupWidth);
+ *   // anchorEl can be a ref object ({ current: DOMElement }) or a direct DOM element
  *   <div style={{ position: 'fixed', ...pos.style, ... }} className={pos.className}>
  *     ...
  *   </div>
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 
+// Popup height estimate — initial estimate before ResizeObserver measures actual height
+// (header-only before API data resolves, ~60px; with body ~160px)
+export const POPUP_HEIGHT_ESTIMATE = 120;
+
 // Minimum padding from viewport edges
 const MARGIN = 8;
 // Extra padding from right edge to avoid clipping
 const RIGHT_MARGIN = 16;
 
-export default function usePopupPosition(anchorRef, popupHeightRef, popupWidth = 260, onRecalculate = null) {
+export default function usePopupPosition(anchorEl, popupHeightRef, popupWidth = 260, onRecalculate = null) {
   const [position, setPosition] = useState({
     top: 0,
     left: 0,
@@ -29,14 +34,21 @@ export default function usePopupPosition(anchorRef, popupHeightRef, popupWidth =
   });
   const rafRef = useRef(null);
 
+  // Resolve anchor: accepts a ref object ({ current }) or a direct DOM element
+  const getAnchor = useCallback(() => {
+    if (!anchorEl) return null;
+    // If it's a ref object, use .current; otherwise it's already the element
+    return typeof anchorEl === 'object' && 'current' in anchorEl ? anchorEl.current : anchorEl;
+  }, [anchorEl]);
+
   const recalculate = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(() => {
-      const anchor = anchorRef?.current;
+      const anchor = getAnchor();
       if (!anchor) return;
 
       const rect = anchor.getBoundingClientRect();
-      const popupH = popupHeightRef?.current ?? 120;
+      const popupH = popupHeightRef?.current ?? POPUP_HEIGHT_ESTIMATE;
       const availBelow = window.innerHeight - rect.bottom - MARGIN;
       const availAbove = rect.top - MARGIN;
 
@@ -65,7 +77,7 @@ export default function usePopupPosition(anchorRef, popupHeightRef, popupWidth =
 
       setPosition({ top, left, className: cls });
     });
-  }, [anchorRef, popupHeightRef, popupWidth]);
+  }, [getAnchor, popupHeightRef, popupWidth]);
 
   // Expose recalculate function to caller (popup component)
   useEffect(() => {
@@ -82,7 +94,8 @@ export default function usePopupPosition(anchorRef, popupHeightRef, popupWidth =
 
     // Observe DOM changes that might shift the anchor
     const observer = new ResizeObserver(recalculate);
-    if (anchorRef?.current) observer.observe(anchorRef.current);
+    const resolved = getAnchor();
+    if (resolved) observer.observe(resolved);
 
     return () => {
       window.removeEventListener('resize', onResize);

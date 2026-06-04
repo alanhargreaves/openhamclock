@@ -608,7 +608,7 @@ module.exports = function (app, ctx) {
       const text = await response.text();
       const latMatch = text.match(/<lat>([^<]+)<\/lat>/);
       const lonMatch = text.match(/<lng>([^<]+)<\/lng>/);
-      const countryMatch = text.match(/<n>([^<]+)<\/name>/);
+      const countryMatch = text.match(/<name>([^<]+)<\/name>/);
       const cqMatch = text.match(/<cq>([^<]+)<\/cq>/);
       const ituMatch = text.match(/<itu>([^<]+)<\/itu>/);
 

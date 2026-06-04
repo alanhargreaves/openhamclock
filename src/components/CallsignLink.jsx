@@ -7,7 +7,7 @@
  *
  * If `onPopup` is not provided, the callsign is rendered as plain text (no click).
  */
-import { useRef } from 'react';
+import { useRef, useCallback } from 'react';
 
 // ── Extract base callsign from decorated/portable calls ──
 // 5Z4/OZ6ABL → OZ6ABL, UA1TAN/M → UA1TAN, W1ABC/6 → W1ABC
@@ -45,6 +45,17 @@ export default function CallsignLink({
 }) {
   const spanRef = useRef(null);
 
+  const triggerPopup = useCallback(
+    (e) => {
+      if (e.type === 'click' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        onPopup(call, spanRef.current, location);
+      }
+    },
+    [call, location, onPopup],
+  );
+
   if (!call) return children || null;
 
   if (onPopup) {
@@ -56,7 +67,11 @@ export default function CallsignLink({
     return (
       <span
         ref={spanRef}
+        role="button"
+        tabIndex={0}
+        aria-label={`Look up ${call}`}
         onClick={handleClick}
+        onKeyDown={triggerPopup}
         style={{
           color,
           fontWeight,
@@ -67,10 +82,10 @@ export default function CallsignLink({
           ...style,
         }}
         onMouseEnter={(e) => {
-          e.target.style.color = 'var(--accent-cyan)';
+          e.currentTarget.style.color = 'var(--accent-cyan)';
         }}
         onMouseLeave={(e) => {
-          e.target.style.color = color;
+          e.currentTarget.style.color = color;
         }}
         title={`Look up ${call}`}
       >
