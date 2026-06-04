@@ -596,31 +596,31 @@ module.exports = function (app, ctx) {
     }
   }
 
-  // Look up via HamQTH DXCC API (no auth, but only DXCC-level accuracy)
-  async function hamqthLookup(callsign) {
+  // Look up via HamQTH DXCC JSON API (no auth, but only DXCC-level accuracy)
+  async function hamqthLookup(callsign, _retried = false) {
     try {
-      const response = await fetch(`https://www.hamqth.com/dxcc.php?callsign=${encodeURIComponent(callsign)}`, {
-        signal: AbortSignal.timeout(8000),
+      const response = await fetch(`https://www.hamqth.com/dxcc_json.php?callsign=${encodeURIComponent(callsign)}`, {
+        signal: AbortSignal.timeout(2000),
       });
 
       if (!response.ok) return null;
 
-      const text = await response.text();
-      const latMatch = text.match(/<lat>([^<]+)<\/lat>/);
-      const lonMatch = text.match(/<lng>([^<]+)<\/lng>/);
-      const countryMatch = text.match(/<name>([^<]+)<\/name>/);
-      const cqMatch = text.match(/<cq>([^<]+)<\/cq>/);
-      const ituMatch = text.match(/<itu>([^<]+)<\/itu>/);
+      const data = await response.json();
+      if (!data?.lat || !data?.lng) return null;
 
-      if (!latMatch || !lonMatch) return null;
+      // Validate callsign — HamQTH DXCC API sometimes returns wrong results; retry once
+      if (data.callsign && data.callsign !== callsign && !_retried) {
+        logDebug(`[HamQTH DXCC] Mismatch for ${callsign}: got ${data.callsign}, retrying...`);
+        return hamqthLookup(callsign, true);
+      }
 
       return {
         callsign,
-        lat: parseFloat(latMatch[1]),
-        lon: parseFloat(lonMatch[1]),
-        country: countryMatch ? countryMatch[1] : 'Unknown',
-        cqZone: cqMatch ? String(parseInt(cqMatch[1], 10)) : '',
-        ituZone: ituMatch ? String(parseInt(ituMatch[1], 10)) : '',
+        lat: parseFloat(data.lat),
+        lon: parseFloat(data.lng),
+        country: data.name || 'Unknown',
+        cqZone: data.waz ? String(parseInt(data.waz, 10)) : '',
+        ituZone: data.itu ? String(parseInt(data.itu, 10)) : '',
         source: 'hamqth',
       };
     } catch (err) {
