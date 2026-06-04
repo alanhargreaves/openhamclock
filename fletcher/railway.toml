@@ -1,5 +1,5 @@
-# Railway config for the tle-fetcher service.
-# In Railway dashboard set the service's rootDirectory to `tle-fetcher` so
+# Railway config for the fletcher service.
+# In Railway dashboard set the service's rootDirectory to `fletcher` so
 # this file is picked up (and the Dockerfile path stays relative).
 
 [build]

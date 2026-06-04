@@ -1,13 +1,13 @@
 /**
- * TLE Fetcher — internal Railway service.
+ * Fletcher — internal Railway service.
  *
- * Relays satellite element-set fetches to CelesTrak / AMSAT / SatNOGS from a
- * dedicated Railway service so the upstream sees this service's egress IP,
- * not openhamclock's. Confirmed 2026-06-03 that separate Railway services in
+ * Bridges HTTP fetch traffic from a dedicated Railway service so that upstream
+ * sees this service's egress IP, rather than OpenHamClock's.
+ * Confirmed 2026-06-03 that separate Railway services in
  * the same project get separate egress IPs (#1057).
  *
  * Reachable on Railway's private network at:
- *   http://tle-fetcher.railway.internal:${PORT}
+ *   http://fletcher.railway.internal:${PORT}
  *
  * Endpoints:
  *   GET /health                 — liveness probe
@@ -57,7 +57,7 @@ async function fetchUpstream(targetUrl, inboundUserAgent) {
   try {
     const res = await fetch(targetUrl, {
       headers: {
-        'User-Agent': inboundUserAgent || 'OpenHamClock-TLEFetcher/1.0',
+        'User-Agent': inboundUserAgent || 'OpenHamClock-Fletcher/1.0',
       },
       signal: controller.signal,
     });
