@@ -126,18 +126,16 @@ function CallsignPopup({ anchorRef, call, onClose, popupHeightRef, location }) {
   // Debug: time source string for hover tooltip
   let timeSource = null;
   if (location?.grid) {
-    timeSource = 'spot grid';
+    timeSource = `Source: spot grid ${effectiveGrid}`;
   } else if (location?.lat != null && location?.lon != null) {
-    timeSource = `spot ${location.lat}, ${location.lon}`;
+    timeSource = `Source: spot ${location.lat}, ${location.lon}`;
   } else if (data?.lat != null && data?.lon != null) {
-    timeSource = `callbook ${data.lat}, ${data.lon}`;
+    timeSource = `Source: callbook ${data.lat}, ${data.lon}`;
   } else if (grid) {
-    timeSource = 'callbook/cty grid';
+    timeSource = 'Source: callbook/cty grid';
   }
 
-  const { timezone } = useTimezone(effectiveGrid);
-  const tooltipParts = [effectiveGrid, timezone, timeSource].filter(Boolean);
-  const timeTooltip = tooltipParts.length > 1 ? tooltipParts.join(' · ') : null;
+  const timeTooltip = timeSource;
 
   const { localTime } = useTimezone(effectiveGrid);
 
