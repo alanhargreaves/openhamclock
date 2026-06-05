@@ -18,6 +18,7 @@ export default function ThemeSelector({ id, theme, setTheme }) {
             onClick={() => setTheme(key)}
             aria-pressed={theme === key}
             aria-label={`${t.label} theme`}
+            title={`${t.label} theme`}
           >
             <span aria-hidden="true" className="icon">
               {t.icon}

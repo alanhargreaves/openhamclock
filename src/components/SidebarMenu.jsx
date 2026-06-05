@@ -203,6 +203,7 @@ export default function SidebarMenu({
             type="button"
             onClick={cycleMode}
             aria-label={modeTitle}
+            title={modeTitle}
             aria-pressed={mode === MODE_PINNED}
             tabIndex={isVisible ? 0 : -1}
             style={{
@@ -228,6 +229,7 @@ export default function SidebarMenu({
               type="button"
               onClick={() => onSettingsClick(item.id)}
               aria-label={item.label}
+              title={item.label}
               tabIndex={isVisible ? 0 : -1}
               style={{
                 display: 'flex',
@@ -274,6 +276,7 @@ export default function SidebarMenu({
               type="button"
               onClick={onToggleLayoutLock}
               aria-label={layoutLocked ? 'Unlock layout — allow drag, resize, close' : 'Lock layout — prevent changes'}
+              title={layoutLocked ? 'Unlock layout — allow drag, resize, close' : 'Lock layout — prevent changes'}
               aria-pressed={layoutLocked}
               tabIndex={isVisible ? 0 : -1}
               style={{
@@ -295,6 +298,7 @@ export default function SidebarMenu({
               onClick={onResetLayout}
               disabled={layoutLocked}
               aria-label={layoutLocked ? 'Unlock layout to reset' : 'Reset panel layout to default'}
+              title={layoutLocked ? 'Unlock layout to reset' : 'Reset panel layout to default'}
               tabIndex={isVisible ? 0 : -1}
               style={{
                 ...actionBtnStyle(false),
@@ -338,6 +342,7 @@ export default function SidebarMenu({
               onClick={onUpdateClick}
               disabled={updateInProgress}
               aria-label={updateInProgress ? 'Update in progress' : 'Run update now'}
+              title={updateInProgress ? 'Update in progress...' : 'Run update now'}
               tabIndex={isVisible ? 0 : -1}
               style={{
                 ...actionBtnStyle(updateInProgress),
@@ -356,6 +361,7 @@ export default function SidebarMenu({
             type="button"
             onClick={onFullscreenToggle}
             aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
             tabIndex={isVisible ? 0 : -1}
             style={actionBtnStyle(isFullscreen)}
           >
@@ -373,6 +379,7 @@ export default function SidebarMenu({
             type="button"
             onClick={() => onSettingsClick()}
             aria-label="Open Settings"
+            title="Open Settings"
             tabIndex={isVisible ? 0 : -1}
             style={actionBtnStyle(false)}
           >

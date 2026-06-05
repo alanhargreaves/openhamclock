@@ -41,7 +41,7 @@ const RigControlPanel = () => {
           <span className="icon">📻</span> {t('app.rigControl.title')}
         </h3>
         <div className="panel-controls">
-          <span className={`status-led ${statusColor}`} role="status" aria-label={statusTitle} />
+          <span className={`status-led ${statusColor}`} role="status" aria-label={statusTitle} title={statusTitle} />
         </div>
       </div>
 

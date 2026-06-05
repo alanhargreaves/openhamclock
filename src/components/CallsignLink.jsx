@@ -118,6 +118,7 @@ export default function CallsignLink({
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
         aria-label={`Look up ${call} in callbook (opens in new tab)`}
+        title={`Look up ${call} in callbook`}
         style={{
           color,
           fontWeight,

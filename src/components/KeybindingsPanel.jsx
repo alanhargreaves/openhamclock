@@ -228,6 +228,7 @@ export const KeybindingsPanel = ({ isOpen, onClose, keybindings, nodeId }) => {
             type="button"
             onClick={onClose}
             aria-label="Close keyboard shortcuts"
+            title="Close"
             style={{
               background: 'none',
               border: 'none',

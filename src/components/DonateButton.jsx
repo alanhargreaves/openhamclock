@@ -29,6 +29,7 @@ export default function DonateButton({ compact = false, fontSize = '12px', paddi
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Support OpenHamClock"
+        title="Support OpenHamClock"
         tabIndex={tabIndex}
         style={{
           background: 'linear-gradient(135deg, #ff813f 0%, #ffdd00 100%)',
@@ -91,6 +92,7 @@ export default function DonateButton({ compact = false, fontSize = '12px', paddi
                 type="button"
                 onClick={close}
                 aria-label="Close support dialog"
+                title="Close"
                 style={{
                   background: 'none',
                   border: 'none',
