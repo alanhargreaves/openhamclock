@@ -39,9 +39,18 @@ async function probeHttp(url, label) {
 }
 
 async function checkFletcher(ctx) {
-  const base = (ctx.CONFIG?.satellites?.fletcherUrl || '').replace(/\/+$/, '');
+  // Read the env var directly so this works both pre and post the
+  // tle-fetcher → fletcher rename in #1063 (config.js key was renamed there
+  // too). Falls back to the parsed CONFIG value if env vars are empty.
+  const raw =
+    process.env.FLETCHER_URL ||
+    process.env.TLE_FETCHER_URL ||
+    ctx.CONFIG?.satellites?.fletcherUrl ||
+    ctx.CONFIG?.satellites?.tleFetcherUrl ||
+    '';
+  const base = raw.trim().replace(/\/+$/, '');
   if (!base) {
-    return { status: 'unknown', detail: 'FLETCHER_URL unset (direct upstream mode)' };
+    return { status: 'unknown', detail: 'FLETCHER_URL/TLE_FETCHER_URL unset (direct upstream mode)' };
   }
   const result = await probeHttp(`${base}/health`, 'fletcher');
   if (result.ok) return { status: 'ok', detail: `${result.status} from ${base}/health` };
