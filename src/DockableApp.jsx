@@ -45,6 +45,7 @@ import { useRig } from './contexts/RigContext.jsx';
 import { calculateBearing, calculateDistance, formatDistance } from './utils/geo.js';
 import { findDXPathForSpot } from './utils/dxClusterSpotMatcher';
 import { DXGridInput } from './components/DXGridInput.jsx';
+import { DXCallsignInput } from './components/DXCallsignInput.jsx';
 import { DXFavorites } from './components/DXFavorites.jsx';
 import DXCCSelect from './components/DXCCSelect.jsx';
 import './styles/flexlayout-openhamclock.css';
@@ -554,21 +555,16 @@ export const DockableApp = ({
                     flex: '0 0 auto',
                   }}
                 />
-                {dxCallsign && (
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '22px',
-                      fontWeight: '900',
-                      color: 'var(--accent-amber)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {dxCallsign}
-                  </span>
-                )}
+                <DXCallsignInput
+                  dxCallsign={dxCallsign}
+                  onDXChange={handleDXChange}
+                  dxLocked={dxLocked}
+                  style={{
+                    color: 'var(--accent-amber)',
+                    fontSize: '22px',
+                    fontWeight: '900',
+                  }}
+                />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <DXFavorites dxLocation={dxLocation} dxGrid={dxGrid} onDXChange={handleDXChange} dxLocked={dxLocked} />
