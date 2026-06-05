@@ -26,7 +26,11 @@
 const SERVICES = [
   {
     name: 'openhamclock',
-    url: 'https://openhamclock.com/api/health',
+    // Probe Staging for now: it has Phase A (subsystems block) and the
+    // rate-limit skip on /api/health. Prod gets both with the next release,
+    // at which point this flips to https://openhamclock.up.railway.app or
+    // https://openhamclock.com once CF Bot Fight stops 429ing the worker.
+    url: 'https://openhamclock-staging.up.railway.app/api/health',
     parse: parseOpenHamClock, // returns { aggregate, subsystems: {fletcher, rbn, ...} }
   },
   {
@@ -36,7 +40,7 @@ const SERVICES = [
   },
   {
     name: 'spider',
-    url: 'https://spider-production.up.railway.app/health',
+    url: 'https://spider-production-1ec7.up.railway.app/health',
     parse: parseSimple200,
   },
 ];
@@ -56,7 +60,16 @@ async function probe(service, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(service.url, { signal: controller.signal });
+    // Explicit User-Agent + Accept so CF and Railway don't treat the probe
+    // as suspect bot traffic. Without these, openhamclock.com returns 429
+    // (CF security tier) and the Railway-direct spider URL returns 404.
+    const res = await fetch(service.url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'OpenHamClock-Watchtower/1.0 (+https://github.com/accius/openhamclock)',
+        Accept: 'application/json, */*',
+      },
+    });
     if (!res.ok) {
       return [{ subsystem: 'aggregate', status: 'down', detail: `HTTP ${res.status}` }];
     }

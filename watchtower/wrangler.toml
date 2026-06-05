@@ -10,7 +10,7 @@ crons = ["* * * * *"]
 # After `wrangler kv namespace create WATCHTOWER_STATE` paste the returned id below.
 [[kv_namespaces]]
 binding = "WATCHTOWER_STATE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "64c2d301d2434c41b163874ceed5a255"
 
 # Non-secret env vars. DISCORD_WEBHOOK_URL is set via `wrangler secret put`.
 [vars]
