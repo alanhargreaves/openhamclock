@@ -1541,7 +1541,7 @@ module.exports = function (app, ctx) {
             lon: cached.data.lon,
             country: cached.data.country || '',
             grid: cached.data.grid || null,
-            source: 'hamqth',
+            source: 'hamqth-dxcc',
           };
         } else if (!prefixLocations[call]?.grid) {
           // Only queue lookups for calls that don't already have grid-level accuracy
