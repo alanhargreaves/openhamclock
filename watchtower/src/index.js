@@ -177,9 +177,14 @@ const RAILWAY_API = 'https://backboard.railway.com/graphql/v2';
 
 async function railwayGraphQL(token, query, variables) {
   try {
+    // Railway project tokens use the Project-Access-Token header, not
+    // Authorization: Bearer (which is only for personal account tokens).
     const res = await fetch(RAILWAY_API, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: {
+        'Content-Type': 'application/json',
+        'Project-Access-Token': token,
+      },
       body: JSON.stringify({ query, variables }),
     });
     if (!res.ok) return { errors: [`HTTP ${res.status}`] };
