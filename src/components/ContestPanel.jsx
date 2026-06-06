@@ -327,8 +327,6 @@ export const ContestPanel = ({ data, loading }) => {
       {/* Contest Calendar Credit */}
       <div
         style={{
-          marginTop: '4px',
-          paddingTop: '4px',
           borderTop: '1px solid var(--border-color)',
           textAlign: 'right',
         }}
