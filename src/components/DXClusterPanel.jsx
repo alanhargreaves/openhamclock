@@ -220,7 +220,7 @@ export const DXClusterPanel = ({
             }}
           >
             <IconSearch size={10} style={{ verticalAlign: 'middle', marginRight: '3px' }} />
-            {t('dxClusterPanel.filtersButton')}
+            {filterCount > 0 ? filterCount : ''}
           </button>
           <button
             onClick={toggleSpotter}
@@ -257,7 +257,6 @@ export const DXClusterPanel = ({
             }}
           >
             <IconMap size={10} style={{ verticalAlign: 'middle', marginRight: '3px' }} />
-            {showOnMap ? t('dxClusterPanel.mapToggleOn') : t('dxClusterPanel.mapToggleOff')}
           </button>
         </div>
       </div>

@@ -318,7 +318,7 @@ const PSKReporterPanel = ({
       <div style={{ gap: '4px', marginBottom: '5px', marginLeft: 'auto', flexShrink: 0 }}>
         {/* Right controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          {/* PSK: status dot + grid badge + filter + refresh */}
+          {/* PSK: grid badge + filter + refresh */}
           {panelMode === 'psk' && (
             <>
               {filterMode === 'grid' && (

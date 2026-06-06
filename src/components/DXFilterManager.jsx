@@ -1000,24 +1000,24 @@ export const DXFilterManager = ({ filters, onFilterChange, isOpen, onClose, onCl
               onClick={clearAllFilters}
               style={{
                 padding: '8px 16px',
-                background: 'rgba(255, 68, 102, 0.2)',
-                border: '1px solid var(--accent-red)',
+                background: 'color-mix(in srgb, var(--accent-amber) 20%, transparent)',
+                border: '1px solid var(--accent-amber)',
                 borderRadius: '6px',
-                color: 'var(--accent-red)',
+                color: 'var(--accent-amber)',
                 fontSize: '13px',
                 cursor: 'pointer',
               }}
             >
-              Clear All
+              Clear Filters
             </button>
             <button
               onClick={onClearSpots}
               style={{
                 padding: '8px 16px',
-                background: 'color-mix(in srgb, var(--accent-amber) 20%, transparent)',
-                border: '1px solid var(--accent-amber)',
+                background: 'color-mix(in srgb, var(--accent-red) 20%, transparent)',
+                border: '1px solid var(--accent-red)',
                 borderRadius: '6px',
-                color: 'var(--accent-amber)',
+                color: 'var(--accent-red)',
                 fontSize: '13px',
                 cursor: 'pointer',
               }}
