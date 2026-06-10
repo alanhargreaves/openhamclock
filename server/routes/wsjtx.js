@@ -666,11 +666,15 @@ module.exports = function (app, ctx) {
               // TODO: Refactor lookup chain into callsign.js. Currently we duplicate the full
               // flow (cache check → HamQTH DXCC → prefix estimation) here instead of using
               // the shared hamqthLookup() + extractBaseCallsign() chain from callsign.js.
-              hamqthLookup(targetCall).then((result) => {
-                if (result) {
-                  cacheCallsignLookup(targetCall, { data: result, timestamp: Date.now() });
-                }
-              });
+              hamqthLookup(targetCall)
+                .then((result) => {
+                  if (result) {
+                    cacheCallsignLookup(targetCall, { data: result, timestamp: Date.now() });
+                  }
+                })
+                .finally(() => {
+                  wsjtxHamqthInflight.delete(targetCall);
+                });
             }
           }
         }
