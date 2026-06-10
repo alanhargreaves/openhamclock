@@ -879,6 +879,7 @@ export const DockableApp = ({
               hoveredSpot={hoveredSpot}
               showOnMap={mapLayersEff.showDXPaths}
               onToggleMap={toggleDXPathsEff}
+              userCallsign={config.callsign}
             />
           );
           break;

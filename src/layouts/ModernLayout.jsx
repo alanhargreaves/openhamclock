@@ -369,6 +369,7 @@ export default function ModernLayout(props) {
       hoveredSpot={hoveredSpot}
       showOnMap={mapLayers.showDXPaths}
       onToggleMap={toggleDXPaths}
+      userCallsign={config.callsign}
     />
   );
 

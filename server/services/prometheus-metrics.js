@@ -132,7 +132,8 @@ function extractRoutePatterns(app) {
 }
 
 // ── Match a request path against known route patterns ────────────────────────
-// Returns the normalized pattern if matched, otherwise returns the original path.
+// Returns the normalized pattern if matched, otherwise returns "{unknown}".
+// Unknown routes are grouped together to prevent unbounded time series cardinality.
 
 function normalizeRoute(reqPath, patterns) {
   const segments = reqPath.split('/').filter(Boolean);
@@ -153,7 +154,7 @@ function normalizeRoute(reqPath, patterns) {
     if (match) return pattern;
   }
 
-  return reqPath; // no known pattern matches
+  return '{unknown}'; // group all unknown routes together
 }
 
 // ── Middleware: track API requests ───────────────────────────────────────────
@@ -178,12 +179,18 @@ function apiMetricsMiddleware() {
 
     res.on('finish', () => {
       const duration = (Date.now() - startTime) / 1000;
+      const isUnknown = route === '{unknown}';
+
       apiRequestsTotal.labels(route, req.method, String(res.statusCode)).inc();
-      apiDuration.labels(route).observe(duration);
-      apiRequestSize.labels(route).observe(req.headers['content-length'] ? Number(req.headers['content-length']) : 0);
-      apiResponseSize
-        .labels(route)
-        .observe(res.getHeader('Content-Length') ? Number(res.getHeader('Content-Length')) : 0);
+
+      // Only record duration/size histograms for known routes.
+      if (!isUnknown) {
+        apiDuration.labels(route).observe(duration);
+        apiRequestSize.labels(route).observe(req.headers['content-length'] ? Number(req.headers['content-length']) : 0);
+        apiResponseSize
+          .labels(route)
+          .observe(res.getHeader('Content-Length') ? Number(res.getHeader('Content-Length')) : 0);
+      }
     });
 
     next();

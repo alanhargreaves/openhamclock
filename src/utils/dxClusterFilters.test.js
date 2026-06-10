@@ -112,6 +112,39 @@ describe('dxClusterFilters', () => {
     });
   });
 
+  describe('Contest Filter', () => {
+    const fdSpot = (comment) => ({ ...mockSpot, comment });
+
+    it('should include all spots when no contest is selected', () => {
+      expect(applyDXFilters(fdSpot('just a comment'), {})).toBe(true);
+    });
+
+    it('should match Field Day signatures', () => {
+      const filters = { contest: 'field-day' };
+      expect(applyDXFilters(fdSpot('FD'), filters)).toBe(true);
+      expect(applyDXFilters(fdSpot('Field Day station'), filters)).toBe(true);
+      expect(applyDXFilters(fdSpot('CQ FD 3A MO'), filters)).toBe(true);
+      expect(applyDXFilters(fdSpot('12E STX'), filters)).toBe(true);
+    });
+
+    it('should not match unrelated comments or FD inside words', () => {
+      const filters = { contest: 'field-day' };
+      expect(applyDXFilters(fdSpot('up 2 loud'), filters)).toBe(false);
+      expect(applyDXFilters(fdSpot('DFDX net'), filters)).toBe(false);
+      expect(applyDXFilters(fdSpot(''), filters)).toBe(false);
+      expect(applyDXFilters({ ...mockSpot, comment: undefined }, filters)).toBe(false);
+    });
+
+    it('should match Winter Field Day separately', () => {
+      expect(applyDXFilters(fdSpot('WFD 2H IL'), { contest: 'winter-field-day' })).toBe(true);
+      expect(applyDXFilters(fdSpot('WFD'), { contest: 'field-day' })).toBe(false);
+    });
+
+    it('should ignore unknown contest keys', () => {
+      expect(applyDXFilters(fdSpot('anything'), { contest: 'not-a-real-contest' })).toBe(true);
+    });
+  });
+
   describe('Spotter Inclusion Filters', () => {
     describe('Continent Filter', () => {
       it('should include spot when spotter is from selected continent', () => {

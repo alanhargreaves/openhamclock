@@ -12,6 +12,7 @@ import { findDXPathForSpot, matchesDXSpotPath } from '../utils/dxClusterSpotMatc
 import CallsignLink from '../components/CallsignLink.jsx';
 import DonateButton from '../components/DonateButton.jsx';
 import { useRig } from '../contexts/RigContext.jsx';
+import { useCallsignPopup } from '../components/CallsignPopupManager.jsx';
 
 /**
  * RotatingPane — cycles through views on a timer, click to advance
@@ -80,6 +81,7 @@ function RotatingPane({ views, interval = 15000 }) {
 }
 
 export default function ClassicLayout(props) {
+  const { showPopup } = useCallsignPopup();
   const {
     config,
     t,
@@ -263,7 +265,7 @@ export default function ClassicLayout(props) {
                 <span>
                   <span style={{ color: '#ffff00' }}>{fmtFreq(spot.freq)}</span>
                   <span style={{ color: '#00ffff', marginLeft: '6px' }}>
-                    <CallsignLink call={spot.call} color="#00ffff" />
+                    <CallsignLink call={spot.call} color="#00ffff" onPopup={showPopup} />
                   </span>
                 </span>
                 <span style={{ color: '#aaa', fontSize: '11px' }}>{spot.time || ''}</span>
@@ -282,7 +284,7 @@ export default function ClassicLayout(props) {
                 </span>
                 {spot.spotter && (
                   <span style={{ color: '#555' }}>
-                    de <CallsignLink call={spot.spotter} color="#555" />
+                    de <CallsignLink call={spot.spotter} color="#555" onPopup={showPopup} />
                   </span>
                 )}
               </div>
@@ -311,7 +313,7 @@ export default function ClassicLayout(props) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>
                   <span style={{ color: '#00ff00' }}>
-                    <CallsignLink call={spot.activator || spot.call} color="#00ff00" />
+                    <CallsignLink call={spot.activator || spot.call} color="#00ff00" onPopup={showPopup} />
                   </span>
                   <span style={{ color: '#ffff00', marginLeft: '6px' }}>
                     {spot.frequency ? fmtFreq(spot.frequency) : spot.freq ? fmtFreq(spot.freq) : ''}
@@ -363,7 +365,7 @@ export default function ClassicLayout(props) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>
                   <span style={{ color: '#ff66ff' }}>
-                    <CallsignLink call={spot.activator || spot.call} color="#ff66ff" />
+                    <CallsignLink call={spot.activator || spot.call} color="#ff66ff" onPopup={showPopup} />
                   </span>
                   <span style={{ color: '#ffff00', marginLeft: '6px' }}>
                     {spot.frequency ? fmtFreq(spot.frequency) : spot.freq ? fmtFreq(spot.freq) : ''}
@@ -410,7 +412,7 @@ export default function ClassicLayout(props) {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>
-                  <CallsignLink call={dx.callsign} color="#ff8800" />
+                  <CallsignLink call={dx.callsign} color="#ff8800" onPopup={showPopup} />
                   {dx.isActive && (
                     <span style={{ color: '#22c55e', marginLeft: '6px', fontSize: '10px', fontWeight: 700 }}>
                       ACTIVE
@@ -1754,7 +1756,7 @@ export default function ClassicLayout(props) {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    <CallsignLink call={spot.call} color="var(--accent-cyan)" fontWeight="600" />
+                    <CallsignLink call={spot.call} color="var(--accent-cyan)" fontWeight="600" onPopup={showPopup} />
                   </span>
                   <span
                     style={{
@@ -2321,7 +2323,7 @@ export default function ClassicLayout(props) {
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  <CallsignLink call={spot.call} color="var(--accent-cyan)" fontWeight="600" />
+                  <CallsignLink call={spot.call} color="var(--accent-cyan)" fontWeight="600" onPopup={showPopup} />
                 </span>
                 <span
                   style={{

@@ -208,6 +208,13 @@ export const SettingsPanel = ({
   const [qrzTesting, setQrzTesting] = useState(false);
   const [qrzMessage, setQrzMessage] = useState(null); // { type: 'success'|'error', text }
 
+  // HamQTH XML Search API state
+  const [hamqthUsername, setHamqthUsername] = useState('');
+  const [hamqthPassword, setHamqthPassword] = useState('');
+  const [hamqthStatus, setHamqthStatus] = useState(null); // { configured, hasSession, source, ... }
+  const [hamqthTesting, setHamqthTesting] = useState(false);
+  const [hamqthMessage, setHamqthMessage] = useState(null); // { type: 'success'|'error', text }
+
   const refreshProfiles = () => {
     setProfilesList(getProfiles());
     setActiveProfileName(getActiveProfile());
@@ -311,13 +318,20 @@ export const SettingsPanel = ({
     }
   }, [isOpen, activeTab]);
 
-  // Fetch QRZ status when profiles tab opens
+  // Fetch QRZ and HamQTH status when profiles tab opens
   useEffect(() => {
     if (isOpen && activeTab === 'profiles') {
-      fetch('/api/qrz/status')
-        .then((r) => r.json())
-        .then((data) => setQrzStatus(data))
-        .catch(() => setQrzStatus(null));
+      Promise.all([
+        fetch('/api/qrz/status')
+          .then((r) => r.json())
+          .catch(() => null),
+        fetch('/api/hamqth/status')
+          .then((r) => r.json())
+          .catch(() => null),
+      ]).then(([qrz, hamqth]) => {
+        setQrzStatus(qrz);
+        setHamqthStatus(hamqth);
+      });
     }
   }, [isOpen, activeTab]);
 
@@ -3253,6 +3267,210 @@ export const SettingsPanel = ({
                           }}
                         >
                           {qrzMessage.type === 'success' ? '✓' : '✗'} {qrzMessage.text}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* HamQTH XML Search API Credentials */}
+                <div
+                  style={{
+                    borderTop: '1px solid rgba(255,255,255,0.08)',
+                    paddingTop: 12,
+                    marginTop: 14,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      color: 'var(--accent-amber)',
+                      marginBottom: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    <span>📡 HamQTH Callsign Lookup</span>
+                    {hamqthStatus?.configured && (
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: '500',
+                          padding: '1px 6px',
+                          borderRadius: '3px',
+                          background: hamqthStatus.hasSession ? 'rgba(46, 204, 113, 0.15)' : 'rgba(241, 196, 15, 0.15)',
+                          color: hamqthStatus.hasSession ? '#2ecc71' : '#f1c40f',
+                        }}
+                      >
+                        {hamqthStatus.hasSession ? '● Connected' : '○ Configured'}
+                        {hamqthStatus.source === 'env' ? ' (env)' : ''}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', lineHeight: 1.4 }}>
+                    Enables precise station locations and detailed information from{' '}
+                    <a
+                      href="https://www.hamqth.com"
+                      target="_blank"
+                      rel="noopener"
+                      style={{ color: 'var(--accent-blue)' }}
+                    >
+                      HamQTH.com
+                    </a>{' '}
+                    user profiles (names, user-supplied details, grid squares). Without this, data falls back to the
+                    simple HamQTH DXCC API.
+                    <br />
+                    <strong>Note</strong> this is a server setting and is related to the extra data in popup shown when
+                    clicking callsigns. If you are not running a server, you will likely not have the permissions to
+                    change this.
+                  </div>
+                  {hamqthStatus?.source === 'env' ? (
+                    <div
+                      style={{
+                        fontSize: '11px',
+                        color: 'var(--text-muted)',
+                        padding: '8px',
+                        background: 'var(--bg-primary)',
+                        borderRadius: '4px',
+                      }}
+                    >
+                      ✓ Credentials configured via{' '}
+                      <code style={{ background: 'var(--bg-tertiary)', padding: '1px 4px', borderRadius: '2px' }}>
+                        HAMQTH_USERNAME
+                      </code>{' '}
+                      /
+                      <code style={{ background: 'var(--bg-tertiary)', padding: '1px 4px', borderRadius: '2px' }}>
+                        HAMQTH_PASSWORD
+                      </code>{' '}
+                      in .env file
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                        <input
+                          disabled={!isLocalInstall}
+                          type="text"
+                          placeholder="HamQTH Username (callsign)"
+                          value={hamqthUsername}
+                          onChange={(e) => setHamqthUsername(e.target.value)}
+                          style={{
+                            flex: 1,
+                            padding: '8px 12px',
+                            background: 'var(--bg-primary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '4px',
+                            color: 'var(--text-primary)',
+                            fontSize: '12px',
+                            fontFamily: 'var(--font-mono)',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                        <input
+                          disabled={!isLocalInstall}
+                          type="password"
+                          placeholder="HamQTH Password"
+                          value={hamqthPassword}
+                          onChange={(e) => setHamqthPassword(e.target.value)}
+                          style={{
+                            flex: 1,
+                            padding: '8px 12px',
+                            background: 'var(--bg-primary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '4px',
+                            color: 'var(--text-primary)',
+                            fontSize: '12px',
+                            fontFamily: 'var(--font-mono)',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <button
+                          disabled={
+                            !isLocalInstall || hamqthTesting || !hamqthUsername.trim() || !hamqthPassword.trim()
+                          }
+                          onClick={async () => {
+                            setHamqthTesting(true);
+                            setHamqthMessage(null);
+                            try {
+                              const res = await fetch('/api/hamqth/configure', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  username: hamqthUsername.trim(),
+                                  password: hamqthPassword.trim(),
+                                }),
+                              });
+                              const data = await res.json();
+                              if (data.success) {
+                                setHamqthMessage({ type: 'success', text: 'Connected to HamQTH successfully!' });
+                                setHamqthPassword('');
+                                const st = await fetch('/api/hamqth/status').then((r) => r.json());
+                                setHamqthStatus(st);
+                              } else {
+                                setHamqthMessage({ type: 'error', text: data.error || 'Login failed' });
+                              }
+                            } catch (e) {
+                              setHamqthMessage({ type: 'error', text: 'Connection error' });
+                            }
+                            setHamqthTesting(false);
+                          }}
+                          style={{
+                            padding: '6px 14px',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            borderRadius: '4px',
+                            border: 'none',
+                            cursor:
+                              hamqthTesting || !hamqthUsername.trim() || !hamqthPassword.trim()
+                                ? 'not-allowed'
+                                : 'pointer',
+                            background: 'var(--accent-amber)',
+                            color: '#000',
+                            opacity: hamqthTesting || !hamqthUsername.trim() || !hamqthPassword.trim() ? 0.5 : 1,
+                          }}
+                        >
+                          {hamqthTesting ? 'Testing...' : 'Save & Test'}
+                        </button>
+                        {hamqthStatus?.configured && hamqthStatus.source !== 'env' && (
+                          <button
+                            onClick={async () => {
+                              await fetch('/api/hamqth/remove', { method: 'POST' });
+                              setHamqthUsername('');
+                              setHamqthPassword('');
+                              setHamqthMessage(null);
+                              const st = await fetch('/api/hamqth/status').then((r) => r.json());
+                              setHamqthStatus(st);
+                            }}
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: '11px',
+                              borderRadius: '4px',
+                              border: '1px solid var(--border-color)',
+                              cursor: 'pointer',
+                              background: 'transparent',
+                              color: 'var(--text-muted)',
+                            }}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      {hamqthMessage && (
+                        <div
+                          style={{
+                            marginTop: '6px',
+                            fontSize: '11px',
+                            padding: '6px 10px',
+                            borderRadius: '4px',
+                            background:
+                              hamqthMessage.type === 'success' ? 'rgba(46, 204, 113, 0.1)' : 'rgba(231, 76, 60, 0.1)',
+                            color: hamqthMessage.type === 'success' ? '#2ecc71' : '#e74c3c',
+                          }}
+                        >
+                          {hamqthMessage.type === 'success' ? '✓' : '✗'} {hamqthMessage.text}
                         </div>
                       )}
                     </>

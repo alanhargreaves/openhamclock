@@ -320,6 +320,14 @@ body::before {
     transform: rotate(360deg);
   }
 }
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
 @keyframes blink {
   0%,
   100% {
@@ -1276,6 +1284,27 @@ pre,
   font-family:
     var(--font-mono), 'Courier New', 'Noto Color Emoji', 'Segoe UI Emoji', 'Apple Color Emoji', 'Twemoji Mozilla',
     'Noto Emoji';
+}
+
+/* Clickable callsigns in map popups */
+[data-map-call] {
+  cursor: pointer;
+}
+[data-map-call]:hover:not([style*='color']) {
+  color: var(--accent-white);
+  font-weight: bold;
+}
+
+/* Callsign popup animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ── Skip navigation link ────────────────────────────────────────────────── */

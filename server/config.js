@@ -61,6 +61,11 @@ const TRUST_PROXY =
 // Security: API key for write operations
 const API_WRITE_KEY = process.env.API_WRITE_KEY || '';
 
+// Security: API key for the Prometheus metrics endpoint. When set, requires
+// a matching ?key= or Authorization: Bearer= header to access /metrics.
+// Leave unset for public metrics (default, safe for local/private installs).
+const METRICS_AUTH_KEY = process.env.METRICS_AUTH_KEY || '';
+
 // Get locator from env (support both LOCATOR and GRID_SQUARE)
 const locator = process.env.LOCATOR || process.env.GRID_SQUARE || '';
 
@@ -171,6 +176,8 @@ const CONFIG = {
   _openWeatherApiKey: process.env.OPENWEATHER_API_KEY || '',
   _qrzUsername: process.env.QRZ_USERNAME || '',
   _qrzPassword: process.env.QRZ_PASSWORD || '',
+  _hamqthUsername: process.env.HAMQTH_USERNAME || '',
+  _hamqthPassword: process.env.HAMQTH_PASSWORD || '',
 };
 
 // Check if required config is missing
@@ -255,6 +262,7 @@ module.exports = {
   HOST,
   TRUST_PROXY,
   API_WRITE_KEY,
+  METRICS_AUTH_KEY,
   ITURHFPROP_URL,
   WSJTX_ENABLED,
   WSJTX_UDP_PORT,

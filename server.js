@@ -31,6 +31,7 @@ const {
   PORT,
   HOST,
   API_WRITE_KEY,
+  METRICS_AUTH_KEY,
   ITURHFPROP_URL,
   WSJTX_ENABLED,
   WSJTX_UDP_PORT,
@@ -286,6 +287,12 @@ prometheus.setSubsystemsHealth(health.getSubsystems);
 
 // ── Prometheus metrics endpoint ──
 app.get('/metrics', async (req, res) => {
+  if (METRICS_AUTH_KEY) {
+    const token = req.query.key || req.headers.authorization?.replace('Bearer ', '');
+    if (token !== METRICS_AUTH_KEY) {
+      return res.status(401).json({ error: 'Metrics endpoint requires authentication' });
+    }
+  }
   try {
     res.set('Content-Type', prometheus.registry.contentType);
     res.send(await prometheus.registry.metrics());
