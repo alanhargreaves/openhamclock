@@ -20,7 +20,6 @@ import useTimezone from '../hooks/app/useTimezone.js';
 import { getCallbookUrl, getCallbook, CALLBOOKS } from '../utils/callbook.js';
 import { ctyLookup } from '../utils/ctyLookup.js';
 import { latLonToMaidenhead } from '../utils/index.js';
-import { esc } from '../utils/escapeHtml.js';
 
 import { IconGlobe, IconRefresh } from './Icons.jsx';
 import { extractBaseCall } from './CallsignLink.jsx';
@@ -190,7 +189,7 @@ function CallsignPopup({ anchorRef, call, onClose, popupHeightRef, location }) {
               letterSpacing: '0.5px',
             }}
           >
-            {esc(call)}
+            {call}
           </span>
           {localTime && (
             <span
@@ -211,11 +210,7 @@ function CallsignPopup({ anchorRef, call, onClose, popupHeightRef, location }) {
             <IconRefresh size={12} color={accentColor} style={{ animation: 'spin 1s linear infinite' }} />
           )}
           {error && !data && !apiLoading && (
-            <span
-              title={esc(error)}
-              aria-label={`Lookup error: ${esc(error)}`}
-              style={{ cursor: 'help', opacity: 0.7 }}
-            >
+            <span title={error} aria-label={`Lookup error: ${error}`} style={{ cursor: 'help', opacity: 0.7 }}>
               <IconRefresh size={12} color="var(--accent-red)" />
             </span>
           )}
@@ -257,7 +252,7 @@ function CallsignPopup({ anchorRef, call, onClose, popupHeightRef, location }) {
       >
         <div style={{ overflow: 'hidden' }}>
           {/* Name */}
-          {name && <div style={{ marginBottom: '3px', opacity: 0.9 }}>{esc(name)}</div>}
+          {name && <div style={{ marginBottom: '3px', opacity: 0.9 }}>{name}</div>}
 
           {/* Grid + Country/State */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px', opacity: 0.85 }}>
@@ -269,14 +264,14 @@ function CallsignPopup({ anchorRef, call, onClose, popupHeightRef, location }) {
                   fontSize: '11px',
                 }}
               >
-                {esc(grid)}
+                {grid}
               </span>
             )}
             {grid && country && <span>·</span>}
             {(country || state) && (
               <span style={{ fontSize: '11px' }}>
-                {esc(country)}
-                {state ? ` · ${esc(state)}` : ''}
+                {country}
+                {state ? ` · ${state}` : ''}
               </span>
             )}
           </div>
