@@ -4,9 +4,10 @@
  */
 import React, { useState, useRef } from 'react';
 import { ariaTabKeyDown } from '../utils/ariaTabKeyDown.js';
+import { CONTEST_PRESETS } from '../utils/dxClusterFilters.js';
 
 export const DXFilterManager = ({ filters, onFilterChange, isOpen, onClose, onClearSpots }) => {
-  const DX_TABS = ['zones', 'bands', 'modes', 'watchlist', 'text', 'exclude', 'settings'];
+  const DX_TABS = ['zones', 'bands', 'modes', 'watchlist', 'contest', 'text', 'exclude', 'settings'];
   const dxTabRefs = useRef({});
   const [activeTab, setActiveTab] = useState('zones');
   const [newWatchlistCall, setNewWatchlistCall] = useState('');
@@ -77,6 +78,7 @@ export const DXFilterManager = ({ filters, onFilterChange, isOpen, onClose, onCl
     if (filters?.watchlist?.length) count += filters.watchlist.length;
     if (filters?.commentText?.length) count += filters.commentText.length;
     if (filters?.dxpeditionsOnly) count += 1;
+    if (filters?.contest) count += 1;
 
     /* excludes */
     if (filters?.excludeContinents?.length) count += filters.excludeContinents.length;
@@ -490,6 +492,52 @@ export const DXFilterManager = ({ filters, onFilterChange, isOpen, onClose, onCl
           Keeps spots whose callsign matches an active or upcoming DXpedition (NG3K list).
         </div>
       </div>
+    </div>
+  );
+
+  const renderContestTab = () => (
+    <div>
+      <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '10px' }}>
+        Show only contest activity
+      </div>
+      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '14px' }}>
+        Cluster spots carry no contest tag, so this matches the spot comment against each contest's usual signature. For
+        Field Day that's "FD", "Field Day", or a class+section exchange like "3A MO" — spots with bare comments won't
+        match even if the station is participating.
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+        {CONTEST_PRESETS.map((preset) => (
+          <button
+            key={preset.key}
+            onClick={() =>
+              onFilterChange({
+                ...filters,
+                contest: filters?.contest === preset.key ? undefined : preset.key,
+              })
+            }
+            aria-pressed={filters?.contest === preset.key}
+            style={chipStyle(filters?.contest === preset.key)}
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
+      {filters?.contest && (
+        <div style={{ marginTop: '14px' }}>
+          <button
+            onClick={() => clearFilter('contest')}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--accent-red)',
+              fontSize: '12px',
+              cursor: 'pointer',
+            }}
+          >
+            Clear contest filter
+          </button>
+        </div>
+      )}
     </div>
   );
 
@@ -1077,6 +1125,7 @@ export const DXFilterManager = ({ filters, onFilterChange, isOpen, onClose, onCl
             ['bands', 'Bands'],
             ['modes', 'Modes'],
             ['watchlist', 'Watchlist'],
+            ['contest', 'Contest'],
             ['text', 'Text'],
             ['exclude', 'Exclude'],
             ['settings', '⊙ Settings'],
@@ -1108,6 +1157,7 @@ export const DXFilterManager = ({ filters, onFilterChange, isOpen, onClose, onCl
           {activeTab === 'bands' && renderBandsTab()}
           {activeTab === 'modes' && renderModesTab()}
           {activeTab === 'watchlist' && renderWatchlistTab()}
+          {activeTab === 'contest' && renderContestTab()}
           {activeTab === 'text' && renderTextTab()}
           {activeTab === 'exclude' && renderExcludeTab()}
           {activeTab === 'settings' && renderSettingsTab()}

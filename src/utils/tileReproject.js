@@ -91,16 +91,16 @@ export function createTileReprojector({ tileUrlTemplate, onProgress }) {
   let tilesLoaded = 0;
   let tilesTotal = 0;
 
-  function chooseTileZoom(azZoom, lowMemory) {
+  function chooseTileZoom(azZoom, lowMemory, pixelRatio = 1) {
     if (lowMemory) {
-      return azZoom > 1.75 ? 4 : 3;
+      return 2;
     }
 
-    if (azZoom > 1.75) {
-      return 5;
+    if (pixelRatio >= 2) {
+      return 4;
     }
 
-    return 4;
+    return azZoom > 1.5 ? 4 : 3;
   }
 
   async function buildEquirectangular(template, tileZoom) {

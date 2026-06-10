@@ -393,32 +393,241 @@ module.exports = function (app, ctx) {
     }
   }
 
-  // Look up via HamQTH DXCC API (no auth, but only DXCC-level accuracy)
-  async function hamqthLookup(callsign) {
+  // ── HamQTH XML Search API Session Manager ──
+  // HamQTH provides rich callsign data (name, grid, lat/lon, utc_offset) via
+  // an authenticated XML Search API. Requires a HamQTH account.
+  // Session keys are cached and reused per the HamQTH spec; re-login only on expiry.
+  const hamqthSession = {
+    id: null,
+    expiry: 0, // Timestamp when session expires
+    maxAge: 3600000, // Re-validate session every hour
+    username: CONFIG._hamqthUsername || '',
+    password: CONFIG._hamqthPassword || '',
+    loginInFlight: null, // Dedup concurrent login attempts
+    lastError: null,
+    authFailedUntil: 0, // Cooldown after credential failures
+    authFailCooldown: 60 * 60 * 1000, // 1 hour cooldown after bad credentials
+  };
+
+  // Persist HamQTH credentials to a file so they survive restarts (set via Settings UI)
+  const HAMQTH_CREDS_FILE = path.join(ROOT_DIR, '.hamqth-credentials');
+
+  function loadHamQTHCredentials() {
+    // .env takes priority
+    if (CONFIG._hamqthUsername && CONFIG._hamqthPassword) {
+      hamqthSession.username = CONFIG._hamqthUsername;
+      hamqthSession.password = CONFIG._hamqthPassword;
+      logDebug('[HamQTH] Credentials loaded from .env');
+      return;
+    }
+    // Fall back to persisted file from Settings UI
     try {
-      const response = await fetch(`https://www.hamqth.com/dxcc.php?callsign=${encodeURIComponent(callsign)}`, {
-        signal: AbortSignal.timeout(8000),
+      if (fs.existsSync(HAMQTH_CREDS_FILE)) {
+        const creds = JSON.parse(fs.readFileSync(HAMQTH_CREDS_FILE, 'utf8'));
+        if (creds.username && creds.password) {
+          hamqthSession.username = creds.username;
+          hamqthSession.password = creds.password;
+          logDebug('[HamQTH] Credentials loaded from .hamqth-credentials');
+        }
+      }
+    } catch (e) {
+      logDebug('[HamQTH] Could not load saved credentials');
+    }
+  }
+  loadHamQTHCredentials();
+
+  function isHamQTHConfigured() {
+    return !!(hamqthSession.username && hamqthSession.password);
+  }
+
+  // Login to HamQTH XML API and obtain a session ID
+  async function hamqthLogin() {
+    if (!isHamQTHConfigured()) return null;
+
+    // Don't retry if credentials failed recently
+    if (Date.now() < hamqthSession.authFailedUntil) {
+      return null;
+    }
+
+    // Dedup: if a login is already in-flight, piggyback on it
+    if (hamqthSession.loginInFlight) return hamqthSession.loginInFlight;
+
+    hamqthSession.loginInFlight = (async () => {
+      try {
+        const url = `https://www.hamqth.com/xml.php?u=${encodeURIComponent(hamqthSession.username)}&p=${encodeURIComponent(hamqthSession.password)}`;
+        const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+
+        if (!response.ok) {
+          hamqthSession.lastError = `HTTP ${response.status}`;
+          return null;
+        }
+
+        const xml = await response.text();
+
+        // Check for error first (HamQTH wraps errors in <session>)
+        const errorMatch = xml.match(/<error>([^<]+)<\/error>/);
+        if (errorMatch) {
+          hamqthSession.lastError = errorMatch[1];
+          if (
+            errorMatch[1].includes('incorrect') ||
+            errorMatch[1].includes('Wrong') ||
+            errorMatch[1].includes('denied')
+          ) {
+            hamqthSession.authFailedUntil = Date.now() + hamqthSession.authFailCooldown;
+            console.error(`[HamQTH] Login failed: ${errorMatch[1]} — suppressing retries for 1 hour`);
+          } else {
+            console.error(`[HamQTH] Login failed: ${errorMatch[1]}`);
+          }
+          return null;
+        }
+
+        // Parse session ID
+        const idMatch = xml.match(/<session_id>([^<]+)<\/session_id>/);
+        if (idMatch) {
+          hamqthSession.id = idMatch[1];
+          hamqthSession.expiry = Date.now() + hamqthSession.maxAge;
+          hamqthSession.lastError = null;
+          hamqthSession.authFailedUntil = 0;
+          console.log('[HamQTH] Session established');
+          return hamqthSession.id;
+        }
+
+        hamqthSession.lastError = 'No session ID in response';
+        return null;
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          hamqthSession.lastError = err.message;
+          logErrorOnce('HamQTH', `Login error: ${err.message}`);
+        }
+        return null;
+      } finally {
+        hamqthSession.loginInFlight = null;
+      }
+    })();
+
+    return hamqthSession.loginInFlight;
+  }
+
+  // Get a valid HamQTH session ID (login if needed)
+  async function getHamQTHSessionId() {
+    if (!isHamQTHConfigured()) return null;
+
+    // Reuse existing key if still fresh
+    if (hamqthSession.id && Date.now() < hamqthSession.expiry) {
+      return hamqthSession.id;
+    }
+
+    return hamqthLogin();
+  }
+
+  // Look up a callsign via HamQTH XML Search API — returns rich data
+  async function hamqthXmlSearch(callsign) {
+    const sessionId = await getHamQTHSessionId();
+    if (!sessionId) return null;
+
+    try {
+      const url = `https://www.hamqth.com/xml.php?id=${encodeURIComponent(sessionId)}&callsign=${encodeURIComponent(callsign)}&prg=OpenHamClock`;
+      const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+
+      if (!response.ok) return null;
+
+      const xml = await response.text();
+
+      // Check for session expiry — if so, re-login and retry once
+      const errorMatch = xml.match(/<error>([^<]+)<\/error>/);
+      if (errorMatch) {
+        const err = errorMatch[1];
+        if (err.includes('Session') || err.includes('expired') || err.includes('does not exist')) {
+          // Session expired — force re-login and retry
+          hamqthSession.id = null;
+          hamqthSession.expiry = 0;
+          const newId = await hamqthLogin();
+          if (newId) {
+            return hamqthXmlSearch(callsign); // Retry with new session (recursive, max 1 deep)
+          }
+        }
+        // "Callsign not found" is not an error we need to log
+        if (!err.includes('Not found') && !err.includes('not found')) {
+          logDebug(`[HamQTH] Lookup error for ${callsign}: ${err}`);
+        }
+        return null;
+      }
+
+      // Parse callsign data from XML search results
+      // HamQTH uses default namespace: xmlns="https://www.hamqth.com"
+      // Regex parsing ignores namespaces — same approach as QRZ
+      const get = (field) => {
+        const m = xml.match(new RegExp(`<${field}>([^<]*)</${field}>`));
+        return m ? m[1] : null;
+      };
+
+      const lat = get('latitude');
+      const lon = get('longitude');
+
+      if (!lat || !lon) return null;
+
+      const result = {
+        callsign: get('callsign') || callsign,
+        lat: parseFloat(lat),
+        lon: parseFloat(lon),
+        grid: get('grid') || '',
+        country: get('country') || 'Unknown',
+        state: get('us_state') || get('district') || '',
+        county: get('us_county') || '',
+        cqZone: get('cq') ? String(parseInt(get('cq'), 10)) : '',
+        ituZone: get('itu') ? String(parseInt(get('itu'), 10)) : '',
+        name: get('nick') || '',
+        qth: get('qth') || '',
+        utcOffset: get('utc_offset') ? parseInt(get('utc_offset'), 10) : null,
+        dok: get('dok') || '',
+        iota: get('iota') || '',
+        lotw: get('lotw') || '',
+        qsl: get('qsl') || '',
+        source: 'hamqth-xml',
+      };
+
+      logDebug(`[HamQTH] ${callsign}: ${result.lat.toFixed(4)}, ${result.lon.toFixed(4)}`);
+      return result;
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        logErrorOnce('HamQTH', `Lookup error: ${err.message}`);
+      }
+      return null;
+    }
+  }
+
+  // Look up via HamQTH DXCC JSON API (no auth, but only DXCC-level accuracy)
+  async function hamqthLookup(callsign, _retried = false) {
+    try {
+      const response = await fetch(`https://www.hamqth.com/dxcc_json.php?callsign=${encodeURIComponent(callsign)}`, {
+        headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
+        signal: AbortSignal.timeout(2000),
       });
 
       if (!response.ok) return null;
 
-      const text = await response.text();
-      const latMatch = text.match(/<lat>([^<]+)<\/lat>/);
-      const lonMatch = text.match(/<lng>([^<]+)<\/lng>/);
-      const countryMatch = text.match(/<n>([^<]+)<\/name>/);
-      const cqMatch = text.match(/<cq>([^<]+)<\/cq>/);
-      const ituMatch = text.match(/<itu>([^<]+)<\/itu>/);
+      const data = await response.json();
+      if (data.lat == null || data.lng == null) return null;
 
-      if (!latMatch || !lonMatch) return null;
+      // Validate callsign — HamQTH DXCC API sometimes returns wrong results; retry once
+      const mismatched = data.callsign && data.callsign !== callsign;
+      if (mismatched && !_retried) {
+        logDebug(`[HamQTH DXCC] Mismatch for ${callsign}: got ${data.callsign}, retrying...`);
+        return hamqthLookup(callsign, true);
+      }
+      if (!data.callsign && !_retried) {
+        logDebug(`[HamQTH DXCC] Missing callsign in response, retrying...`);
+        return hamqthLookup(callsign, true);
+      }
 
       return {
         callsign,
-        lat: parseFloat(latMatch[1]),
-        lon: parseFloat(lonMatch[1]),
-        country: countryMatch ? countryMatch[1] : 'Unknown',
-        cqZone: cqMatch ? cqMatch[1] : '',
-        ituZone: ituMatch ? ituMatch[1] : '',
-        source: 'hamqth',
+        lat: parseFloat(data.lat),
+        lon: parseFloat(data.lng),
+        country: data.name || 'Unknown',
+        cqZone: data.waz ? String(parseInt(data.waz, 10)) : '',
+        ituZone: data.itu ? String(parseInt(data.itu, 10)) : '',
+        source: 'hamqth-dxcc',
       };
     } catch (err) {
       if (err.name !== 'AbortError') {
@@ -531,7 +740,105 @@ module.exports = function (app, ctx) {
     });
   });
 
-  // ── Unified Callsign Lookup: QRZ → HamQTH → Prefix ──
+  // ── HamQTH Configuration Endpoints ──
+
+  // GET /api/hamqth/status — check if HamQTH is configured and working
+  app.get('/api/hamqth/status', (req, res) => {
+    res.json({
+      configured: isHamQTHConfigured(),
+      hasSession: !!hamqthSession.id,
+      lastError: hamqthSession.lastError,
+      authCooldownRemaining:
+        hamqthSession.authFailedUntil > Date.now()
+          ? Math.round((hamqthSession.authFailedUntil - Date.now()) / 60000)
+          : 0,
+      source: CONFIG._hamqthUsername ? 'env' : hamqthSession.username ? 'settings' : 'none',
+    });
+  });
+
+  // POST /api/hamqth/configure — save HamQTH credentials (from Settings UI)
+  app.post('/api/hamqth/configure', writeLimiter, requireWriteAuth, async (req, res) => {
+    const { username, password } = req.body || {};
+
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password required' });
+    }
+
+    // Test credentials by attempting login
+    const oldUsername = hamqthSession.username;
+    const oldPassword = hamqthSession.password;
+    const credsChanged = username.trim() !== oldUsername || password.trim() !== oldPassword;
+    hamqthSession.username = username.trim();
+    hamqthSession.password = password.trim();
+    hamqthSession.id = null;
+    hamqthSession.expiry = 0;
+    if (credsChanged) {
+      hamqthSession.authFailedUntil = 0;
+    } else if (Date.now() < hamqthSession.authFailedUntil) {
+      hamqthSession.username = oldUsername;
+      hamqthSession.password = oldPassword;
+      return res.status(429).json({
+        success: false,
+        error: 'HamQTH login recently failed with these credentials. Try again later or use different credentials.',
+      });
+    }
+
+    const id = await hamqthLogin();
+
+    if (id) {
+      // Credentials work — persist them
+      try {
+        fs.writeFileSync(
+          HAMQTH_CREDS_FILE,
+          JSON.stringify({
+            username: hamqthSession.username,
+            password: hamqthSession.password,
+          }),
+          'utf8',
+        );
+        fs.chmodSync(HAMQTH_CREDS_FILE, 0o600); // Owner-only read/write
+      } catch (e) {
+        console.error('[HamQTH] Could not save credentials file:', e.message);
+      }
+
+      res.json({
+        success: true,
+        message: 'HamQTH credentials validated and saved',
+      });
+    } else {
+      // Restore old credentials
+      hamqthSession.username = oldUsername;
+      hamqthSession.password = oldPassword;
+      res.status(401).json({
+        success: false,
+        error: hamqthSession.lastError || 'Login failed',
+      });
+    }
+  });
+
+  // POST /api/hamqth/remove — remove saved HamQTH credentials
+  app.post('/api/hamqth/remove', writeLimiter, requireWriteAuth, (req, res) => {
+    hamqthSession.username = CONFIG._hamqthUsername || '';
+    hamqthSession.password = CONFIG._hamqthPassword || '';
+    hamqthSession.id = null;
+    hamqthSession.expiry = 0;
+    hamqthSession.lastError = null;
+    hamqthSession.authFailedUntil = 0;
+
+    try {
+      if (fs.existsSync(HAMQTH_CREDS_FILE)) {
+        fs.unlinkSync(HAMQTH_CREDS_FILE);
+      }
+    } catch (e) {}
+
+    res.json({
+      success: true,
+      configured: isHamQTHConfigured(),
+      source: CONFIG._hamqthUsername ? 'env' : 'none',
+    });
+  });
+
+  // ── Unified Callsign Lookup: QRZ → HamQTH XML → HamQTH DXCC → Prefix ──
 
   app.get('/api/callsign/:call', async (req, res) => {
     // Strip angle brackets and other junk that can arrive from DX cluster data
@@ -566,12 +873,17 @@ module.exports = function (app, ctx) {
         result = await qrzLookup(callsign);
       }
 
-      // 2. Fall back to HamQTH DXCC (no auth, but only country-level accuracy)
+      // 2. Try HamQTH XML Search (if configured) — rich data with accurate coords
+      if (!result && isHamQTHConfigured()) {
+        result = await hamqthXmlSearch(callsign);
+      }
+
+      // 3. Fall back to HamQTH DXCC (no auth, but only country-level accuracy)
       if (!result) {
         result = await hamqthLookup(callsign);
       }
 
-      // 3. Last resort: estimate from callsign prefix
+      // 4. Last resort: estimate from callsign prefix
       if (!result) {
         const estimated = estimateLocationFromPrefix(callsign);
         if (estimated) {
@@ -660,7 +972,6 @@ module.exports = function (app, ctx) {
 
     // Comprehensive prefix to grid mapping
     // Uses typical/central grid for each prefix area
-    // Comprehensive prefix to grid mapping
     // Based on ITU allocations and DXCC entity list (~340 entities)
     // Grid squares are approximate center of each entity
     const prefixGrids = {
@@ -1660,7 +1971,7 @@ module.exports = function (app, ctx) {
                   ? 'Alaska'
                   : 'US Territory',
           estimated: true,
-          source: 'prefix-grid',
+          source: 'prefix',
         };
       }
     }
@@ -1698,7 +2009,7 @@ module.exports = function (app, ctx) {
           grid: grid,
           country: 'USA',
           estimated: true,
-          source: 'prefix-grid',
+          source: 'prefix',
         };
       }
     }
@@ -1715,7 +2026,7 @@ module.exports = function (app, ctx) {
         grid: null,
         country: ctyResult.entity || 'Unknown',
         estimated: true,
-        source: 'cty.dat',
+        source: 'cty-dat',
       };
     }
 
@@ -1733,7 +2044,7 @@ module.exports = function (app, ctx) {
             grid: prefixGrids[prefix],
             country: getCountryFromPrefix(prefix),
             estimated: true,
-            source: 'prefix-grid',
+            source: 'prefix',
           };
         }
       }
@@ -1779,7 +2090,7 @@ module.exports = function (app, ctx) {
           grid: firstCharGrids[firstChar],
           country: 'Unknown',
           estimated: true,
-          source: 'prefix-grid',
+          source: 'prefix',
         };
       }
     }
@@ -1921,9 +2232,13 @@ module.exports = function (app, ctx) {
     callsignLookupCache,
     callsignLocationCache,
     qrzLookup,
-    hamqthLookup,
-    isQRZConfigured,
     qrzSession,
     QRZ_CREDS_FILE: path.join(ROOT_DIR, '.qrz-credentials'),
+    isQRZConfigured,
+    hamqthLookup,
+    hamqthXmlSearch,
+    isHamQTHConfigured,
+    hamqthSession,
+    HAMQTH_CREDS_FILE: path.join(ROOT_DIR, '.hamqth-credentials'),
   };
 };

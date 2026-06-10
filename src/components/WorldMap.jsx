@@ -31,6 +31,7 @@ import { DXNewsTicker } from './DXNewsTicker.jsx';
 import { CallsignWeatherOverlay } from './CallsignWeatherOverlay.jsx';
 import { getCallsignWeather } from '../utils/callsignWeather.js';
 import { filterDXPaths } from '../utils';
+import { useCallsignPopup } from '../components/CallsignPopupManager.jsx';
 
 // SECURITY: Escape HTML to prevent XSS in Leaflet popups/tooltips
 // DX cluster data, POTA/SOTA spots, and WSJT-X decodes come from external sources
@@ -147,6 +148,7 @@ export const WorldMap = ({
 }) => {
   const { t, i18n } = useTranslation();
   const mapLang = i18n.language?.split('-')[0] || 'en'; // e.g. 'de', 'ja', 'en'
+  const { showPopup } = useCallsignPopup();
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const tileLayerRef = useRef(null);
@@ -1007,9 +1009,28 @@ export const WorldMap = ({
     });
     resizeObserver.observe(mapRef.current);
 
+    // Click handler for callsigns in map popups — delegated from map container.
+    // Catches clicks on [data-map-call] elements inside .leaflet-popup-content
+    // and shows the callsign info popup instead of opening a new tab.
+    const handlePopupCallsignClick = (e) => {
+      const popupContent = e.target.closest('.leaflet-popup-content');
+      if (!popupContent) return;
+      const el = e.target.closest('[data-map-call]');
+      if (!el) return;
+      e.stopPropagation();
+      const call = el.getAttribute('data-map-call');
+      if (!call) return;
+      const lat = el.getAttribute('data-loc-lat');
+      const lon = el.getAttribute('data-loc-lon');
+      const location = lat != null && lon != null ? { lat: parseFloat(lat), lon: parseFloat(lon) } : undefined;
+      showPopup(call, el, location);
+    };
+    mapRef.current.addEventListener('click', handlePopupCallsignClick);
+
     return () => {
       clearInterval(terminatorInterval);
       resizeObserver.disconnect();
+      mapRef.current?.removeEventListener('click', handlePopupCallsignClick);
       mapInstanceRef.current = null;
       try {
         map.remove();
@@ -1517,7 +1538,7 @@ export const WorldMap = ({
           });
 
           // Render circleMarker on all 3 world copies
-          const dxPopupHtml = `<b data-qrz-call="${esc(dxCall)}" style="color: ${color}; cursor:pointer">${esc(dxCall)}</b><br>${esc(path.freq)} MHz<br>by <span data-qrz-call="${esc(path.spotter)}" style="cursor:pointer">${esc(path.spotter)}</span>`;
+          const dxPopupHtml = `<b data-map-call="${esc(dxCall)}" data-loc-lat="${path.dxLat}" data-loc-lon="${path.dxLon}" style="color: ${color}" onmouseenter="this.style.color='var(--accent-white)';this.style.fontWeight='bold'" onmouseleave="this.style.color='${color}';this.style.fontWeight=''">${esc(dxCall)}</b><br>${esc(path.freq)} MHz<br>by <span data-map-call="${esc(path.spotter)}" data-loc-lat="${path.spotterLat}" data-loc-lon="${path.spotterLon}">${esc(path.spotter)}</span>`;
           replicatePoint(path.dxLat, path.dxLon).forEach(([lat, lon]) => {
             const dxCircle = L.circleMarker([lat, lon], {
               radius: isHovered ? 12 : 6,
@@ -1691,7 +1712,7 @@ export const WorldMap = ({
           const grid = spot.grid6 ? spot.grid6 : spot.grid ? spot.grid : null;
           const spotPopupHtml = `<span style="color:${mapDefaults.color};background:#000">
                     ${mapDefaults.shape} ${mapDefaults.name} - </span>
-                  <b data-qrz-call="${esc(spot.call)}" style="color:${mapDefaults.color}; cursor:pointer">${esc(spot.call)}</b><br/>
+                  <b data-map-call="${esc(spot.call)}" data-loc-lat="${spot.lat}" data-loc-lon="${spot.lon}" style="color:${mapDefaults.color}" onmouseenter="this.style.color='var(--accent-white)';this.style.fontWeight='bold'" onmouseleave="this.style.color='${mapDefaults.color}';this.style.fontWeight=''">${esc(spot.call)}</b><br/>
                   ${grid ? `${esc(grid)}<br/>` : ''}
                   <span style="color:#888">${esc(spot.ref)}</span> ${esc(spot.locationDesc || '')}<br/>
                   ${spot.name ? `<i>${esc(spot.name)}</i><br/>` : ''}${esc(spot.freq)} ${esc(spot.mode || '')} <span style="color:#888">${esc(spot.time || '')}</span>
@@ -1949,7 +1970,7 @@ export const WorldMap = ({
             // TX = circle marker, RX = diamond marker (colorblind-friendly shape distinction)
             // Mutual reception spots get a gold border ring
             const pskPopupHtml = `
-                <b data-qrz-call="${esc(displayCall)}" style="cursor:pointer">${esc(displayCall)}</b> <span style="color:#888;font-size:10px">${dirLabel}</span>${mutual ? ' <span style="color:#fbbf24" title="Mutual reception — QSO possible">★</span>' : ''}<br>
+                <b data-map-call="${esc(displayCall)}" data-loc-lat="${spotLat}" data-loc-lon="${spotLon}">${esc(displayCall)}</b> <span style="color:#888;font-size:10px">${dirLabel}</span>${mutual ? ' <span style="color:#fbbf24" title="Mutual reception — QSO possible">★</span>' : ''}<br>
                 ${esc(spot.mode)} @ ${esc(freqMHz)} MHz<br>
                 ${spot.snr !== null ? `SNR: ${spot.snr > 0 ? '+' : ''}${spot.snr} dB` : ''}
               `;
@@ -2089,7 +2110,7 @@ export const WorldMap = ({
 
             // Diamond-shaped marker — replicate across world copies
             const wsjtxPopupHtml = `
-                <b data-qrz-call="${esc(call)}" style="cursor:pointer">${esc(call)}</b> ${spot.type === 'CQ' ? 'CQ' : ''}<br>
+                <b data-map-call="${esc(call)}" data-loc-lat="${spotLat}" data-loc-lon="${spotLon}">${esc(call)}</b> ${spot.type === 'CQ' ? 'CQ' : ''}<br>
                 ${esc(spot.grid || '')} ${esc(spot.band || '')}${spot.gridSource === 'prefix' ? ' <i>(est)</i>' : spot.gridSource === 'cache' ? ' <i>(prev)</i>' : ''}<br>
                 ${esc(spot.mode || '')} SNR: ${spot.snr != null ? (spot.snr >= 0 ? '+' : '') + spot.snr : '?'} dB
               `;
@@ -2197,7 +2218,7 @@ export const WorldMap = ({
             marker
               .bindPopup(
                 `
-                <b data-qrz-call="${esc(station.call)}" style="cursor:pointer">${esc(station.ssid || station.call)}</b>
+                <b data-map-call="${esc(station.ssid || station.call)}" data-loc-lat="${station.lat}" data-loc-lon="${station.lon}">${esc(station.ssid || station.call)}</b>
                 ${isWatched ? ' <span style="color:#f59e0b">★</span>' : ''}
                 ${isRF ? ' <span style="color:#4ade80;font-size:10px">RF</span>' : ''}<br>
                 <span style="color:#888;font-size:11px">${ageStr}</span><br>
@@ -2288,7 +2309,7 @@ export const WorldMap = ({
 
             marker
               .bindPopup(
-                `<b style="color:var(--accent-cyan)">${esc(primaryCall(node.call))}</b><br>
+                `<b data-map-call="${esc(primaryCall(node.call))}" data-loc-lat="${node.lat}" data-loc-lon="${node.lon}" style="color:var(--accent-green);font-weight:bold" onmouseenter="this.style.color='var(--accent-white)';this.style.fontWeight='bold'" onmouseleave="this.style.color='var(--accent-green)';this.style.fontWeight='bold'">${esc(primaryCall(node.call))}</b><br>
                 <span style="color:var(--text-muted);font-size:11px">${t('meshcomPanel.mapPopupAge', { age: ageStr })}</span><br>
                 ${battLine}${altLine}${wxLine}
                 ${node.firmware ? `<span style="font-size:10px;color:var(--text-muted)">${t('meshcomPanel.mapPopupFirmware')} ${esc(node.firmware)}</span>` : ''}`,

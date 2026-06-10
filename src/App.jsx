@@ -15,6 +15,7 @@ import EmcommLayout from './layouts/EmcommLayout.jsx';
 
 import { resetLayout } from './store/layoutStore.js';
 import { RigProvider } from './contexts/RigContext.jsx';
+import { CallsignPopupProvider } from './components/CallsignPopupManager.jsx';
 
 import {
   useSpaceWeather,
@@ -722,22 +723,24 @@ const App = () => {
         onResetLayout={handleResetLayout}
       />
 
-      <RigProvider rigConfig={config.rigControl || { enabled: false, host: 'http://localhost', port: 5555 }}>
-        {config.layout === 'emcomm' ? (
-          <EmcommLayout {...layoutProps} />
-        ) : config.layout === 'dockable' ? (
-          <DockableLayout
-            key={layoutResetKey}
-            {...layoutProps}
-            layoutLocked={layoutLocked}
-            onToggleLayoutLock={toggleLayoutLock}
-          />
-        ) : config.layout === 'classic' || config.layout === 'tablet' || config.layout === 'compact' ? (
-          <ClassicLayout {...layoutProps} />
-        ) : (
-          <ModernLayout {...layoutProps} />
-        )}
-      </RigProvider>
+      <CallsignPopupProvider>
+        <RigProvider rigConfig={config.rigControl || { enabled: false, host: 'http://localhost', port: 5555 }}>
+          {config.layout === 'emcomm' ? (
+            <EmcommLayout {...layoutProps} />
+          ) : config.layout === 'dockable' ? (
+            <DockableLayout
+              key={layoutResetKey}
+              {...layoutProps}
+              layoutLocked={layoutLocked}
+              onToggleLayoutLock={toggleLayoutLock}
+            />
+          ) : config.layout === 'classic' || config.layout === 'tablet' || config.layout === 'compact' ? (
+            <ClassicLayout {...layoutProps} />
+          ) : (
+            <ModernLayout {...layoutProps} />
+          )}
+        </RigProvider>
+      </CallsignPopupProvider>
 
       {/* Modals */}
       <SettingsPanel
