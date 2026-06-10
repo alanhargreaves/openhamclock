@@ -595,8 +595,10 @@ export const SettingsPanel = ({
     return t == 'imperial' ? 'US Customary' : 'Metric';
   };
 
-  // Set a sane default if we are not a local installation and we have 'udp' set as the dxClusterSource.
-  if (!isLocalInstall && dxClusterSource === 'udp') setDxClusterSource('auto');
+  // Hosted site is locked to our own cluster: user-directed sources (UDP,
+  // custom telnet) only exist on local installs, where they run under the
+  // user's own callsign. Coerce any stale saved value back to auto.
+  if (!isLocalInstall && (dxClusterSource === 'udp' || dxClusterSource === 'custom')) setDxClusterSource('auto');
 
   return (
     <div
@@ -2186,35 +2188,62 @@ export const SettingsPanel = ({
                 >
                   {t('station.settings.dx.title')}
                 </label>
-                <select
-                  value={dxClusterSource}
-                  onChange={(e) => setDxClusterSource(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    background: 'var(--bg-tertiary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: 'var(--accent-green)',
-                    fontSize: '14px',
-                    fontFamily: 'var(--font-mono)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <option value="dxspider-proxy">{t('station.settings.dx.option1')}</option>
-                  <option value="hamqth">{t('station.settings.dx.option2')}</option>
-                  <option value="dxwatch">{t('station.settings.dx.option3')}</option>
-                  <option value="auto">{t('station.settings.dx.option4')}</option>
-                  <option value="custom">{t('station.settings.dx.custom.option')}</option>
-                  {isLocalInstall && (
-                    <option value="udp">
-                      {t('station.settings.dx.udp.option', { defaultValue: 'UDP Spots (Local Network)' })}
-                    </option>
-                  )}
-                </select>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
-                  {t('station.settings.dx.describe')}
-                </div>
+                {isLocalInstall ? (
+                  <>
+                    <select
+                      value={dxClusterSource}
+                      onChange={(e) => setDxClusterSource(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        background: 'var(--bg-tertiary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        color: 'var(--accent-green)',
+                        fontSize: '14px',
+                        fontFamily: 'var(--font-mono)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option value="dxspider-proxy">{t('station.settings.dx.option1')}</option>
+                      <option value="hamqth">{t('station.settings.dx.option2')}</option>
+                      <option value="dxwatch">{t('station.settings.dx.option3')}</option>
+                      <option value="auto">{t('station.settings.dx.option4')}</option>
+                      <option value="custom">{t('station.settings.dx.custom.option')}</option>
+                      <option value="udp">
+                        {t('station.settings.dx.udp.option', { defaultValue: 'UDP Spots (Local Network)' })}
+                      </option>
+                    </select>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                      {t('station.settings.dx.describe')}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Hosted site: source is locked to the OpenHamClock Cluster. */}
+                    <div
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        background: 'var(--bg-tertiary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        color: 'var(--accent-green)',
+                        fontSize: '14px',
+                        fontFamily: 'var(--font-mono)',
+                        boxSizing: 'border-box',
+                      }}
+                    >
+                      {t('station.settings.dx.hostedLocked', { defaultValue: 'OpenHamClock Cluster' })} 🔒
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                      {t('station.settings.dx.hostedLockedDescribe', {
+                        defaultValue:
+                          'The hosted site uses our own cluster node. Run your own OpenHamClock to connect to a custom cluster with your callsign.',
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
 
               {dxClusterSource === 'udp' && (

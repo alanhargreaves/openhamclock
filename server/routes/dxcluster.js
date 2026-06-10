@@ -74,6 +74,13 @@ module.exports = function (app, ctx) {
   // Unset = not deployed yet; the source is hidden and auto mode skips it.
   const OHC_CLUSTER_URL = (process.env.OHC_CLUSTER_URL || '').replace(/\/$/, '');
 
+  // Hosted-instance lockdown. Set OHC_HOSTED=1 ONLY on our Railway deployments:
+  // the hosted site serves many users from one egress IP, so user-directed
+  // cluster connections (custom telnet, UDP, direct DXSpider) are forbidden —
+  // everything comes from our own cluster node. Self-hosted installs never set
+  // this and keep the full source list (with their own callsign enforced).
+  const IS_HOSTED = process.env.OHC_HOSTED === '1' || process.env.OHC_HOSTED === 'true';
+
   // Cache for DX Spider telnet spots (to avoid excessive connections)
   let dxSpiderCache = { spots: [], timestamp: 0 };
   const DXSPIDER_CACHE_TTL = 90000; // 90 seconds cache - reduces reconnection frequency
@@ -96,19 +103,22 @@ module.exports = function (app, ctx) {
   const isValidCallsign = (call) =>
     typeof call === 'string' && /^[A-Z0-9]{1,3}\d[A-Z]{1,4}(-\d{1,2})?$/i.test(call.trim());
 
-  function getDxClusterLoginCallsign(preferredCallsign = null) {
+  // appendSsid: curated OHC sources tag logins with our -56 SSID. Custom
+  // clusters pass false — the user connects to third-party nodes under their
+  // own bare callsign (or their own SSID), with nothing linking back to OHC.
+  function getDxClusterLoginCallsign(preferredCallsign = null, appendSsid = true) {
     // Strip control characters to prevent telnet command injection via query params
     const candidate = (preferredCallsign || CONFIG.dxClusterCallsign || '').replace(/[\x00-\x1F\x7F]/g, '').trim();
     if (candidate && candidate.toUpperCase() !== 'N0CALL') {
       // Append default SSID if caller didn't include one
-      if (!candidate.includes('-')) {
+      if (appendSsid && !candidate.includes('-')) {
         return `${candidate.toUpperCase()}${DXSPIDER_SSID}`;
       }
       return candidate.toUpperCase();
     }
 
     if (CONFIG.callsign && CONFIG.callsign.toUpperCase() !== 'N0CALL') {
-      return `${CONFIG.callsign.toUpperCase()}${DXSPIDER_SSID}`;
+      return appendSsid ? `${CONFIG.callsign.toUpperCase()}${DXSPIDER_SSID}` : CONFIG.callsign.toUpperCase();
     }
 
     return 'GUEST';
@@ -422,7 +432,7 @@ module.exports = function (app, ctx) {
   }
 
   function getOrCreateCustomSession(node, userCallsign = null) {
-    const loginCallsign = getDxClusterLoginCallsign(userCallsign);
+    const loginCallsign = getDxClusterLoginCallsign(userCallsign, false);
     const key = buildCustomSessionKey(node, loginCallsign);
     let session = customDxSessions.get(key);
 
@@ -585,7 +595,8 @@ module.exports = function (app, ctx) {
   }
 
   app.get('/api/dxcluster/spots', async (req, res) => {
-    const source = (req.query.source || CONFIG.dxClusterSource || 'auto').toLowerCase();
+    // Hosted instances serve OUR cluster only, whatever the client asks for.
+    const source = IS_HOSTED ? 'ohc' : (req.query.source || CONFIG.dxClusterSource || 'auto').toLowerCase();
 
     // Helper function for HamQTH (HTTP-based, works everywhere)
     async function fetchHamQTH() {
@@ -776,6 +787,16 @@ module.exports = function (app, ctx) {
 
   // Get available DX cluster sources
   app.get('/api/dxcluster/sources', (req, res) => {
+    if (IS_HOSTED) {
+      // Hosted site: one source, no choices. Run your own instance for more.
+      return res.json([
+        {
+          id: 'ohc',
+          name: 'OpenHamClock Cluster',
+          description: 'Our own cluster node — the only source on the hosted site',
+        },
+      ]);
+    }
     res.json([
       {
         id: 'auto',
@@ -1316,7 +1337,16 @@ module.exports = function (app, ctx) {
 
   app.get('/api/dxcluster/paths', async (req, res) => {
     // Parse query parameters for custom cluster settings
-    const source = req.query.source || 'auto';
+    let source = req.query.source || 'auto';
+
+    // Hosted instances never open user-directed connections (custom telnet /
+    // UDP) — many users, one egress IP, zero tolerance after the NC7J mess.
+    if (IS_HOSTED && (source === 'custom' || source === 'udp')) {
+      return res.status(400).json({
+        error: 'The hosted site uses the OpenHamClock Cluster only. Run your own OpenHamClock to use a custom cluster.',
+      });
+    }
+    if (IS_HOSTED) source = 'auto'; // auto = our cluster first
     const customHost = (req.query.host || CONFIG.dxClusterHost || '').trim();
     const parsedPort = parseInt(req.query.port, 10);
     const customPort = Number.isFinite(parsedPort) ? parsedPort : CONFIG.dxClusterPort;
@@ -1342,7 +1372,7 @@ module.exports = function (app, ctx) {
       // GOOD-NEIGHBOUR POLICY: connecting to someone else's cluster node
       // requires the USER's own valid callsign. No GUEST, no shared default —
       // sysops must see who is actually connecting (the NC7J lesson).
-      const loginCallsign = getDxClusterLoginCallsign(userCallsign);
+      const loginCallsign = getDxClusterLoginCallsign(userCallsign, false);
       if (loginCallsign === 'GUEST' || !isValidCallsign(loginCallsign)) {
         return res.status(400).json({
           error:
@@ -1363,7 +1393,7 @@ module.exports = function (app, ctx) {
     // Generate cache key based on source profile so custom/proxy/auto don't mix.
     const cacheKey =
       source === 'custom'
-        ? `custom-${resolvedHost}-${customPort}-${getDxClusterLoginCallsign(userCallsign)}`
+        ? `custom-${resolvedHost}-${customPort}-${getDxClusterLoginCallsign(userCallsign, false)}`
         : source === 'udp'
           ? `udp-${udpHost || 'any'}-${udpPort}`
           : `source-${source}`;
@@ -1425,7 +1455,7 @@ module.exports = function (app, ctx) {
       }
       if (newSpots.length === 0 && source === 'custom' && resolvedHost) {
         logDebug(
-          `[DX Paths] Using custom telnet session: ${resolvedHost}:${customPort} as ${getDxClusterLoginCallsign(userCallsign)}`,
+          `[DX Paths] Using custom telnet session: ${resolvedHost}:${customPort} as ${getDxClusterLoginCallsign(userCallsign, false)}`,
         );
         const customNode = { host: resolvedHost, port: customPort };
         const session = getOrCreateCustomSession(customNode, userCallsign);
@@ -1454,6 +1484,42 @@ module.exports = function (app, ctx) {
           logDebug('[DX Paths] Got', newSpots.length, 'spots from custom telnet');
         } else {
           logDebug('[DX Paths] Custom session active but no spots yet');
+        }
+      }
+
+      // Our own cluster node first (when deployed) — RBN skimmers + human spots
+      if (newSpots.length === 0 && source !== 'custom' && source !== 'udp' && OHC_CLUSTER_URL) {
+        const ohcController = new AbortController();
+        const ohcTimeout = setTimeout(() => ohcController.abort(), 10000);
+        try {
+          const ohcResponse = await fetch(`${OHC_CLUSTER_URL}/api/dxcluster/spots?limit=100`, {
+            headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
+            signal: ohcController.signal,
+          });
+          if (ohcResponse.ok) {
+            const ohcSpots = await ohcResponse.json();
+            if (Array.isArray(ohcSpots) && ohcSpots.length > 0) {
+              usedSource = 'ohc';
+              newSpots = ohcSpots.map((s) => ({
+                // Strip the RBN skimmer marker (-#) so spotter location lookups
+                // resolve the underlying callsign.
+                spotter: String(s.spotter || '').replace(/-#$/, ''),
+                spotterGrid: s.spotterGrid || null,
+                dxCall: s.call,
+                dxGrid: s.dxGrid || null,
+                freq: s.freq,
+                comment: s.comment || '',
+                time: s.time || '',
+                timestamp: s.timestamp || Date.now(),
+                id: `${s.call}-${s.freqKhz || s.freq}-${s.spotter}`,
+              }));
+              logDebug('[DX Paths] Got', newSpots.length, 'spots from OHC Cluster');
+            }
+          }
+        } catch (ohcErr) {
+          logDebug('[DX Paths] OHC Cluster failed, trying proxy');
+        } finally {
+          clearTimeout(ohcTimeout);
         }
       }
 
