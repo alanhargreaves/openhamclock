@@ -578,8 +578,111 @@ export const WorldMap = ({
   const initialStyle = MAP_STYLES[migratedStyle] && !MAP_STYLES[migratedStyle].legacy ? migratedStyle : 'dark';
   const initialProjection = storedSettings.isAzimuthal ? 'azimuthal' : storedSettings.mapProjection || 'mercator';
   const [mapStyle, setMapStyle] = useState(initialStyle);
+  const [mapRotationConfig, setMapRotationConfig] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('ohc_main_map_rotator_v1') || '{}');
+      const allStyleIds = Object.keys(MAP_STYLES).filter((id) => MAP_STYLES[id] && !MAP_STYLES[id].legacy);
+      return {
+        enabled: saved.enabled === true,
+        intervalSeconds: Number(saved.intervalSeconds) || 60,
+        selectedIds: Array.isArray(saved.selectedIds) && saved.selectedIds.length ? saved.selectedIds : allStyleIds,
+      };
+    } catch {
+      const allStyleIds = Object.keys(MAP_STYLES).filter((id) => MAP_STYLES[id] && !MAP_STYLES[id].legacy);
+      return { enabled: false, intervalSeconds: 60, selectedIds: allStyleIds };
+    }
+  });
+  const [showMapRotationMenu, setShowMapRotationMenu] = useState(false);
+  const [mapRotationMenuActivity, setMapRotationMenuActivity] = useState(0);
   const [mapProjection, setMapProjection] = useState(initialProjection);
   const isAzimuthal = mapProjection === 'azimuthal';
+
+  const availableBaseMapIds = useMemo(
+    () => Object.keys(MAP_STYLES).filter((id) => MAP_STYLES[id] && !MAP_STYLES[id].legacy),
+    [],
+  );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('ohc_main_map_rotator_v1', JSON.stringify(mapRotationConfig));
+    } catch {}
+  }, [mapRotationConfig]);
+
+  useEffect(() => {
+    if (!mapRotationConfig.enabled) return;
+
+    const selected = (mapRotationConfig.selectedIds || []).filter((id) => availableBaseMapIds.includes(id));
+    if (selected.length < 2) return;
+
+    const seconds = Math.max(5, Number(mapRotationConfig.intervalSeconds) || 60);
+
+    const timer = setInterval(() => {
+      setMapStyle((current) => {
+        const selectedNow = (mapRotationConfig.selectedIds || []).filter((id) => availableBaseMapIds.includes(id));
+        if (selectedNow.length < 2) return current;
+
+        const currentIndex = selectedNow.indexOf(current);
+        const nextStyle = selectedNow[(currentIndex + 1 + selectedNow.length) % selectedNow.length];
+
+        try {
+          const stored = JSON.parse(localStorage.getItem('openhamclock_mapSettings') || '{}');
+          localStorage.setItem(
+            'openhamclock_mapSettings',
+            JSON.stringify({ ...stored, mapStyle: nextStyle, mapProjection }),
+          );
+        } catch {}
+
+        return nextStyle;
+      });
+    }, seconds * 1000);
+
+    return () => clearInterval(timer);
+  }, [
+    mapRotationConfig.enabled,
+    mapRotationConfig.intervalSeconds,
+    mapRotationConfig.selectedIds,
+    availableBaseMapIds,
+    mapProjection,
+  ]);
+
+  const setMainMapRotation = useCallback((next) => {
+    setMapRotationConfig((prev) => ({ ...prev, ...next }));
+  }, []);
+
+  const toggleMainMapRotationStyle = useCallback(
+    (styleId) => {
+      setMapRotationConfig((prev) => {
+        const current = new Set(prev.selectedIds || []);
+
+        if (current.has(styleId)) current.delete(styleId);
+        else current.add(styleId);
+
+        const selectedIds = Array.from(current).filter((id) => availableBaseMapIds.includes(id));
+
+        return { ...prev, selectedIds };
+      });
+    },
+    [availableBaseMapIds],
+  );
+
+  const resetMapRotationMenuAutoClose = useCallback(() => {
+    setMapRotationMenuActivity((n) => n + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!showMapRotationMenu) return;
+
+    const timer = setTimeout(() => {
+      setShowMapRotationMenu(false);
+    }, 25000);
+
+    return () => clearTimeout(timer);
+  }, [showMapRotationMenu, mapRotationMenuActivity]);
+
+  const mainMapRotationSelected = useMemo(
+    () => new Set((mapRotationConfig.selectedIds || []).filter((id) => availableBaseMapIds.includes(id))),
+    [mapRotationConfig.selectedIds, availableBaseMapIds],
+  );
   const [bandColorVersion, setBandColorVersion] = useState(0);
   const [editingBand, setEditingBand] = useState(null);
   const [editingColor, setEditingColor] = useState('#ff6666');
@@ -2559,6 +2662,7 @@ export const WorldMap = ({
               border: '1px solid #444',
               borderRadius: '4px',
               overflow: 'hidden',
+              position: 'relative',
             }}
           >
             {[
@@ -2588,7 +2692,12 @@ export const WorldMap = ({
           <select
             value={mapStyle}
             id="mapStyle"
-            onChange={(e) => setMapStyle(e.target.value)}
+            onChange={(e) => {
+              setMapStyle(e.target.value);
+              if (mapRotationConfig.enabled) {
+                setMainMapRotation({ enabled: false });
+              }
+            }}
             style={{
               background: 'rgba(0, 0, 0, 0.8)',
               border: '1px solid #444',
@@ -2609,6 +2718,212 @@ export const WorldMap = ({
                 </option>
               ))}
           </select>
+          <button
+            type="button"
+            onClick={() => {
+              setShowMapRotationMenu((v) => {
+                const next = !v;
+                if (next) resetMapRotationMenuAutoClose();
+                return next;
+              });
+            }}
+            title="Map rotation controls"
+            aria-label="Map rotation controls"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '32px',
+              height: '26px',
+              fontSize: '12px',
+              fontWeight: 700,
+              padding: '0',
+              borderRadius: '4px',
+              border: showMapRotationMenu ? '1px solid rgba(0, 255, 170, 0.95)' : '1px solid rgba(0, 255, 170, 0.35)',
+              background: showMapRotationMenu ? 'var(--accent-color)' : 'var(--bg-tertiary)',
+              color: 'var(--text-primary)',
+              textShadow: 'none',
+              boxShadow: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            <svg
+              aria-hidden="true"
+              width="17"
+              height="17"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.25"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="4" y1="6" x2="20" y2="6" />
+              <circle cx="9" cy="6" r="2" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <circle cx="15" cy="12" r="2" />
+              <line x1="4" y1="18" x2="20" y2="18" />
+              <circle cx="11" cy="18" r="2" />
+            </svg>
+          </button>
+          {showMapRotationMenu && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '28px',
+                right: 0,
+                zIndex: 1200,
+                minWidth: '240px',
+                maxHeight: '330px',
+                overflowY: 'auto',
+                padding: '8px',
+                borderRadius: '6px',
+                border: '1px solid var(--border-color)',
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+              }}
+              onMouseMove={resetMapRotationMenuAutoClose}
+              onClick={resetMapRotationMenuAutoClose}
+              onChange={resetMapRotationMenuAutoClose}
+              onKeyDown={resetMapRotationMenuAutoClose}
+            >
+              <div style={{ fontSize: '11px', fontWeight: 700, marginBottom: '6px' }}>Map Rotation</div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '6px',
+                  alignItems: 'center',
+                  marginBottom: '8px',
+                  paddingBottom: '8px',
+                  borderBottom: '1px solid var(--border-color)',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setMainMapRotation({ enabled: !mapRotationConfig.enabled })}
+                  title={mapRotationConfig.enabled ? 'Turn map rotation off' : 'Turn map rotation on'}
+                  style={{
+                    fontSize: '11px',
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    border: '1px solid var(--border-color)',
+                    background: mapRotationConfig.enabled ? 'var(--accent-color)' : 'var(--bg-tertiary)',
+                    color: 'var(--text-primary)',
+                    fontWeight: 700,
+                    textShadow: 'none',
+                    boxShadow: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {mapRotationConfig.enabled ? 'Rotation On' : 'Rotation Off'}
+                </button>
+
+                <select
+                  value={mapRotationConfig.intervalSeconds}
+                  onChange={(e) => setMainMapRotation({ intervalSeconds: Number(e.target.value) || 60 })}
+                  title="Main map rotation interval"
+                  disabled={!mapRotationConfig.enabled}
+                  style={{
+                    fontSize: '11px',
+                    padding: '3px 6px',
+                    borderRadius: '4px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-tertiary)',
+                    color: 'var(--text-primary)',
+                    cursor: mapRotationConfig.enabled ? 'pointer' : 'not-allowed',
+                    opacity: mapRotationConfig.enabled ? 1 : 0.8,
+                  }}
+                >
+                  <option value={15}>15s</option>
+                  <option value={30}>30s</option>
+                  <option value={60}>1m</option>
+                  <option value={120}>2m</option>
+                  <option value={300}>5m</option>
+                  <option value={600}>10m</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setMainMapRotation({ selectedIds: availableBaseMapIds })}
+                  style={{
+                    fontSize: '10px',
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--accent-color)',
+                    color: 'var(--text-primary)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMainMapRotation({ selectedIds: [], enabled: false })}
+                  style={{
+                    fontSize: '10px',
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-tertiary)',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  None
+                </button>
+              </div>
+
+              <div style={{ fontSize: '10px', opacity: 0.9, marginBottom: '6px', color: 'var(--text-secondary)' }}>
+                {mainMapRotationSelected.size} of {availableBaseMapIds.length} main maps selected for rotation.
+              </div>
+
+              <div
+                style={{
+                  maxHeight: '210px',
+                  overflowY: 'auto',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  padding: '4px 6px',
+                  background: 'rgba(0,0,0,0.18)',
+                }}
+              >
+                {availableBaseMapIds.map((styleId) => (
+                  <label
+                    key={styleId}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontSize: '11px',
+                      margin: '3px 0',
+                      cursor: 'pointer',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={mainMapRotationSelected.has(styleId)}
+                      onChange={() => toggleMainMapRotationStyle(styleId)}
+                      style={{
+                        accentColor: 'var(--accent-color)',
+                        cursor: 'pointer',
+                      }}
+                    />
+                    <span>
+                      {styleId === mapStyle ? '★ ' : ''}
+                      {MAP_STYLES[styleId]?.name || styleId}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

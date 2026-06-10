@@ -28,6 +28,7 @@ import { useRig } from '../contexts/RigContext.jsx';
 import { calculateDistance, formatDistance } from '../utils/geo.js';
 import { findDXPathForSpot } from '../utils/dxClusterSpotMatcher';
 import { DXGridInput } from '../components/DXGridInput.jsx';
+import { DXCallsignInput } from '../components/DXCallsignInput.jsx';
 import { DXFavorites } from '../components/DXFavorites.jsx';
 import DXCCSelect from '../components/DXCCSelect.jsx';
 import useBreakpoint from '../hooks/app/useBreakpoint';
@@ -277,19 +278,16 @@ export default function ModernLayout(props) {
               flex: '1 1 auto',
             }}
           />
-          {dxCallsign && (
-            <span
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '22px',
-                fontWeight: '900',
-                color: 'var(--accent-amber)',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {dxCallsign}
-            </span>
-          )}
+          <DXCallsignInput
+            dxCallsign={dxCallsign}
+            onDXChange={handleDXChange}
+            dxLocked={dxLocked}
+            style={{
+              color: 'var(--accent-amber)',
+              fontSize: '22px',
+              fontWeight: '900',
+            }}
+          />
           <DXFavorites dxLocation={dxLocation} dxGrid={dxGrid} onDXChange={handleDXChange} dxLocked={dxLocked} />
           <button
             type="button"

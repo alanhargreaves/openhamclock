@@ -158,6 +158,9 @@ export const loadConfig = () => {
       defaultDX: localConfig.defaultDX || config.defaultDX,
       panels: { ...config.panels, ...localConfig.panels },
       refreshIntervals: { ...config.refreshIntervals, ...localConfig.refreshIntervals },
+      // Deep-merge propagation so saved configs predating the antenna field
+      // (or server-synced configs missing it) don't reset antenna to default.
+      propagation: { ...config.propagation, ...localConfig.propagation },
       udpDxCluster: localConfig.udpDxCluster || config.udpDxCluster,
     };
   }

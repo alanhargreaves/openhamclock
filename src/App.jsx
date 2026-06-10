@@ -54,10 +54,12 @@ import useLocalInstall from './hooks/app/useLocalInstall';
 import useVersionCheck from './hooks/app/useVersionCheck';
 import usePresence from './hooks/app/usePresence';
 import useAudioAlerts from './hooks/app/useAudioAlerts';
+import { useSatelliteAnnouncements } from './hooks/app/useSatelliteAnnouncements';
 import WhatsNew from './components/WhatsNew.jsx';
 import { initCtyLookup } from './utils/ctyLookup.js';
 import { getAllLayers } from './plugins/layerRegistry.js';
 import ActivateFilterManager from './components/ActivateFilterManager.jsx';
+import { useLightningAnnouncements } from './hooks/app/useLightningAnnouncements';
 
 // Load DXCC entity database on app startup (non-blocking)
 initCtyLookup();
@@ -321,11 +323,14 @@ const App = () => {
     contests: contests.data,
   });
 
+  const { announcement: lightningAnnouncement } = useLightningAnnouncements();
+
   const propagation = usePropagation(config.location, dxLocation, config.propagation);
   const mySpots = useMySpots(config.callsign);
   const filterState = useSatelliteFilterState();
   const { satelliteFilters, setSatelliteFilters } = filterState;
   const satellites = useSatellites(config.location, config.satellite, satelliteFilters);
+  const { riseAnnouncement, setAnnouncement: satelliteSetAnnouncement } = useSatelliteAnnouncements(satellites.data);
   const localWeather = useWeather(config.location, config.allUnits);
   const dxWeather = useWeather(dxLocation, config.allUnits);
   const localAlerts = useWeatherAlerts(config.location);
@@ -668,7 +673,8 @@ const App = () => {
   }, []);
 
   return (
-    <div
+    <main
+      id="main-content"
       style={{
         width: '100vw',
         height: '100vh',
@@ -803,7 +809,19 @@ const App = () => {
         onClose={() => setShowWwbotaFilters(false)}
       />
       <WhatsNew showWhatsNew={config.showWhatsNew} />
-    </div>
+      {/* Assertive: satellite rising above horizon is time-critical for a ham operator */}
+      <div className="visually-hidden" aria-live="assertive" aria-atomic="true" data-testid="satellite-rise-announcer">
+        {riseAnnouncement}
+      </div>
+      {/* Polite: satellite setting is informational */}
+      <div className="visually-hidden" aria-live="polite" aria-atomic="true" data-testid="satellite-set-announcer">
+        {satelliteSetAnnouncement}
+      </div>
+      {/* Assertive: lightning proximity is a safety alert — announce immediately */}
+      <div className="visually-hidden" aria-live="assertive" aria-atomic="true" data-testid="lightning-announcer">
+        {lightningAnnouncement}
+      </div>
+    </main>
   );
 };
 
