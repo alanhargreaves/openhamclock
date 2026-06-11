@@ -73,7 +73,7 @@ export function DXGridInput({ dxGrid, onDXChange, dxLocked, style }) {
         type="text"
         value={inputValue}
         readOnly={dxLocked}
-        //maxLength={6}
+        maxLength={6}
         onChange={handleChange}
         onBlur={handleBlur}
         onFocus={handleFocus}
