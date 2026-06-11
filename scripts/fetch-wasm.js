@@ -51,7 +51,7 @@ const sha256File = async (filePath) => {
 };
 
 /**
- * Verifiy checksum of files in destination folder. File p533.sha256 should exist and contain checksum information.
+ * Verify checksum of files in destination folder. File p533.sha256 should exist and contain checksum information.
  * @param {*} destDir Destination directory where files are downloaded.
  * @param {*} filesExpected List of expected files to verify, the first file in the list should be the checksum file (e.g. p533.sha256) and the rest are files to verify (e.g. p533.mjs, p533.wasm).
  * @returns returns true if checksum file exists and matches, false if checksum file is missing or invalid
