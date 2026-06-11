@@ -9,18 +9,19 @@ const TAG = process.env.WASM_RELEASE_TAG || 'wasm-latest';
 const DEST_DIR = path.join('public', 'wasm');
 const BASE_URL = `https://github.com/${REPO}/releases/download/${TAG}`;
 
-function warn(message) {
+const warn = (message) => {
   console.error(`⚠  fetch-wasm: ${message} — skipping (runtime will use REST fallback)`);
   process.exit(0);
-}
+};
 
-function download(url, dest) {
+const download = (url, dest) => {
   return new Promise((resolve, reject) => {
     const request = https.get(url, (response) => {
       if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
         const location = response.headers.location.startsWith('http')
           ? response.headers.location
           : new URL(response.headers.location, url).toString();
+        response.resume(); // drain and close the redirected response
         return resolve(download(location, dest));
       }
 
@@ -37,9 +38,9 @@ function download(url, dest) {
 
     request.on('error', reject);
   });
-}
+};
 
-async function sha256File(filePath) {
+const sha256File = async (filePath) => {
   return new Promise((resolve, reject) => {
     const hash = crypto.createHash('sha256');
     const input = fs.createReadStream(filePath);
@@ -47,11 +48,17 @@ async function sha256File(filePath) {
     input.on('data', (chunk) => hash.update(chunk));
     input.on('end', () => resolve(hash.digest('hex')));
   });
-}
+};
 
-async function verifyChecksum(destDir) {
-  const checksumFile = path.join(destDir, 'p533.sha256');
-  if (!fs.existsSync(checksumFile)) return;
+/**
+ * Verifiy checksum of files in destination folder. File p533.sha256 should exist and contain checksum information.
+ * @param {*} destDir Destination directory where files are downloaded.
+ * @param {*} filesExpected List of expected files to verify, the first file in the list should be the checksum file (e.g. p533.sha256) and the rest are files to verify (e.g. p533.mjs, p533.wasm).
+ * @returns returns true if checksum file exists and matches, false if checksum file is missing or invalid
+ */
+const verifyChecksum = async (destDir, filesExpected) => {
+  const checksumFile = path.join(destDir, filesExpected[0]);
+  if (!fs.existsSync(checksumFile)) return false;
 
   const lines = fs
     .readFileSync(checksumFile, 'utf8')
@@ -59,17 +66,24 @@ async function verifyChecksum(destDir) {
     .map((line) => line.trim())
     .filter(Boolean);
 
+  // skipping the first file which is the checksum file itself, verify that all files in the expected files list are part of the checksum file
+  const filesInChecksum = new Set(lines.map((line) => line.split(/\s+/)[1]));
+  for (let i = 1; i < filesExpected.length; i++) {
+    if (!filesInChecksum.has(filesExpected[i])) return false;
+  }
+
+  // for each line in the checksum file, verify that the file exists and matches the expected checksum
   for (const line of lines) {
     const [expected, filename] = line.split(/\s+/);
-    if (!expected || !filename) continue;
+    if (!expected || !filename) return false;
     const filePath = path.join(destDir, filename);
-    if (!fs.existsSync(filePath)) continue;
+    if (!fs.existsSync(filePath)) return false;
     const actual = await sha256File(filePath);
-    if (expected !== actual) {
-      throw new Error(`sha256 mismatch on ${filename}`);
-    }
+    if (expected !== actual) return false;
   }
-}
+
+  return true;
+};
 
 (async () => {
   try {
@@ -77,21 +91,38 @@ async function verifyChecksum(destDir) {
       fs.mkdirSync(DEST_DIR, { recursive: true });
     }
 
-    console.log(`→ fetch-wasm: downloading from ${BASE_URL}...`);
-    const files = ['p533.mjs', 'p533.wasm', 'p533.sha256'];
+    const filesExpected = ['p533.sha256', 'p533.mjs', 'p533.wasm'];
 
-    for (const filename of files) {
+    // delete existing and download checksum file only
+    const filename = 'p533.sha256';
+    {
       const url = `${BASE_URL}/${filename}`;
       const dest = path.join(DEST_DIR, filename);
+      fs.rmSync(dest, { force: true });
       await download(url, dest);
     }
 
-    await verifyChecksum(DEST_DIR);
-    console.log(`✓ fetch-wasm: installed to ${DEST_DIR}/`);
+    // if checksum is OK then skip else do a full download of all files and verify again
+    if (await verifyChecksum(DEST_DIR, filesExpected)) {
+      console.log(`✓ fetch-wasm: existing files installed at '${DEST_DIR}'`);
+    } else {
+      console.log(`→ fetch-wasm: downloading from '${BASE_URL}'...`);
 
-    const installed = fs.readdirSync(DEST_DIR).filter((name) => /p533\.(mjs|wasm)$/.test(name));
-    if (installed.length > 0) {
-      console.log(installed.map((name) => `- ${name}`).join('\n'));
+      for (const filename of filesExpected) {
+        const url = `${BASE_URL}/${filename}`;
+        const dest = path.join(DEST_DIR, filename);
+        await download(url, dest);
+      }
+
+      if ((await verifyChecksum(DEST_DIR, filesExpected)) === false)
+        throw new Error(`sha256 mismatch on '${filename}'`);
+
+      console.log(`✓ fetch-wasm: installed to '${DEST_DIR}'`);
+
+      const installed = fs.readdirSync(DEST_DIR).filter((name) => /p533\.(mjs|wasm)$/.test(name));
+      if (installed.length > 0) {
+        console.log(installed.map((name) => `- ${name}`).join('\n'));
+      }
     }
   } catch (error) {
     warn(error.message);
