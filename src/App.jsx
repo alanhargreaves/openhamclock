@@ -61,6 +61,7 @@ import { initCtyLookup } from './utils/ctyLookup.js';
 import { getAllLayers } from './plugins/layerRegistry.js';
 import ActivateFilterManager from './components/ActivateFilterManager.jsx';
 import { useLightningAnnouncements } from './hooks/app/useLightningAnnouncements';
+import { useDXSpotAnnouncements } from './hooks/app/useDXSpotAnnouncements';
 
 // Load DXCC entity database on app startup (non-blocking)
 initCtyLookup();
@@ -325,6 +326,7 @@ const App = () => {
   });
 
   const { announcement: lightningAnnouncement } = useLightningAnnouncements();
+  const { announcement: dxSpotAnnouncement } = useDXSpotAnnouncements(dxClusterData.spots);
 
   const propagation = usePropagation(config.location, dxLocation, config.propagation);
   const mySpots = useMySpots(config.callsign);
@@ -828,6 +830,10 @@ const App = () => {
       {/* Assertive: lightning proximity is a safety alert — announce immediately */}
       <div className="visually-hidden" aria-live="assertive" aria-atomic="true" data-testid="lightning-announcer">
         {lightningAnnouncement}
+      </div>
+      {/* Polite: new DX spot matching active filters — informational */}
+      <div className="visually-hidden" aria-live="polite" aria-atomic="true" data-testid="dx-spot-announcer">
+        {dxSpotAnnouncement}
       </div>
     </main>
   );
