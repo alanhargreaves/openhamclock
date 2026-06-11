@@ -105,7 +105,7 @@ export function DXCallsignInput({ dxCallsign, onDXChange, dxLocked, style }) {
   const errorMsg = t('app.dxLocation.callsignNotFound', 'Callsign not found');
 
   return (
-    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+    <div style={{ flex: 2 }}>
       <input
         ref={inputRef}
         type="text"
@@ -130,10 +130,10 @@ export function DXCallsignInput({ dxCallsign, onDXChange, dxLocked, style }) {
           borderBottom: `1px solid ${error ? 'var(--color-error, #f44)' : 'transparent'}`,
           outline: 'none',
           cursor: dxLocked ? 'not-allowed' : loading ? 'wait' : 'text',
-          width: '9ch',
           padding: 0,
           margin: 0,
           fontFamily: 'var(--font-mono)',
+          width: '100%',
           opacity: loading ? 0.5 : 1,
           ...style,
         }}
@@ -154,7 +154,7 @@ export function DXCallsignInput({ dxCallsign, onDXChange, dxLocked, style }) {
       >
         {error ? errorMsg : ''}
       </span>
-    </span>
+    </div>
   );
 }
 

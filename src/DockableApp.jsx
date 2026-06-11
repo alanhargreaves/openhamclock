@@ -51,6 +51,7 @@ import DXCCSelect from './components/DXCCSelect.jsx';
 import './styles/flexlayout-openhamclock.css';
 import useMapLayers from './hooks/app/useMapLayers';
 import useRotator from './hooks/useRotator';
+import { useCallsignPopup } from './components/CallsignPopupManager.jsx';
 
 // Icons
 const PlusIcon = () => (
@@ -207,6 +208,8 @@ export const DockableApp = ({
     }
   }, []);
   const [showDxccSelect, setShowDxccSelect] = useState(false);
+  const { showPopup } = useCallsignPopup();
+  const callsignInfoRef = useRef(null);
 
   // ── Tabset auto-rotation (persistent per tabset) ──
   const [tabsetRotation, setTabsetRotation] = useState(() => {
@@ -572,6 +575,7 @@ export const DockableApp = ({
                   type="button"
                   onClick={() => setShowDxccSelect((prev) => !prev)}
                   title={t('app.dxLocation.dxccToggleTitle')}
+                  aria-label={t('app.dxLocation.dxccToggleTitle')}
                   style={{
                     background: showDxccSelect ? 'var(--accent-amber)' : 'var(--bg-tertiary)',
                     color: showDxccSelect ? '#000' : 'var(--text-secondary)',
@@ -586,6 +590,33 @@ export const DockableApp = ({
                 >
                   DXCC
                 </button>
+                <span ref={callsignInfoRef} style={{ flex: '0 0 auto' }}>
+                  <button
+                    onClick={() => dxCallsign && showPopup(dxCallsign, callsignInfoRef.current)}
+                    title={
+                      dxCallsign
+                        ? t('app.dxLocation.callsignLookupTitle', { callsign: dxCallsign })
+                        : t('app.dxLocation.callsignLookupEmptyTitle')
+                    }
+                    aria-label={t('app.dxLocation.callsignLookupAriaLabel')}
+                    aria-disabled={!dxCallsign}
+                    disabled={!dxCallsign}
+                    style={{
+                      background: dxCallsign ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
+                      color: dxCallsign ? 'var(--text-secondary)' : 'var(--text-muted)',
+                      border: '1px solid ' + (dxCallsign ? 'var(--border-color)' : 'transparent'),
+                      borderRadius: '4px',
+                      padding: '4px 8px',
+                      fontSize: '12px',
+                      cursor: dxCallsign ? 'pointer' : 'not-allowed',
+                      opacity: dxCallsign ? 1 : 0.5,
+                      lineHeight: 1,
+                      flex: '0 0 auto',
+                    }}
+                  >
+                    i
+                  </button>
+                </span>
               </div>
             </div>
             {showDxccSelect && (
