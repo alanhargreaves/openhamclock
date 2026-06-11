@@ -11,6 +11,7 @@
  */
 
 const client = require('prom-client');
+const { logInfo } = require('../utils/logging');
 
 // ── Collect Node.js default metrics ──────────────────────────────────────────
 // These include process memory, GC, event loop lag, HTTP request metrics, etc.
@@ -171,7 +172,7 @@ function apiMetricsMiddleware() {
     // Extract patterns on first request (one-time cost, cached thereafter)
     if (!patterns) {
       patterns = extractRoutePatterns(req.app);
-      console.log(`[Prometheus] Extracted ${patterns.length} route patterns from app router`);
+      logInfo(`[Prometheus] Extracted ${patterns.length} route patterns from app router`);
     }
 
     const startTime = Date.now();
@@ -214,7 +215,7 @@ function setSubsystemsHealth(getSubsystems) {
   // Snapshot is refreshed every 30s by server/health.js
   setInterval(() => {
     _subsystemsHealth = getSubsystems?.();
-  }, 5000); // read every 5s, stale between scrapes is fine
+  }, 5000).unref(); // read every 5s, stale between scrapes is fine
 }
 
 // ── Export ───────────────────────────────────────────────────────────────────

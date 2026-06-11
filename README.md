@@ -147,6 +147,7 @@ node scripts/fetch-wasm.js
 - [Updating](#updating)
 - [Architecture](#architecture)
 - [API Endpoints](#api-endpoints)
+- [Monitoring](#monitoring)
 - [Frequently Asked Questions](#frequently-asked-questions)
 - [Contributing](#contributing)
 - [Credits](#credits)
@@ -1375,6 +1376,11 @@ The backend exposes these REST endpoints. All data endpoints return JSON. Cache 
 | `GET /api/qrz/lookup/:callsign`   | QRZ.com callsign lookup                                                                        | —        |
 
 ---
+
+## Monitoring
+
+OpenHamClock exposes a prometheus compatible endpoint at `/metrics`.
+By default it is open without authentication, but you can always set the `METRICS_AUTH_KEY` env var which serves as bearer token authentication. See `.env.example` for details.
 
 ## Frequently Asked Questions
 
