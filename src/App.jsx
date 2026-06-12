@@ -62,6 +62,7 @@ import { getAllLayers } from './plugins/layerRegistry.js';
 import ActivateFilterManager from './components/ActivateFilterManager.jsx';
 import { useLightningAnnouncements } from './hooks/app/useLightningAnnouncements';
 import { useDXSpotAnnouncements } from './hooks/app/useDXSpotAnnouncements';
+import { useWeatherAlertAnnouncements } from './hooks/app/useWeatherAlertAnnouncements';
 
 // Load DXCC entity database on app startup (non-blocking)
 initCtyLookup();
@@ -338,6 +339,8 @@ const App = () => {
   const dxWeather = useWeather(dxLocation, config.allUnits);
   const localAlerts = useWeatherAlerts(config.location);
   const dxAlerts = useWeatherAlerts(dxLocation);
+  // DE alerts only — DX-location alerts aren't an operator-safety concern (#1088)
+  const { announcement: weatherAlertAnnouncement } = useWeatherAlertAnnouncements(localAlerts.alerts);
   // User-selectable PSK retention window (issue #991). PSKReporterPanel writes
   // `ohc_psk_age` to localStorage and fires `ohc-psk-age-changed`; we mirror it
   // here so the hook re-runs with the new window and both the map dots and the
@@ -834,6 +837,10 @@ const App = () => {
       {/* Polite: new DX spot matching active filters — informational */}
       <div className="visually-hidden" aria-live="polite" aria-atomic="true" data-testid="dx-spot-announcer">
         {dxSpotAnnouncement}
+      </div>
+      {/* Assertive: severe weather at the DE location — operator may need to secure antennas */}
+      <div className="visually-hidden" aria-live="assertive" aria-atomic="true" data-testid="weather-alert-announcer">
+        {weatherAlertAnnouncement}
       </div>
     </main>
   );
