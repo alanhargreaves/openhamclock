@@ -28,8 +28,8 @@ function clampToViewport(el, margin = 40) {
   if (left > vw - margin) left = vw - margin;
   if (top > vh - margin) top = vh - margin;
 
-  el.style.left = left + 'px';
-  el.style.top = top + 'px';
+  if (left !== rect.left) el.style.left = left + 'px';
+  if (top !== rect.top) el.style.top = top + 'px';
 }
 
 /**
