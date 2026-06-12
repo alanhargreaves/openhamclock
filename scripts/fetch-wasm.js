@@ -93,13 +93,24 @@ const verifyChecksum = async (destDir, filesExpected) => {
 
     const filesExpected = ['p533.sha256', 'p533.mjs', 'p533.wasm'];
 
-    // delete existing and download checksum file only
-    const filename = 'p533.sha256';
+    // download checksum file to a temporary file first, then replace existing file only on success
     {
-      const url = `${BASE_URL}/${filename}`;
-      const dest = path.join(DEST_DIR, filename);
-      fs.rmSync(dest, { force: true });
-      await download(url, dest);
+      const checksumFileName = 'p533.sha256';
+      const url = `${BASE_URL}/${checksumFileName}`;
+      const dest = path.join(DEST_DIR, checksumFileName);
+      const tmpDest = dest + '.tmp';
+      try {
+        fs.rmSync(tmpDest, { force: true });
+        await download(url, tmpDest);
+        fs.rmSync(dest, { force: true }); // overwrite existing file only after successful download
+        fs.renameSync(tmpDest, dest);
+      } catch (err) {
+        // cleanup temp file on error, let outer try/catch handle the warning
+        try {
+          fs.rmSync(tmpDest, { force: true });
+        } catch (e) {}
+        throw err;
+      }
     }
 
     // if checksum is OK then skip else do a full download of all files and verify again
@@ -115,7 +126,7 @@ const verifyChecksum = async (destDir, filesExpected) => {
       }
 
       if ((await verifyChecksum(DEST_DIR, filesExpected)) === false)
-        throw new Error(`sha256 mismatch on '${filename}'`);
+        throw new Error(`sha256 mismatch, verifyChecksum failed after download`);
 
       console.log(`✓ fetch-wasm: installed to '${DEST_DIR}'`);
 
