@@ -28,8 +28,8 @@ function clampToViewport(el, margin = 40) {
   if (left > vw - margin) left = vw - margin;
   if (top > vh - margin) top = vh - margin;
 
-  el.style.left = left + 'px';
-  el.style.top = top + 'px';
+  if (left !== rect.left) el.style.left = left + 'px';
+  if (top !== rect.top) el.style.top = top + 'px';
 }
 
 /**
@@ -65,6 +65,7 @@ export function makeDraggable(
       try {
         const data = JSON.parse(saved);
         el.style.position = 'fixed';
+        el.style.margin = '0';
         if (data.topPercent !== undefined && data.leftPercent !== undefined) {
           el.style.top = data.topPercent + '%';
           el.style.left = data.leftPercent + '%';
@@ -83,6 +84,7 @@ export function makeDraggable(
     } else {
       const rect = el.getBoundingClientRect();
       el.style.position = 'fixed';
+      el.style.margin = '0';
       el.style.top = rect.top + 'px';
       el.style.left = rect.left + 'px';
       el.style.right = 'auto';
@@ -132,6 +134,7 @@ export function makeDraggable(
       // Re-fix to current computed position
       const rect = el.getBoundingClientRect();
       el.style.position = 'fixed';
+      el.style.margin = '0';
       el.style.top = rect.top + 'px';
       el.style.left = rect.left + 'px';
       el.style.right = 'auto';
