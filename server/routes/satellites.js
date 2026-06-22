@@ -1212,7 +1212,9 @@ module.exports = function (app, ctx) {
 
     res.json({
       satnogsTransmitters: {
-        lastFetchAt: satnogsTransmitterCache.timestamp || null,
+                ...(Number.isFinite(satnogsTransmitterCache.timestamp) && {
+          lastFetch: formatSimpleAge(Date.now() - satnogsTransmitterCache.timestamp),
+        }),
         totalRecords: satnogsTransmitterCache.totalRecords || 0,
         lastError: satnogsTransmitterCache.lastError || null,
         attribution: SATNOGS_TRANSMITTER_ATTRIBUTION,
