@@ -86,7 +86,6 @@ module.exports = function (app, ctx) {
   }
 
   // SatNOGS Transmitter DB radio metadata.
-  // OpenHamClock issue: https://github.com/accius/openhamclock/issues/1009
   const SATNOGS_TRANSMITTER_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
   const SATNOGS_TRANSMITTER_MAX_RECORDS = 500;
   const SATNOGS_TRANSMITTER_ATTRIBUTION = 'Radio metadata from SatNOGS Transmitter DB (CC BY-SA 4.0)';
@@ -1212,7 +1211,7 @@ module.exports = function (app, ctx) {
 
     res.json({
       satnogsTransmitters: {
-                ...(Number.isFinite(satnogsTransmitterCache.timestamp) && {
+        ...(Number.isFinite(satnogsTransmitterCache.timestamp) && {
           lastFetch: formatSimpleAge(Date.now() - satnogsTransmitterCache.timestamp),
         }),
         totalRecords: satnogsTransmitterCache.totalRecords || 0,
