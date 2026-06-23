@@ -67,8 +67,29 @@ module.exports = function (app, ctx) {
     return null;
   }
 
+  // Is this callsign a known (active or upcoming) DXpedition? Lighter check
+  // than lookupDXpeditionLocation — matches even when the entity's
+  // coordinates can't be resolved, which is all the panel filter needs.
+  function isDXpeditionCall(call) {
+    const cache = ctx.dxpeditionCache;
+    if (!cache?.data?.dxpeditions) return false;
+    const upper = (call || '').toUpperCase();
+    return cache.data.dxpeditions.some((d) => d.callsign?.toUpperCase() === upper);
+  }
+
   // DX Spider Proxy URL (sibling service on Railway or external)
   const DXSPIDER_PROXY_URL = process.env.DXSPIDER_PROXY_URL || 'https://spider-production-1ec7.up.railway.app';
+
+  // OpenHamClock's own cluster node (ohc-cluster/ sibling service).
+  // Unset = not deployed yet; the source is hidden and auto mode skips it.
+  const OHC_CLUSTER_URL = (process.env.OHC_CLUSTER_URL || '').replace(/\/$/, '');
+
+  // Hosted-instance lockdown. Set OHC_HOSTED=1 ONLY on our Railway deployments:
+  // the hosted site serves many users from one egress IP, so user-directed
+  // cluster connections (custom telnet, UDP, direct DXSpider) are forbidden —
+  // everything comes from our own cluster node. Self-hosted installs never set
+  // this and keep the full source list (with their own callsign enforced).
+  const IS_HOSTED = process.env.OHC_HOSTED === '1' || process.env.OHC_HOSTED === 'true';
 
   // Cache for DX Spider telnet spots (to avoid excessive connections)
   let dxSpiderCache = { spots: [], timestamp: 0 };
@@ -84,19 +105,30 @@ module.exports = function (app, ctx) {
   ];
   const DXSPIDER_SSID = '-56'; // OpenHamClock SSID
 
-  function getDxClusterLoginCallsign(preferredCallsign = null) {
+  // Validate an amateur callsign (optionally with an SSID like -56).
+  // Permissive about real callsign shapes, but rejects junk like
+  // 'OPENHAMCLOCK-56' or 'GUEST' — cluster nodes treat invalid logins as
+  // abuse, and that falls back on the whole project. Mirrors the validator
+  // in dxspider-proxy/server.js and ohc-cluster/lib/callsign.js.
+  const isValidCallsign = (call) =>
+    typeof call === 'string' && /^[A-Z0-9]{1,3}\d[A-Z]{1,4}(-\d{1,2})?$/i.test(call.trim());
+
+  // appendSsid: curated OHC sources tag logins with our -56 SSID. Custom
+  // clusters pass false — the user connects to third-party nodes under their
+  // own bare callsign (or their own SSID), with nothing linking back to OHC.
+  function getDxClusterLoginCallsign(preferredCallsign = null, appendSsid = true) {
     // Strip control characters to prevent telnet command injection via query params
     const candidate = (preferredCallsign || CONFIG.dxClusterCallsign || '').replace(/[\x00-\x1F\x7F]/g, '').trim();
     if (candidate && candidate.toUpperCase() !== 'N0CALL') {
       // Append default SSID if caller didn't include one
-      if (!candidate.includes('-')) {
+      if (appendSsid && !candidate.includes('-')) {
         return `${candidate.toUpperCase()}${DXSPIDER_SSID}`;
       }
       return candidate.toUpperCase();
     }
 
     if (CONFIG.callsign && CONFIG.callsign.toUpperCase() !== 'N0CALL') {
-      return `${CONFIG.callsign.toUpperCase()}${DXSPIDER_SSID}`;
+      return appendSsid ? `${CONFIG.callsign.toUpperCase()}${DXSPIDER_SSID}` : CONFIG.callsign.toUpperCase();
     }
 
     return 'GUEST';
@@ -410,7 +442,7 @@ module.exports = function (app, ctx) {
   }
 
   function getOrCreateCustomSession(node, userCallsign = null) {
-    const loginCallsign = getDxClusterLoginCallsign(userCallsign);
+    const loginCallsign = getDxClusterLoginCallsign(userCallsign, false);
     const key = buildCustomSessionKey(node, loginCallsign);
     let session = customDxSessions.get(key);
 
@@ -573,7 +605,8 @@ module.exports = function (app, ctx) {
   }
 
   app.get('/api/dxcluster/spots', async (req, res) => {
-    const source = (req.query.source || CONFIG.dxClusterSource || 'auto').toLowerCase();
+    // Hosted instances serve OUR cluster only, whatever the client asks for.
+    const source = IS_HOSTED ? 'ohc' : (req.query.source || CONFIG.dxClusterSource || 'auto').toLowerCase();
 
     // Helper function for HamQTH (HTTP-based, works everywhere)
     async function fetchHamQTH() {
@@ -665,6 +698,36 @@ module.exports = function (app, ctx) {
       return null;
     }
 
+    // Helper function for the OpenHamClock Cluster (our own node — RBN
+    // skimmers + HamQTH human spots + OHC user submissions)
+    async function fetchOHCCluster() {
+      if (!OHC_CLUSTER_URL) return null;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      try {
+        const response = await fetch(`${OHC_CLUSTER_URL}/api/dxcluster/spots?limit=50`, {
+          headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (response.ok) {
+          const spots = await response.json();
+          if (Array.isArray(spots) && spots.length > 0) {
+            logDebug('[DX Cluster] OHC Cluster:', spots.length, 'spots');
+            return spots;
+          }
+        }
+      } catch (error) {
+        clearTimeout(timeout);
+        if (error.name !== 'AbortError') {
+          logErrorOnce('DX Cluster', `OHC Cluster: ${error.message}`);
+        }
+      }
+      return null;
+    }
+
     // Helper function for DX Spider (telnet-based, works locally/Pi)
     // Multiple nodes for failover - uses module-level constants and tryDXSpiderNode
     async function fetchDXSpider() {
@@ -689,7 +752,17 @@ module.exports = function (app, ctx) {
     // Fetch based on selected source
     let spots = null;
 
-    if (source === 'hamqth') {
+    if (source === 'ohc') {
+      spots = await fetchOHCCluster();
+      // Fallback chain if our node is down
+      if (!spots) {
+        logDebug('[DX Cluster] OHC Cluster failed, falling back to Proxy');
+        spots = await fetchDXSpiderProxy();
+      }
+      if (!spots) {
+        spots = await fetchHamQTH();
+      }
+    } else if (source === 'hamqth') {
       spots = await fetchHamQTH();
     } else if (source === 'proxy') {
       spots = await fetchDXSpiderProxy();
@@ -706,8 +779,11 @@ module.exports = function (app, ctx) {
         spots = await fetchHamQTH();
       }
     } else {
-      // Auto mode - try Proxy first (best for Railway), then HamQTH, then DX Spider
-      spots = await fetchDXSpiderProxy();
+      // Auto mode - our own cluster first (when deployed), then Proxy, then HamQTH, then DX Spider
+      spots = await fetchOHCCluster();
+      if (!spots) {
+        spots = await fetchDXSpiderProxy();
+      }
       if (!spots) {
         spots = await fetchHamQTH();
       }
@@ -719,14 +795,119 @@ module.exports = function (app, ctx) {
     res.json(spots || []);
   });
 
+  // ============================================
+  // SPOT SUBMISSION — relay user spots to our own cluster node
+  // ============================================
+  // The browser never talks to the cluster directly: on hosted deployments it
+  // lives on the private network, and going through the instance keeps one
+  // validation + rate-limit path for everyone.
+  const { getClientIP } = require('../utils/helpers.js');
+  const SPOT_SUBMIT_WINDOW_MS = 60 * 1000;
+  const SPOT_SUBMIT_MAX_PER_WINDOW = 3; // per client IP — humans don't spot faster
+  const spotSubmitTimesByIp = new Map();
+
+  setInterval(
+    () => {
+      const cutoff = Date.now() - SPOT_SUBMIT_WINDOW_MS;
+      for (const [ip, times] of spotSubmitTimesByIp) {
+        const fresh = times.filter((t) => t > cutoff);
+        if (fresh.length === 0) spotSubmitTimesByIp.delete(ip);
+        else spotSubmitTimesByIp.set(ip, fresh);
+      }
+    },
+    5 * 60 * 1000,
+  ).unref();
+
+  app.post('/api/dxcluster/spot', async (req, res) => {
+    if (!OHC_CLUSTER_URL) {
+      return res.status(503).json({ error: 'OpenHamClock Cluster is not configured on this instance' });
+    }
+
+    const ip = getClientIP(req);
+    const now = Date.now();
+    const times = (spotSubmitTimesByIp.get(ip) || []).filter((t) => now - t < SPOT_SUBMIT_WINDOW_MS);
+    if (times.length >= SPOT_SUBMIT_MAX_PER_WINDOW) {
+      return res.status(429).json({ error: 'Easy there — max 3 spots per minute' });
+    }
+
+    const spotter = String(req.body?.spotter || '')
+      .replace(/[\x00-\x1F\x7F]/g, '')
+      .trim()
+      .toUpperCase();
+    const call = String(req.body?.call || '')
+      .replace(/[\x00-\x1F\x7F]/g, '')
+      .trim()
+      .toUpperCase();
+    const freqKhz = parseFloat(req.body?.freqKhz);
+    const comment = String(req.body?.comment || '')
+      .replace(/[\x00-\x1F\x7F]/g, '')
+      .trim()
+      .slice(0, 60);
+
+    if (!isValidCallsign(spotter) || spotter.startsWith('N0CALL')) {
+      return res.status(400).json({ error: 'Set your own valid callsign in Settings before spotting' });
+    }
+    if (!isValidCallsign(call)) {
+      return res.status(400).json({ error: `"${call}" does not look like a valid callsign` });
+    }
+    if (!Number.isFinite(freqKhz) || freqKhz < 100 || freqKhz > 1300000) {
+      return res.status(400).json({ error: 'Frequency out of range (kHz expected)' });
+    }
+
+    times.push(now);
+    spotSubmitTimesByIp.set(ip, times);
+
+    try {
+      const response = await fetch(`${OHC_CLUSTER_URL}/api/dxcluster/spot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': `OpenHamClock/${APP_VERSION}` },
+        body: JSON.stringify({ spotter, call, freqKhz, comment }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return res
+          .status(response.status === 429 ? 429 : 502)
+          .json({ error: body.error || 'Cluster rejected the spot' });
+      }
+      logInfo(`[DX Cluster] ${spotter} spotted ${call} on ${freqKhz} kHz via web UI`);
+      res.status(201).json({ ok: true, spot: body.spot || { call, freqKhz } });
+    } catch (err) {
+      logErrorOnce('DX Cluster', `Spot relay failed: ${err.message}`);
+      res.status(502).json({ error: 'Could not reach the cluster — try again shortly' });
+    }
+  });
+
   // Get available DX cluster sources
   app.get('/api/dxcluster/sources', (req, res) => {
+    if (IS_HOSTED) {
+      // Hosted site: one source, no choices. Run your own instance for more.
+      return res.json([
+        {
+          id: 'ohc',
+          name: 'OpenHamClock Cluster',
+          description: 'Our own cluster node — the only source on the hosted site',
+        },
+      ]);
+    }
     res.json([
       {
         id: 'auto',
         name: 'Auto (Best Available)',
-        description: 'Tries Proxy first, then HamQTH, then direct telnet',
+        description: OHC_CLUSTER_URL
+          ? 'Tries OHC Cluster first, then Proxy, then HamQTH, then direct telnet'
+          : 'Tries Proxy first, then HamQTH, then direct telnet',
       },
+      // Our own node — only offered once OHC_CLUSTER_URL is configured
+      ...(OHC_CLUSTER_URL
+        ? [
+            {
+              id: 'ohc',
+              name: 'OpenHamClock Cluster ⭐',
+              description: 'Our own cluster node — RBN skimmers, human spots, and OHC user spots',
+            },
+          ]
+        : []),
       {
         id: 'proxy',
         name: 'DX Spider Proxy ⭐',
@@ -1249,7 +1430,16 @@ module.exports = function (app, ctx) {
 
   app.get('/api/dxcluster/paths', async (req, res) => {
     // Parse query parameters for custom cluster settings
-    const source = req.query.source || 'auto';
+    let source = req.query.source || 'auto';
+
+    // Hosted instances never open user-directed connections (custom telnet /
+    // UDP) — many users, one egress IP, zero tolerance after the NC7J mess.
+    if (IS_HOSTED && (source === 'custom' || source === 'udp')) {
+      return res.status(400).json({
+        error: 'The hosted site uses the OpenHamClock Cluster only. Run your own OpenHamClock to use a custom cluster.',
+      });
+    }
+    if (IS_HOSTED) source = 'auto'; // auto = our cluster first
     const customHost = (req.query.host || CONFIG.dxClusterHost || '').trim();
     const parsedPort = parseInt(req.query.port, 10);
     const customPort = Number.isFinite(parsedPort) ? parsedPort : CONFIG.dxClusterPort;
@@ -1272,6 +1462,16 @@ module.exports = function (app, ctx) {
       if (customPort < 1 || customPort > 65535) {
         return res.status(400).json({ error: 'Port must be between 1 and 65535' });
       }
+      // GOOD-NEIGHBOUR POLICY: connecting to someone else's cluster node
+      // requires the USER's own valid callsign. No GUEST, no shared default —
+      // sysops must see who is actually connecting (the NC7J lesson).
+      const loginCallsign = getDxClusterLoginCallsign(userCallsign, false);
+      if (loginCallsign === 'GUEST' || !isValidCallsign(loginCallsign)) {
+        return res.status(400).json({
+          error:
+            'Custom DX cluster requires your own valid callsign. Set your callsign in DX Cluster settings before connecting.',
+        });
+      }
     }
 
     if (source === 'udp') {
@@ -1286,7 +1486,7 @@ module.exports = function (app, ctx) {
     // Generate cache key based on source profile so custom/proxy/auto don't mix.
     const cacheKey =
       source === 'custom'
-        ? `custom-${resolvedHost}-${customPort}-${getDxClusterLoginCallsign(userCallsign)}`
+        ? `custom-${resolvedHost}-${customPort}-${getDxClusterLoginCallsign(userCallsign, false)}`
         : source === 'udp'
           ? `udp-${udpHost || 'any'}-${udpPort}`
           : `source-${source}`;
@@ -1348,7 +1548,7 @@ module.exports = function (app, ctx) {
       }
       if (newSpots.length === 0 && source === 'custom' && resolvedHost) {
         logDebug(
-          `[DX Paths] Using custom telnet session: ${resolvedHost}:${customPort} as ${getDxClusterLoginCallsign(userCallsign)}`,
+          `[DX Paths] Using custom telnet session: ${resolvedHost}:${customPort} as ${getDxClusterLoginCallsign(userCallsign, false)}`,
         );
         const customNode = { host: resolvedHost, port: customPort };
         const session = getOrCreateCustomSession(customNode, userCallsign);
@@ -1377,6 +1577,42 @@ module.exports = function (app, ctx) {
           logDebug('[DX Paths] Got', newSpots.length, 'spots from custom telnet');
         } else {
           logDebug('[DX Paths] Custom session active but no spots yet');
+        }
+      }
+
+      // Our own cluster node first (when deployed) — RBN skimmers + human spots
+      if (newSpots.length === 0 && source !== 'custom' && source !== 'udp' && OHC_CLUSTER_URL) {
+        const ohcController = new AbortController();
+        const ohcTimeout = setTimeout(() => ohcController.abort(), 10000);
+        try {
+          const ohcResponse = await fetch(`${OHC_CLUSTER_URL}/api/dxcluster/spots?limit=100`, {
+            headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
+            signal: ohcController.signal,
+          });
+          if (ohcResponse.ok) {
+            const ohcSpots = await ohcResponse.json();
+            if (Array.isArray(ohcSpots) && ohcSpots.length > 0) {
+              usedSource = 'ohc';
+              newSpots = ohcSpots.map((s) => ({
+                // Strip the RBN skimmer marker (-#) so spotter location lookups
+                // resolve the underlying callsign.
+                spotter: String(s.spotter || '').replace(/-#$/, ''),
+                spotterGrid: s.spotterGrid || null,
+                dxCall: s.call,
+                dxGrid: s.dxGrid || null,
+                freq: s.freq,
+                comment: s.comment || '',
+                time: s.time || '',
+                timestamp: s.timestamp || Date.now(),
+                id: `${s.call}-${s.freqKhz || s.freq}-${s.spotter}`,
+              }));
+              logDebug('[DX Paths] Got', newSpots.length, 'spots from OHC Cluster');
+            }
+          }
+        } catch (ohcErr) {
+          logDebug('[DX Paths] OHC Cluster failed, trying proxy');
+        } finally {
+          clearTimeout(ohcTimeout);
         }
       }
 
@@ -1542,7 +1778,7 @@ module.exports = function (app, ctx) {
             lon: cached.data.lon,
             country: cached.data.country || '',
             grid: cached.data.grid || null,
-            source: 'hamqth',
+            source: 'hamqth-dxcc',
           };
         } else if (!prefixLocations[call]?.grid) {
           // Only queue lookups for calls that don't already have grid-level accuracy
@@ -1561,29 +1797,14 @@ module.exports = function (app, ctx) {
           if (!call || !/^[A-Z0-9\/\-]{1,20}$/.test(call)) continue;
 
           // Fire-and-forget — results land in callsignLookupCache for next poll
-          fetch(`https://www.hamqth.com/dxcc.php?callsign=${encodeURIComponent(call)}`, {
-            headers: { 'User-Agent': 'OpenHamClock/' + APP_VERSION },
-            signal: AbortSignal.timeout(5000),
-          })
-            .then(async (resp) => {
-              if (!resp.ok) return;
-              const text = await resp.text();
-              const latMatch = text.match(/<lat>([^<]+)<\/lat>/);
-              const lonMatch = text.match(/<lng>([^<]+)<\/lng>/);
-              const countryMatch = text.match(/<n>([^<]+)<\/name>/);
-              if (latMatch && lonMatch) {
-                cacheCallsignLookup(call, {
-                  data: {
-                    callsign: call,
-                    lat: parseFloat(latMatch[1]),
-                    lon: parseFloat(lonMatch[1]),
-                    country: countryMatch ? countryMatch[1] : '',
-                  },
-                  timestamp: Date.now(),
-                });
-              }
-            })
-            .catch(() => {}); // Silent fail for background lookups
+          // TODO: Refactor lookup chain into callsign.js. Currently we duplicate the full
+          // flow (cache check → HamQTH DXCC → prefix estimation) here instead of using
+          // the shared hamqthLookup() + extractBaseCallsign() chain from callsign.js.
+          hamqthLookup(call).then((result) => {
+            if (result) {
+              cacheCallsignLookup(call, { data: result, timestamp: Date.now() });
+            }
+          });
         }
       }
 
@@ -1735,6 +1956,7 @@ module.exports = function (app, ctx) {
             dxCountry: dxLoc?.country || '',
             dxGrid: dxGridSquare,
             dxLocSource: dxLoc?.source || null,
+            isDXpedition: isDXpeditionCall(spot.dxCall),
             freq: spot.freq,
             comment: spot.comment,
             time: spot.time,

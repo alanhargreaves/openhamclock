@@ -76,13 +76,25 @@ module.exports = function (app, ctx) {
     logInfo(`[Satellites] Merged radio metadata — ${Object.keys(HAM_SATELLITES).length} satellites in registry`);
   }
 
+  // Upstream URL routing. When FLETCHER_URL is set, CelesTrak / AMSAT /
+  // SatNOGS fetches go through an internal Railway proxy so they egress from
+  // that service's IP. CelesTrak silently drops requests from this app's main
+  // egress (#1057); the proxy gives the fetches a fresh IP.
+  const FLETCHER_URL = CONFIG.satellites.fletcherUrl || '';
+  if (FLETCHER_URL) {
+    logInfo(`[Satellites] Routing CelesTrak/AMSAT/SatNOGS fetches via ${FLETCHER_URL}`);
+  }
+
   const fetchOmmFromCelesTrakGroups = async (group) => {
     let httpStatusCode = 0;
     let ommJson = {};
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000); // 20s hard timeout
     try {
-      const res = await fetch(`https://celestrak.org/NORAD/elements/gp.php?GROUP=${group}&FORMAT=csv`, {
+      const urlBase = FLETCHER_URL
+        ? `${FLETCHER_URL}/celestrak/NORAD/elements/gp.php`
+        : 'https://celestrak.org/NORAD/elements/gp.php';
+      const res = await fetch(`${urlBase}?GROUP=${group}&FORMAT=csv`, {
         headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
         signal: controller.signal,
       });
@@ -114,7 +126,10 @@ module.exports = function (app, ctx) {
     const timeout = setTimeout(() => controller.abort(), 20000); // 20s hard timeout
 
     try {
-      const res = await fetch(`https://celestrak.org/NORAD/elements/gp.php?CATNR=${noradId}&FORMAT=json`, {
+      const urlBase = FLETCHER_URL
+        ? `${FLETCHER_URL}/celestrak/NORAD/elements/gp.php`
+        : 'https://celestrak.org/NORAD/elements/gp.php';
+      const res = await fetch(`${urlBase}?CATNR=${noradId}&FORMAT=json`, {
         headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
         signal: controller.signal,
       });
@@ -140,18 +155,20 @@ module.exports = function (app, ctx) {
     return { httpStatusCode, ommJson };
   };
 
-  // ── AMSAT fallback ────────────────────────────────────────────────────────
-  // Single concatenated-TLE feed at amsat.org. Covers amateur sats (no weather
-  // / no non-amateur birds). Used as a fallback for CelesTrak so that we keep
-  // resolving satellites when celestrak.org is unreachable from our egress IP
-  // — historically a recurring failure mode on cloud hosts (#1057).
-  const fetchOmmFromAmsat = async () => {
+  // AMSAT fallback - TLE based
+  // Single concatenated-TLE feed at amsat.org. Covers only amateur satellites.
+  // Used as a fallback for CelesTrak so that we keep resolving satellites when
+  // celestrak.org is unreachable, historically a recurring failure mode on cloud hosts (#1057).
+  const fetchOmmFromAmsat_TleBased = async () => {
     let httpStatusCode = 0;
     let ommArray = [];
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000); // 20s hard timeout
     try {
-      const res = await fetch('https://www.amsat.org/tle/current/nasabare.txt', {
+      const url = FLETCHER_URL
+        ? `${FLETCHER_URL}/amsat/tle/current/nasabare.txt`
+        : 'https://www.amsat.org/tle/current/nasabare.txt';
+      const res = await fetch(url, {
         headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
         signal: controller.signal,
       });
@@ -175,17 +192,18 @@ module.exports = function (app, ctx) {
     return { httpStatusCode, ommArray };
   };
 
-  // ── SatNOGS individual fallback ───────────────────────────────────────────
-  // SatNOGS DB exposes per-NORAD TLE JSON. Used as a per-satellite fallback
-  // after AMSAT for non-amateur birds (weather sats, ISS, etc.) that CelesTrak
-  // wouldn't fetch from our egress.
-  const fetchOmmFromSatnogsIndividual = async (noradId) => {
+  // SatNOGS individual fallback - TLE based
+  // SatNOGS DB exposes TLE based data wrapped in a JSON format.
+  // The dataset has previously been shown to be questionable, and may contain stale or inaccurate data,
+  // or data for satellites that have decayed and are no longer in orbit.
+  const fetchOmmFromSatnogsIndividual_TleBased = async (noradId) => {
     let httpStatusCode = 0;
     let omm = null;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000); // 20s hard timeout
     try {
-      const res = await fetch(`https://db.satnogs.org/api/tle/?norad_cat_id=${noradId}&format=json`, {
+      const urlBase = FLETCHER_URL ? `${FLETCHER_URL}/satnogs/api/tle/` : 'https://db.satnogs.org/api/tle/';
+      const res = await fetch(`${urlBase}?norad_cat_id=${noradId}&format=json`, {
         headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
         signal: controller.signal,
       });
@@ -372,13 +390,36 @@ module.exports = function (app, ctx) {
   // note, the size of ommCache is not expected to grow beyond the size of the target list
   let ommCache = {};
   let ommCacheTimestamp = 0;
+  // Exposed for server/health.js — read by the subsystem health snapshot.
+  ctx.getSatellitesLastFetchAt = () => (ommCacheTimestamp > 0 ? ommCacheTimestamp : null);
 
   // record of satellites whose data is known but are not being tracked,
   // note that the size of ommUnusedCache is not expected to grow beyond the intersection size of downloaded groups minus
   // any satellites downloaded that are part of the target list HAM_SATELLITES
   let ommUnusedCache = {};
 
-  const OMM_CACHE_DURATION = 12 * 60 * 60 * 1000; // 12 hours, period after which OMM data considered stale
+  // Analysis of data age and refresh periods:
+  // NORAD releases updates approximately daily, P' = 24 hours.
+  //
+  // There exists a chained distribution between nodes: NORAD (Space-Track) → CelesTrak (when enabled) → user.
+  // Assuming each hop is phase‑uncorrelated, that the number of hops = n, and the sample period at each node = P,
+  // the accumulated end‑user data age is D = [0, P' + n * P],
+  // with mean = (P' + n * P) / 2 and SD = sqrt((P'^2 + n * P^2) / 12).
+  //
+  // If each node chooses P = P' = 24 hours and n = 2, then D = [0, 72] hours,
+  // with mean = 36 hours and SD = 12 hours.
+  // As can be seen, choosing P = P' accumulates data age with a significant worst case.
+  //
+  // Accordingly, it is usual for each node to set its sampling period P to be a fraction of P'.
+  // For instance, if P = P' / 2 = 12 hours and n = 2, then D = [0, 48] hours,
+  // with mean = 24 hours and SD ≈ 8.5 hours.
+  //
+  // We cannot control the refresh period of upstream sources (e.g., CelesTrak), but it is assumed
+  // they already sample at P < P'.
+  //
+  // Even with this in mind, however, we SHALL set our P = P' = 24 hours, since there is significant
+  // cost to us in unnecessary frequent data refresh.
+  const OMM_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours, period after which OMM data considered stale
   const SPACE_TRACK_BACKOFF = 120 * 60 * 1000; // 2 hour, any satellite not allowed to repeat query to Space-Track within this period
   const CELESTRAK_BACKOFF = 120 * 60 * 1000; // 2 hour, any satellite not allowed to repeat query to CelesTrak within this period
   const CELESTRAK_GROUP_MIN_DOWNLOAD_SIZE = 3; // minimum number of satellites to trigger group download as, if fewer, then more efficient to perform individual download
@@ -408,8 +449,6 @@ module.exports = function (app, ctx) {
   let blockSpaceTrackUntil = Date.now() - 1; // Timestamp until which Space-Track fetches are blocked due to rate limiting or ban
   let blockAmsatUntil = Date.now() - 1; // Timestamp until which AMSAT fallback fetches are blocked
   let blockSatnogsUntil = Date.now() - 1; // Timestamp until which SatNOGS fallback fetches are blocked
-  const AMSAT_BACKOFF = 60 * 60 * 1000; // 1 hour
-  const SATNOGS_BACKOFF = 60 * 60 * 1000; // 1 hour
   let celestrakNumSatNeedDownload = 0;
   let noradsToDownload = [];
 
@@ -604,7 +643,7 @@ module.exports = function (app, ctx) {
       }
     },
 
-    // ── AMSAT fallback (covers amateur sats when CelesTrak is unreachable) ──
+    // AMSAT fallback (covers amateur sats when CelesTrak is unreachable)
     AMSAT_INIT: async () => {
       if (blockAmsatUntil && Date.now() < blockAmsatUntil) {
         return 'SATNOGS_INDIVIDUAL_INIT';
@@ -617,12 +656,12 @@ module.exports = function (app, ctx) {
 
     AMSAT_FETCH: async () => {
       try {
-        const { httpStatusCode, ommArray } = await fetchOmmFromAmsat();
+        const { httpStatusCode, ommArray } = await fetchOmmFromAmsat_TleBased();
         if (httpStatusCode === 200 && ommArray.length > 0) {
           appendDataToOmmCache(ommArray);
         } else if (httpStatusCode === 0 || httpStatusCode >= 500) {
-          // Network failure or server error — backoff so we don't hammer
-          blockAmsatUntil = Date.now() + AMSAT_BACKOFF;
+          logWarn(`[Satellites] Detected AMSAT HTTP state code = ${httpStatusCode}, blocking fetches for 60mins`);
+          blockAmsatUntil = Date.now() + 60 * 60 * 1000; // 1 hour
         }
       } catch (ex) {
         const msg = ex?.message || String(ex ?? '(unknown error)');
@@ -632,7 +671,7 @@ module.exports = function (app, ctx) {
       }
     },
 
-    // ── SatNOGS individual fallback (covers non-amateur stragglers) ─────────
+    // SatNOGS individual fallback (covers non-amateur stragglers), accuracy of data questionable
     SATNOGS_INDIVIDUAL_INIT: async () => {
       if (blockSatnogsUntil && Date.now() < blockSatnogsUntil) {
         return 'START';
@@ -643,7 +682,7 @@ module.exports = function (app, ctx) {
       );
       if (stillStale.length === 0) return 'START';
       const sat = stillStale[0];
-      sat.backoffSatnogsUntil = now + SATNOGS_BACKOFF;
+      sat.backoffSatnogsUntil = now + 60 * 60 * 1000; // 1 hour
       noradsToDownload = sat.norad;
       return 'SATNOGS_INDIVIDUAL_FETCH';
     },
@@ -653,11 +692,12 @@ module.exports = function (app, ctx) {
         if (Array.isArray(noradsToDownload)) {
           throw new Error('[Satellites] SATNOGS_INDIVIDUAL_FETCH: noradsToDownload should not be array');
         }
-        const { httpStatusCode, omm } = await fetchOmmFromSatnogsIndividual(noradsToDownload);
+        const { httpStatusCode, omm } = await fetchOmmFromSatnogsIndividual_TleBased(noradsToDownload);
         if (httpStatusCode === 200 && omm) {
           appendDataToOmmCache([omm]);
         } else if (httpStatusCode === 0 || httpStatusCode >= 500) {
-          blockSatnogsUntil = Date.now() + SATNOGS_BACKOFF;
+          logWarn(`[Satellites] Detected SatNOGS HTTP state code = ${httpStatusCode}, blocking fetches for 60mins`);
+          blockSatnogsUntil = Date.now() + 60 * 60 * 1000; // 1 hour
         }
       } catch (ex) {
         const msg = ex?.message || String(ex ?? '(unknown error)');
