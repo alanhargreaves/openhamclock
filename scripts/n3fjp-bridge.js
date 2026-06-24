@@ -1,44 +1,21 @@
 const net = require('net');
 const http = require('http');
-// Pull the live application configuration module
-const appConfig = require('../server/config.js');
 
+const N3FJP_PORT = 1100;
 const OHC_HOST = '127.0.0.1';
 const OHC_PORT = 3001;
 
-let client = new net.Socket();
-client.setNoDelay(true);
+// N3FJP default placeholder coordinates for the 1st call district.
+// Used as a fallback when a specific location cannot be resolved.
+const N3FJP_DEFAULT_LAT = 42.4;
+const N3FJP_DEFAULT_LON = -71.7;
 
-let isConnecting = false;
-let currentHost = '';
-let currentPort = null;
+const client = new net.Socket();
+client.setNoDelay(true); // Kills network buffering lag
 
-// Dynamic connection manager that checks your UI values
-function connectToN3FJP() {
-  if (isConnecting) return;
-
-  // Clear Node's module cache for the config file so it forces a fresh read from the disk
-  delete require.cache[require.resolve('../server/config.js')];
-  const freshConfig = require('../server/config.js');
-
-  // 🚀 Check injected process environment variables first, then fallback to disk config
-  const N3FJP_HOST = process.env.N3FJP_TARGET_HOST || freshConfig.n3fjpHost || '127.0.0.1';
-  const N3FJP_PORT = parseInt(process.env.N3FJP_TARGET_PORT || freshConfig.n3fjpPort || 1100, 10);
-
-  currentHost = N3FJP_HOST;
-  currentPort = N3FJP_PORT;
-  isConnecting = true;
-
-  console.log(`📡 Attempting connection to N3FJP at ${N3FJP_HOST}:${N3FJP_PORT}...`);
-
-  client.connect(N3FJP_PORT, N3FJP_HOST, () => {
-    console.log(`✅ Bridge Connected to N3FJP at ${N3FJP_HOST}:${N3FJP_PORT} (Low-Latency Mode)`);
-    isConnecting = false;
-  });
-}
-
-// Kickstart initial connection
-connectToN3FJP();
+client.connect(N3FJP_PORT, '127.0.0.1', () => {
+  console.log('✅ Bridge Connected to N3FJP (Low-Latency Mode)');
+});
 
 let dataBuffer = '';
 
@@ -74,6 +51,13 @@ function parseAdifCoords(rawStr, isLongitude) {
     decimal = -decimal;
   }
 
+  // 💡 BOUNDS CHECK (Per K0CJH feedback): Ensure coordinates fall within valid ranges
+  if (isLongitude) {
+    if (decimal < -180 || decimal > 180) return 0;
+  } else {
+    if (decimal < -90 || decimal > 90) return 0;
+  }
+
   return decimal;
 }
 
@@ -101,6 +85,9 @@ function fetchTrueCallCoords(callsign) {
   });
 }
 
+// 💡 THE PREVIEW CACHE: Tracks coordinates between tabbing out and logging the contact
+const activePreviews = {};
+
 async function processN3FJPRecord(raw) {
   const getTag = (tag) => {
     const m = raw.match(new RegExp(`<${tag}>(.*?)</${tag}>`, 'i'));
@@ -114,21 +101,48 @@ async function processN3FJPRecord(raw) {
 
   if (!call && eventType !== 'clear') return;
 
+  // Handle clearing out the cache if you clear the contact window in N3FJP
+  if (isClearSignal && call) {
+    delete activePreviews[call];
+  }
+
   // Parse the raw incoming coordinates out of N3FJP
   const rawLat = getTag('LAT');
   const rawLon = getTag('LON');
   let lat = parseAdifCoords(rawLat, false);
   let lon = parseAdifCoords(rawLon, true);
 
-  // 🚨 THE CRITICAL INTERCEPTION:
-  if (lat === 42.4 && lon === -71.7 && call && !isClearSignal) {
-    const trueCoords = await fetchTrueCallCoords(call);
-    if (trueCoords) {
-      lat = trueCoords.lat;
-      lon = trueCoords.lon;
-    } else {
-      lat = 0.0;
-      lon = 0.0;
+  const isPlaceholder = lat === N3FJP_DEFAULT_LAT && lon === N3FJP_DEFAULT_LON;
+  const isBlankCoords = lat === 0.0 && lon === 0.0;
+
+  // 📡 PREVIEW PHASE: Capture the accurate coordinates when you tab out
+  if (eventType === 'preview') {
+    if ((isPlaceholder || isBlankCoords) && call) {
+      const trueCoords = await fetchTrueCallCoords(call);
+      if (trueCoords) {
+        lat = trueCoords.lat;
+        lon = trueCoords.lon;
+      } else {
+        // Leave undefined so the OpenHamClock server falls back to grid/prefix matching
+        lat = undefined;
+        lon = undefined;
+      }
+    }
+    // Lock the working preview coordinates into memory
+    if (call) {
+      activePreviews[call] = { lat, lon };
+    }
+  }
+
+  // 📝 LOGGING PHASE: Lock in the preview position to defeat N3FJP's call-district overrides
+  if (eventType === 'log' && call) {
+    if (activePreviews[call]) {
+      lat = activePreviews[call].lat;
+      lon = activePreviews[call].lon;
+      delete activePreviews[call]; // Clean up memory
+    } else if (isPlaceholder || isBlankCoords) {
+      lat = undefined;
+      lon = undefined;
     }
   }
 
@@ -165,39 +179,12 @@ async function processN3FJPRecord(raw) {
   req.end();
 
   console.log(
-    `⚡ ${eventType === 'clear' ? '🗑️  CLEARED' : '📡 SENT'}: ${call || 'N/A'} (Lat: ${lat.toFixed(2)}, Lon: ${lon.toFixed(2)})`,
+    `⚡ ${eventType === 'clear' ? '🗑️  CLEARED' : eventType === 'preview' ? '📡 PREVIEW' : '💾 LOGGED'}: ${call || 'N/A'} (Lat: ${lat ? lat.toFixed(2) : 'AUTO'}, Lon: ${lon ? lon.toFixed(2) : 'AUTO'})`,
   );
 }
 
-client.on('error', (err) => {
-  console.error('❌ Socket Error:', err.message);
-  isConnecting = false;
-});
-
+client.on('error', (err) => console.error('❌ Socket Error:', err.message));
 client.on('close', () => {
-  isConnecting = false;
-  console.log('📡 Connection closed. Checking configuration and retrying in 5s...');
-  
-  // Clean up the socket state completely before regenerating
-  client.removeAllListeners();
-  client.destroy();
-  client = new net.Socket();
-  client.setNoDelay(true);
-  
-  // Rebind the standard data parsing to the fresh socket instance
-  client.on('data', (data) => {
-    dataBuffer += data.toString();
-    while (dataBuffer.includes('</CMD>')) {
-      const endIdx = dataBuffer.indexOf('</CMD>') + 6;
-      const currentRecord = dataBuffer.substring(0, endIdx);
-      dataBuffer = dataBuffer.substring(endIdx);
-      processN3FJPRecord(currentRecord);
-    }
-  });
-  client.on('error', (err) => { console.error('❌ Socket Error:', err.message); isConnecting = false; });
-  client.on('close', client.listeners('close')[0] || (() => {})); 
-
-  setTimeout(() => {
-    connectToN3FJP();
-  }, 5000);
+  console.log('📡 Connection to N3FJP closed. Retrying in 5s...');
+  setTimeout(() => client.connect(N3FJP_PORT, '127.0.0.1'), 5000);
 });
