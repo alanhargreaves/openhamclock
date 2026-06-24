@@ -1,23 +1,51 @@
 const net = require('net');
 const http = require('http');
 
-// Dynamic settings passed from the OpenHamClock Integrations UI page
-const N3FJP_HOST = process.env.N3FJP_HOST || '127.0.0.1';
-const N3FJP_PORT = parseInt(process.env.N3FJP_PORT, 10) || 1100;
-
-const OHC_HOST = process.env.OHC_HOST || '127.0.0.1';
-const OHC_PORT = parseInt(process.env.OHC_PORT, 10) || 3001;
+const OHC_HOST = '127.0.0.1';
+const OHC_PORT = 3001;
 
 // N3FJP default placeholder coordinates for the 1st call district.
 const N3FJP_DEFAULT_LAT = 42.4;
 const N3FJP_DEFAULT_LON = -71.7;
 
+let N3FJP_HOST = '127.0.0.1';
+let N3FJP_PORT = 1100;
+
 const client = new net.Socket();
 client.setNoDelay(true); // Kills network buffering lag
 
-client.connect(N3FJP_PORT, N3FJP_HOST, () => {
-  console.log(`✅ Bridge Connected to N3FJP at ${N3FJP_HOST}:${N3FJP_PORT} (Low-Latency Mode)`);
-});
+// 💡 Fetch configuration dynamically from the database via your server's API
+function initBridge() {
+  http
+    .get(`http://${OHC_HOST}:${OHC_PORT}/api/settings`, (res) => {
+      let body = '';
+      res.on('data', (chunk) => (body += chunk));
+      res.on('end', () => {
+        try {
+          const settings = JSON.parse(body);
+          // Fallback checks for whatever key you named your integration fields
+          if (settings.n3fjp_host || settings.n3fjpIp) {
+            N3FJP_HOST = settings.n3fjp_host || settings.n3fjpIp;
+            N3FJP_PORT = parseInt(settings.n3fjp_port || settings.n3fjpPort, 10) || 1100;
+          }
+        } catch (e) {
+          console.log('ℹ️ Could not parse settings API response, using defaults.');
+        }
+
+        console.log(`📡 Attempting network connection to N3FJP at ${N3FJP_HOST}:${N3FJP_PORT}...`);
+        client.connect(N3FJP_PORT, N3FJP_HOST, () => {
+          console.log(`✅ Bridge Connected to N3FJP at ${N3FJP_HOST}:${N3FJP_PORT} (Low-Latency Mode)`);
+        });
+      });
+    })
+    .on('error', () => {
+      console.log('⚠️ Settings API unavailable yet. Connecting to local default...');
+      client.connect(N3FJP_PORT, N3FJP_HOST);
+    });
+}
+
+// Start the bridge initialization
+initBridge();
 
 let dataBuffer = '';
 
