@@ -35,13 +35,44 @@ function initBridge() {
         console.log(`📡 Attempting network connection to N3FJP at ${N3FJP_HOST}:${N3FJP_PORT}...`);
         client.connect(N3FJP_PORT, N3FJP_HOST, () => {
           console.log(`✅ Bridge Connected to N3FJP at ${N3FJP_HOST}:${N3FJP_PORT} (Low-Latency Mode)`);
+          reportConnectionStatus(true);
         });
       });
     })
     .on('error', () => {
       console.log('⚠️ Settings API unavailable yet. Connecting to local default...');
-      client.connect(N3FJP_PORT, N3FJP_HOST);
+      client.connect(N3FJP_PORT, N3FJP_HOST, () => {
+        reportConnectionStatus(true);
+      });
     });
+}
+
+// Helper to broadcast the TCP socket status back to the main server
+function reportConnectionStatus(isConnected) {
+  const payload = JSON.stringify({ source: 'n3fjp', connected: isConnected });
+
+  const req = http.request(
+    {
+      hostname: OHC_HOST,
+      port: OHC_PORT,
+      path: '/api/n3fjp/status',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        Connection: 'close',
+      },
+    },
+    (res) => {
+      res.on('data', () => {});
+    },
+  );
+
+  req.on('error', () => {
+    /* Suppress error if main server is restarting */
+  });
+  req.write(payload);
+  req.end();
 }
 
 // Start the bridge initialization
@@ -153,12 +184,10 @@ async function processN3FJPRecord(raw) {
         lat = trueCoords.lat;
         lon = trueCoords.lon;
       } else {
-        // Leave undefined so the OpenHamClock server falls back to grid/prefix matching
         lat = undefined;
         lon = undefined;
       }
     }
-    // Lock the working preview coordinates into memory
     if (call) {
       activePreviews[call] = { lat, lon };
     }
@@ -213,8 +242,14 @@ async function processN3FJPRecord(raw) {
   );
 }
 
-client.on('error', (err) => console.error('❌ Socket Error:', err.message));
+// Global listeners for handling drops and automatic retries
+client.on('error', (err) => {
+  console.error('❌ Socket Error:', err.message);
+  reportConnectionStatus(false);
+});
+
 client.on('close', () => {
   console.log(`📡 Connection to N3FJP closed. Retrying to connect to ${N3FJP_HOST} in 5s...`);
+  reportConnectionStatus(false);
   setTimeout(() => client.connect(N3FJP_PORT, N3FJP_HOST), 5000);
 });

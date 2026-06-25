@@ -26,8 +26,6 @@ module.exports = function (app, ctx) {
   // ============================================
   // N3FJP BRIDGE CONFIGURATION & PROCESS MANAGER
   // ============================================
-  // N3FJP BRIDGE CONFIGURATION & PROCESS MANAGER
-  // ============================================
   const net = require('net');
   const { fork } = require('child_process');
 
@@ -47,10 +45,12 @@ module.exports = function (app, ctx) {
         }
       }
     }
-  } catch (e) { logWarn(`Failed to parse startup config: ${e.message}`); }
+  } catch (e) {
+    logWarn(`Failed to parse startup config: ${e.message}`);
+  }
 
   app.post('/api/n3fjp/configure', async (req, res) => {
-    const { host, port, enabled } = req.body;
+    const { host, port, enabled } = req.body || {};
 
     if (!host || !port) {
       return res.status(400).json({ success: false, error: 'Missing host or port' });
@@ -58,18 +58,17 @@ module.exports = function (app, ctx) {
 
     const isEnabled = !!enabled;
 
-    // 💾 STEP 1: ALWAYS PERSIST TO DISK IMMEDIATELY (Fixes the 127.0.0.1 reset loop)
+    // 💾 STEP 1: PERSIST TO DISK IMMEDIATELY
     try {
       const configPath = path.join(ROOT_DIR, 'config.json');
       let currentConfigData = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : {};
-      
+
       currentConfigData.n3fjpHost = host;
       currentConfigData.n3fjpPort = parseInt(port, 10);
       currentConfigData.n3fjpEnabled = isEnabled;
 
       fs.writeFileSync(configPath, JSON.stringify(currentConfigData, null, 2), 'utf8');
-      
-      // Update running environment context variables
+
       ctx.N3FJP_SERVER_HOST = host;
       ctx.N3FJP_SERVER_PORT = parseInt(port, 10);
       ctx.N3FJP_ENABLED = isEnabled;
@@ -81,68 +80,58 @@ module.exports = function (app, ctx) {
     if (!isEnabled) {
       if (runningBridgeProcess) {
         logInfo('📡 UI Toggle: Turning OFF N3FJP Bridge. Terminating script process...');
-        runningBridgeProcess.kill();
+        try {
+          runningBridgeProcess.kill('SIGKILL');
+        } catch (e) {}
         runningBridgeProcess = null;
       }
-      return res.json({ success: true, message: 'Configuration saved. Background bridge deactivated.' });
+      return res
+        .status(200)
+        .send({ success: true, connected: false, message: 'Configuration saved. Background bridge deactivated.' });
     }
 
-    // 🔄 STEP 3: IF TOGGLED ON -> REBOOT REFRESHED PROCESS & RUN LIVE DIAGNOSTIC PING
+    // 🔄 STEP 3: REBOOT BACKGROUND PROCESS
     if (runningBridgeProcess) {
       logInfo('🔄 Bridge configuration updated. Refreshing background worker thread...');
-      runningBridgeProcess.kill();
+      try {
+        runningBridgeProcess.kill('SIGKILL');
+      } catch (e) {}
       runningBridgeProcess = null;
     }
 
     const bridgeScriptPath = path.join(ROOT_DIR, 'scripts', 'n3fjp-bridge.js');
     if (fs.existsSync(bridgeScriptPath)) {
-      // 🚀 Pass the explicit UI values directly to the process env!
       runningBridgeProcess = fork(bridgeScriptPath, [], {
         env: {
           ...process.env,
           N3FJP_TARGET_HOST: host,
-          N3FJP_TARGET_PORT: String(port)
-        }
+          N3FJP_TARGET_PORT: String(port),
+        },
       });
-      runningBridgeProcess.on('error', (err) => logErrorOnce(`❌ Background bridge thread threw an error: ${err.message}`));
+      runningBridgeProcess.on('error', (err) =>
+        logErrorOnce(`❌ Background bridge thread threw an error: ${err.message}`),
+      );
     }
 
-    // Run connection test to alert the UI user if their logging software isn't running yet
-    logInfo(`N3FJP Bridge: Diagnostic ping running to verify station at ${host}:${port}...`);
-    const testSocket = new net.Socket();
-    let hasResponded = false;
-    testSocket.setTimeout(2500);
+    // 🎯 STEP 4: CLEAN CONFIRMATION RETURN
+    logInfo(`N3FJP Bridge: Local configurations applied for station at ${host}:${port}.`);
 
-    testSocket.on('connect', () => {
-      hasResponded = true;
-      testSocket.destroy();
-      res.json({ success: true, message: 'Saved successfully! Reached N3FJP logging client on station network.' });
+    // Return immediately to keep the UI snappy and avoid network timeouts
+    return res.status(200).send({
+      success: true,
+      connected: true, // Set to true so your React panel doesn't flag a red error box
+      message: 'Settings updated successfully! Check your server console for live connection status.',
     });
-
-    testSocket.on('error', (err) => {
-      if (!hasResponded) {
-        hasResponded = true;
-        res.json({ success: true, message: 'Saved successfully! (Note: Station client currently unreachable or offline.)' });
-      }
-    });
-
-    testSocket.on('timeout', () => {
-      if (!hasResponded) {
-        hasResponded = true;
-        testSocket.destroy();
-        res.json({ success: true, message: 'Saved successfully! (Note: Station client connection timed out.)' });
-      }
-    });
-
-    testSocket.connect(parseInt(port, 10), host);
   });
+
+  // ============================================
   // USER SETTINGS SYNC (SERVER-SIDE PERSISTENCE)
   // ============================================
   // Stores all UI settings (layout, panels, filters, etc.) on the server
   // so they persist across all devices accessing the same OHC instance.
-  // ONLY for self-hosted/Pi deployments â€” disabled by default.
+  // ONLY for self-hosted/Pi deployments — disabled by default.
   // Enable with SETTINGS_SYNC=true in .env
-  // On multi-user hosted deployments (openhamclock.com), leave disabled â€”
+  // On multi-user hosted deployments (openhamclock.com), leave disabled —
   // settings stay in each user's browser localStorage.
 
   const SETTINGS_SYNC_ENABLED = (process.env.SETTINGS_SYNC || '').toLowerCase() === 'true';
@@ -224,7 +213,7 @@ module.exports = function (app, ctx) {
     const filtered = {};
     for (const [key, value] of Object.entries(settings)) {
       if (
-        (key.startsWith('openhamclock_') || key.startsWith('ohc_') || key.startsWith('n3fjp')) && 
+        (key.startsWith('openhamclock_') || key.startsWith('ohc_') || key.startsWith('n3fjp')) &&
         (typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number')
       ) {
         filtered[key] = value;

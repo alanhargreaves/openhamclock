@@ -312,7 +312,7 @@ export const SettingsPanel = ({
       setN3fjpEnabled(localEnabled !== null ? localEnabled === '1' : !!config?.n3fjpEnabled);
       setN3fjpHost(localStorage.getItem('ohc_n3fjp_host') || config?.n3fjpHost || '127.0.0.1');
       setN3fjpPort(localStorage.getItem('ohc_n3fjp_port') || (config?.n3fjpPort ? String(config.n3fjpPort) : '1100'));
-      
+
       const v = parseInt(localStorage.getItem('n3fjp_display_minutes') || '15', 10);
       setN3fjpDisplayMinutes(Number.isFinite(v) ? v : 15);
       setN3fjpLineColor(localStorage.getItem('n3fjp_line_color') || '#3388ff');
@@ -2864,6 +2864,7 @@ export const SettingsPanel = ({
                         gap: 8,
                         fontFamily: 'var(--font-mono)',
                         fontSize: 12,
+                        cursor: isLocalInstall ? 'pointer' : 'default',
                       }}
                     >
                       <input
@@ -2880,13 +2881,11 @@ export const SettingsPanel = ({
                             window.dispatchEvent(new Event('ohc-n3fjp-config-changed'));
                           } catch {}
 
-                          // ✅ Also toggle the map layer automatically
+                          // Toggle the map layer automatically
                           try {
-                            // Preferred: uses live WorldMap controls (updates state + localStorage)
                             if (window.hamclockLayerControls?.toggleLayer) {
                               window.hamclockLayerControls.toggleLayer('n3fjp_logged_qsos', next);
                             } else {
-                              // Fallback: write the plugin-layer setting directly
                               const raw = localStorage.getItem('openhamclock_mapSettings') || '{}';
                               const settings = JSON.parse(raw);
                               const layers = settings.layers || {};
@@ -2901,189 +2900,172 @@ export const SettingsPanel = ({
                     </label>
                   </div>
 
-                  {/* 🟢 NEW CONNECTION FIELDS INSERTED HERE */}
-
-{/* Background Bridge Activation Row */}
-<div 
-  style={{ 
-    display: 'flex', 
-    alignItems: 'center', 
-    gap: 8, 
-    marginBottom: 10,
-    opacity: n3fjpEnabled ? 1 : 0.5 
-  }}
->
-  <input
-    type="checkbox"
-    id="n3fjpBridgeActiveToggle"
-    disabled={!isLocalInstall || !n3fjpEnabled}
-    checked={!!n3fjpBridgeActive && n3fjpEnabled}
-    onChange={(e) => {
-      const nextActive = !!e.target.checked;
-      setN3fjpBridgeActive(nextActive);
-      
-      try {
-        fetch('/api/n3fjp/configure', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            enabled: n3fjpEnabled,
-            bridgeActive: nextActive,
-            host: String(n3fjpHost || '').trim(),
-            port: parseInt(n3fjpPort, 10) || 1100
-          })
-        });
-      } catch (err) {
-        console.error("Failed to signal bridge state change:", err);
-      }
-    }}
-  />
-  <label
-    htmlFor="n3fjpBridgeActiveToggle"
-    style={{
-      fontSize: '12px',
-      color: 'var(--text-secondary)',
-      fontWeight: 'bold',
-      cursor: (isLocalInstall && n3fjpEnabled) ? 'pointer' : 'default'
-    }}
-  >
-    Activate local background connection bridge (n3fjp-bridge.js)
-  </label>
-</div>
-
-{/* This is your existing flex container for Host/Port that you showed me */}
-<div
-  style={{
-    display: 'flex',
-    gap: '8px',
-    marginTop: '12px',
-    marginBottom: '4px',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-  }}
->
-  <label
-    style={{
-      fontSize: '12px',
-      color: 'var(--text-secondary)',
-      fontWeight: 'bold',
-      whiteSpace: 'nowrap',
-    }}
-  >
-    N3FJP Host:
-  </label>
-  <input
-    disabled={!isLocalInstall || !n3fjpEnabled}
-    type="text"
-    placeholder="Host IP / Computer Name (e.g., localhost)"
-    value={n3fjpHost}
-    onChange={(e) => setN3fjpHost(e.target.value)}
-    style={{
-      flex: '2 1 180px',
-      padding: '8px 12px',
-      background: 'var(--bg-secondary)',
-      border: '1px solid var(--border-color)',
-      borderRadius: '4px',
-      color: 'var(--text-primary)',
-      fontSize: '12px',
-      fontFamily: 'var(--font-mono)',
-      boxSizing: 'border-box',
-      opacity: n3fjpEnabled ? 1 : 0.5,
-    }}
-  />
-
-  <label
-    style={{
-      fontSize: '12px',
-      color: 'var(--text-secondary)',
-      fontWeight: 'bold',
-      whiteSpace: 'nowrap',
-      marginLeft: '8px',
-    }}
-  >
-    Port:
-  </label>
-                    <input
-                      disabled={!isLocalInstall || !n3fjpEnabled}
-                      type="text"
-                      placeholder="Port (1100)"
-                      value={n3fjpPort}
-                      onChange={(e) => setN3fjpPort(e.target.value)}
+                  {/* Form Controls Container */}
+                  <div style={{ marginTop: '12px', opacity: n3fjpEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
+                    <div
                       style={{
-                        flex: '1 1 80px',
-                        padding: '8px 12px',
-                        background: 'var(--bg-secondary)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '4px',
-                        color: 'var(--text-primary)',
-                        fontSize: '12px',
-                        fontFamily: 'var(--font-mono)',
-                        boxSizing: 'border-box',
-                        opacity: n3fjpEnabled ? 1 : 0.5,
-                      }}
-                    />
-                    <button
-                      disabled={!isLocalInstall || n3fjpTesting || (n3fjpEnabled && (!n3fjpHost.trim() || !n3fjpPort.trim()))}
-                      onClick={async () => {
-                        setN3fjpTesting(true);
-                        setN3fjpMessage(null);
-                        try {
-                          const res = await fetch('/api/n3fjp/configure', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ 
-  host: String(n3fjpHost || '').trim(), 
-  port: String(n3fjpPort || '').trim(),
-  enabled: !!n3fjpEnabled,
-  bridgeActive: !!n3fjpBridgeActive 
-}),
-                          });
-                          const data = await res.json();
-                          if (data.success) {
-                            setN3fjpMessage({ type: 'success', text: 'Bridge configuration updated!' });
-                          } else {
-                            setN3fjpMessage({ type: 'error', text: data.error || 'Connection failed' });
-                          }
-                        } catch (e) {
-                          setN3fjpMessage({ type: 'error', text: 'Bridge communication error' });
-                        }
-                        setN3fjpTesting(false);
-                      }}
-                      style={{
-                        padding: '8px 14px',
-                        fontSize: '11px',
-                        fontWeight: '600',
-                        borderRadius: '4px',
-                        border: 'none',
-                        cursor:
-                          !isLocalInstall || n3fjpTesting || (n3fjpEnabled && (!n3fjpHost.trim() || !n3fjpPort.trim()))
-                            ? 'not-allowed'
-                            : 'pointer',
-                        background: 'var(--accent-amber)',
-                        color: '#000',
-                        opacity: !isLocalInstall || n3fjpTesting || (n3fjpEnabled && (!n3fjpHost.trim() || !n3fjpPort.trim())) ? 0.5 : 1,
+                        display: 'flex',
+                        gap: '8px',
+                        marginBottom: '8px',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
                       }}
                     >
-                      {n3fjpTesting ? 'Testing...' : 'Save & Test'}
-                    </button>
+                      <label
+                        style={{
+                          fontSize: '12px',
+                          color: 'var(--text-secondary)',
+                          fontWeight: 'bold',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        N3FJP Host:
+                      </label>
+                      <input
+                        disabled={!isLocalInstall || !n3fjpEnabled || n3fjpTesting}
+                        type="text"
+                        placeholder="Host IP / Name (e.g., localhost)"
+                        value={n3fjpHost}
+                        onChange={(e) => setN3fjpHost(e.target.value)}
+                        style={{
+                          flex: '2 1 180px',
+                          padding: '8px 12px',
+                          background: 'var(--bg-secondary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '4px',
+                          color: 'var(--text-primary)',
+                          fontSize: '12px',
+                          fontFamily: 'var(--font-mono)',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+
+                      <label
+                        style={{
+                          fontSize: '12px',
+                          color: 'var(--text-secondary)',
+                          fontWeight: 'bold',
+                          whiteSpace: 'nowrap',
+                          marginLeft: '8px',
+                        }}
+                      >
+                        Port:
+                      </label>
+                      <input
+                        disabled={!isLocalInstall || !n3fjpEnabled || n3fjpTesting}
+                        type="text"
+                        placeholder="1100"
+                        value={n3fjpPort}
+                        onChange={(e) => setN3fjpPort(e.target.value)}
+                        style={{
+                          flex: '1 1 80px',
+                          padding: '8px 12px',
+                          background: 'var(--bg-secondary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '4px',
+                          color: 'var(--text-primary)',
+                          fontSize: '12px',
+                          fontFamily: 'var(--font-mono)',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+
+                      <button
+                        disabled={
+                          !isLocalInstall ||
+                          n3fjpTesting ||
+                          (n3fjpEnabled && (!n3fjpHost.trim() || !String(n3fjpPort).trim()))
+                        }
+                        onClick={async () => {
+                          setN3fjpTesting(true);
+                          setN3fjpMessage(null);
+                          try {
+                            const res = await fetch('/api/n3fjp/configure', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                host: String(n3fjpHost || '').trim(),
+                                port: String(n3fjpPort || '').trim(),
+                                enabled: !!n3fjpEnabled,
+                              }),
+                            });
+
+                            const data = await res.json();
+
+                            if (data.success) {
+                              setN3fjpMessage({
+                                type: 'success',
+                                text: data.message || 'Settings updated successfully!',
+                              });
+                            } else {
+                              setN3fjpMessage({
+                                type: 'error',
+                                text: data.error || 'Configuration failed.',
+                              });
+                            }
+                          } catch (e) {
+                            setN3fjpMessage({
+                              type: 'error',
+                              text: 'Bridge communication error.',
+                            });
+                          }
+                          setN3fjpTesting(false);
+                        }}
+                        style={{
+                          padding: '8px 14px',
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          borderRadius: '4px',
+                          border: 'none',
+                          cursor:
+                            !isLocalInstall ||
+                            n3fjpTesting ||
+                            (n3fjpEnabled && (!n3fjpHost.trim() || !String(n3fjpPort).trim()))
+                              ? 'not-allowed'
+                              : 'pointer',
+                          background: 'var(--accent-amber)',
+                          color: '#000',
+                          opacity:
+                            !isLocalInstall ||
+                            n3fjpTesting ||
+                            (n3fjpEnabled && (!n3fjpHost.trim() || !String(n3fjpPort).trim()))
+                              ? 0.5
+                              : 1,
+                        }}
+                      >
+                        {n3fjpTesting ? 'Testing...' : 'Save & Test'}
+                      </button>
+                    </div>
                   </div>
 
+                  {/* Inline Action Message Window */}
                   {n3fjpMessage && (
                     <div
                       style={{
                         fontSize: '11px',
-                        padding: '2px 4px',
+                        padding: '6px 10px',
+                        borderRadius: '4px',
+                        background:
+                          n3fjpMessage.type === 'success' ? 'rgba(46, 204, 113, 0.1)' : 'rgba(231, 76, 60, 0.1)',
                         color: n3fjpMessage.type === 'success' ? '#2ecc71' : '#e74c3c',
-                        marginTop: '4px',
-                        marginBottom: '4px',
+                        marginTop: '6px',
+                        marginBottom: '6px',
                       }}
                     >
                       {n3fjpMessage.type === 'success' ? '✓' : '✗'} {n3fjpMessage.text}
                     </div>
                   )}
 
-                  {/* Simple config */}
-                  <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+                  {/* Simple Display Settings */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: 10,
+                      marginTop: 10,
+                      flexWrap: 'wrap',
+                      opacity: n3fjpEnabled ? 1 : 0.5,
+                    }}
+                  >
                     <div style={{ flex: '1 1 160px' }}>
                       <label
                         style={{
@@ -3164,6 +3146,7 @@ export const SettingsPanel = ({
                           border: '1px solid var(--border-color)',
                           borderRadius: 6,
                           background: 'transparent',
+                          cursor: 'pointer',
                         }}
                       />
                     </div>
@@ -3202,6 +3185,7 @@ export const SettingsPanel = ({
                           border: '1px solid var(--border-color)',
                           borderRadius: 6,
                           background: 'transparent',
+                          cursor: 'pointer',
                         }}
                       />
                     </div>
