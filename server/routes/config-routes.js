@@ -23,6 +23,12 @@ module.exports = function (app, ctx) {
     WSJTX_RELAY_KEY,
   } = ctx;
 
+  // Lightweight version check (for auto-refresh polling)
+  app.get('/api/version', (req, res) => {
+    res.set('Cache-Control', 'no-cache, no-store');
+    res.json({ version: APP_VERSION });
+  });
+
   // ============================================
   // N3FJP BRIDGE CONFIGURATION & PROCESS MANAGER
   // ============================================
@@ -290,7 +296,7 @@ module.exports = function (app, ctx) {
           return tz;
         } catch (e) {
           console.warn(
-            '[config] Invalid resolved timezone "%s" â€” falling back to empty (client will use browser TZ). Set TZ env var to silence.',
+            '[config] Invalid resolved timezone "%s" — falling back to empty (client will use browser TZ). Set TZ env var to silence.',
             tz,
           );
           return '';
