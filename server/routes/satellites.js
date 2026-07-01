@@ -903,7 +903,7 @@ module.exports = function (app, ctx) {
         } else if (httpStatusCode === 404) {
           logDebug("[Satellites] detected 404 'not found' on a group query, may need investigation");
         } else if (httpStatusCode === 0) {
-          logErrorOnce(`[Satellites] CelesTrak OMM fetch failed with no response (possible timeout)`);
+          logErrorOnce('Satellites', 'CelesTrak OMM fetch failed with no response (possible timeout)');
         }
       } catch (ex) {
         const msg = ex?.message || String(ex ?? '(unknown error)');
@@ -953,7 +953,7 @@ module.exports = function (app, ctx) {
         } else if (httpStatusCode === 404) {
           logDebug("[Satellites] detected 404 'not found' on a group query, may need investigation");
         } else if (httpStatusCode === 0) {
-          logErrorOnce(`[Satellites] CelesTrak OMM fetch failed with no response (possible timeout)`);
+          logErrorOnce('Satellites', 'CelesTrak OMM fetch failed with no response (possible timeout)');
         }
       } catch (ex) {
         const msg = ex?.message || String(ex ?? '(unknown error)');
@@ -1009,7 +1009,7 @@ module.exports = function (app, ctx) {
             `[Satellites] NORAD ID ${noradsToDownload}, detected 404 \'not found\', may need to manually check status of this satellite via CelesTrak website`,
           );
         } else if (httpStatusCode === 0) {
-          logErrorOnce(`[Satellites] CelesTrak OMM fetch failed with no response (possible timeout)`);
+          logErrorOnce('Satellites', 'CelesTrak OMM fetch failed with no response (possible timeout)');
         }
       } catch (ex) {
         const msg = ex?.message || String(ex ?? '(unknown error)');

@@ -240,6 +240,7 @@ module.exports = function (app, ctx) {
   const CUSTOM_DX_RECONNECT_MIN_MS = 10000; // hard floor between dial attempts — a poll can never dial sooner
   const CUSTOM_DX_MAX_RECONNECT_DELAY_MS = 5 * 60 * 1000; // cap — never hammer a node (mirror proxy)
   const CUSTOM_DX_RAPID_DISCONNECT_MS = 15000; // kicked within 15s ⇒ likely auth reject / SSID bump
+  const CUSTOM_DX_MAX_DEAD_ATTEMPTS = 4; // park a node that NEVER once authenticated after this many attempts
   const CUSTOM_DX_KEEPALIVE_MS = 30000;
   const CUSTOM_DX_STALE_MS = 5 * 60 * 1000; // Force reconnect after 5 min with no data
   const CUSTOM_DX_IDLE_TIMEOUT = 15 * 60 * 1000; // Reap sessions idle for 15 minutes
@@ -367,6 +368,21 @@ module.exports = function (app, ctx) {
       session.reconnectAttempts = Math.min((session.reconnectAttempts || 0) + 2, 20);
     } else {
       session.reconnectAttempts = Math.min((session.reconnectAttempts || 0) + 1, 20);
+    }
+
+    // Give up on a node that has NEVER authenticated after repeated attempts — it
+    // accepts TCP but never sends a banner/prompt/spot (a dead or blackholing node,
+    // the dominant source of endless "No data … forcing reconnect" churn in prod).
+    // Nodes that authenticated at least once are exempt: a transient drop just backs
+    // off. The idle-reaper removes the parked session once the client stops polling.
+    if (!session.everAuthenticated && session.reconnectAttempts >= CUSTOM_DX_MAX_DEAD_ATTEMPTS) {
+      if (!session.parked) {
+        logWarn(
+          `[DX Cluster] Parking ${session.node.host} — no data / never authenticated after ${session.reconnectAttempts} attempts (dead node)`,
+        );
+      }
+      session.parked = true;
+      return;
     }
 
     scheduleCustomSessionReconnect(session);
@@ -522,6 +538,7 @@ module.exports = function (app, ctx) {
       ) {
         session.commandSent = true;
         session.authenticated = true; // node is responding to our login
+        session.everAuthenticated = true;
         setTimeout(() => {
           if (session.client && session.connected && !session.loginRejected) {
             if (!session.initialSnapshotDone) {
@@ -549,6 +566,7 @@ module.exports = function (app, ctx) {
           addCustomSessionSpot(session, parsed);
           // A flowing spot proves login succeeded; reset backoff once stable >60s.
           if (!session.authenticated) session.authenticated = true;
+          session.everAuthenticated = true;
           const uptime = session.lastConnectedAt ? Date.now() - session.lastConnectedAt : 0;
           if (session.reconnectAttempts > 0 && uptime > 60000) session.reconnectAttempts = 0;
         }
@@ -603,6 +621,7 @@ module.exports = function (app, ctx) {
         cleanupTimer: null,
         // Good-neighbour hardening (mirrors dxspider-proxy/server.js):
         authenticated: false, // positive auth proven this connection
+        everAuthenticated: false, // has this session EVER authenticated (gates dead-node park)
         loginRejected: false, // node refused our login on the current socket
         reconnectAttempts: 0, // consecutive failures; resets only when healthy
         lastConnectAttemptAt: 0, // enforces the hard reconnect floor
