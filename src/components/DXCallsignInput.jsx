@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useId } from 'react';
+import { callbookAuthHeaders } from '../utils/callbookAuth.js';
 
 /**
  * Editable callsign field for the DX target section.
@@ -48,6 +49,7 @@ export function DXCallsignInput({ dxCallsign, onDXChange, dxLocked, style }) {
 
     try {
       const res = await fetch(`/api/callsign/${encodeURIComponent(trimmed)}`, {
+        headers: callbookAuthHeaders(),
         signal: controller.signal,
       });
 

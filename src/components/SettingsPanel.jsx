@@ -24,6 +24,7 @@ import CustomThemeEditor from './CustomThemeEditor';
 import { emojiToIso2 } from '../utils/countryFlags';
 import { getAlertSettings, saveAlertSettings, playTone, TONE_PRESETS, ALERT_FEEDS } from '../utils/audioAlerts';
 import { setRelaySessionId, setRelayConfigured, clearRelaySession } from '../utils/relaySession';
+import { getCallbookCredentials, setCallbookCredentials } from '../utils/callbookAuth.js';
 import { CALLBOOKS, getCallbook } from '../utils/callbook.js';
 
 export const SettingsPanel = ({
@@ -227,14 +228,17 @@ export const SettingsPanel = ({
   const fileInputRef = useRef(null);
 
   // QRZ API state
-  const [qrzUsername, setQrzUsername] = useState('');
+  const [qrzUsername, setQrzUsername] = useState(() => getCallbookCredentials().qrzUsername || '');
   const [qrzPassword, setQrzPassword] = useState('');
+  // Per-browser callbook credentials (hosted instances) — see utils/callbookAuth.js
+  const [personalQrz, setPersonalQrz] = useState(() => !!getCallbookCredentials().qrzUsername);
+  const [personalHamqth, setPersonalHamqth] = useState(() => !!getCallbookCredentials().hamqthUsername);
   const [qrzStatus, setQrzStatus] = useState(null); // { configured, hasSession, source, ... }
   const [qrzTesting, setQrzTesting] = useState(false);
   const [qrzMessage, setQrzMessage] = useState(null); // { type: 'success'|'error', text }
 
   // HamQTH XML Search API state
-  const [hamqthUsername, setHamqthUsername] = useState('');
+  const [hamqthUsername, setHamqthUsername] = useState(() => getCallbookCredentials().hamqthUsername || '');
   const [hamqthPassword, setHamqthPassword] = useState('');
   const [hamqthStatus, setHamqthStatus] = useState(null); // { configured, hasSession, source, ... }
   const [hamqthTesting, setHamqthTesting] = useState(false);
@@ -3226,6 +3230,20 @@ export const SettingsPanel = ({
                     }}
                   >
                     <span>📻 QRZ.com Callsign Lookup</span>
+                    {!isLocalInstall && personalQrz && (
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: '500',
+                          padding: '1px 6px',
+                          borderRadius: '3px',
+                          background: 'rgba(46, 204, 113, 0.15)',
+                          color: '#2ecc71',
+                        }}
+                      >
+                        ● Your login (this browser)
+                      </span>
+                    )}
                     {qrzStatus?.configured && (
                       <span
                         style={{
@@ -3255,8 +3273,10 @@ export const SettingsPanel = ({
                     user profiles (user-supplied coordinates, geocoded addresses, grid squares). Without this, locations
                     fall back to HamQTH (country-level only). Requires a QRZ Logbook Data subscription.
                     <br />
-                    <strong>Note</strong> this is a server setting and is not related to clicking a callsign to go to
-                    qrz.com. If you are not running a server, you will likely not have the permissions to change this.
+                    <strong>Note</strong>{' '}
+                    {isLocalInstall
+                      ? 'this is a server setting and is not related to clicking a callsign to go to qrz.com.'
+                      : 'on this shared instance, your QRZ login is stored only in this browser and used only for your own lookups — it is never saved on the server.'}
                   </div>
                   {qrzStatus?.source === 'env' ? (
                     <div
@@ -3288,7 +3308,6 @@ export const SettingsPanel = ({
                     <>
                       <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                         <input
-                          disabled={!isLocalInstall}
                           type="text"
                           placeholder="QRZ Username (callsign)"
                           value={qrzUsername}
@@ -3306,7 +3325,6 @@ export const SettingsPanel = ({
                           }}
                         />
                         <input
-                          disabled={!isLocalInstall}
                           type="password"
                           placeholder="QRZ Password"
                           value={qrzPassword}
@@ -3326,25 +3344,55 @@ export const SettingsPanel = ({
                       </div>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <button
-                          disabled={!isLocalInstall || qrzTesting || !qrzUsername.trim() || !qrzPassword.trim()}
+                          disabled={qrzTesting || !qrzUsername.trim() || !qrzPassword.trim()}
                           onClick={async () => {
                             setQrzTesting(true);
                             setQrzMessage(null);
                             try {
-                              const res = await fetch('/api/qrz/configure', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ username: qrzUsername.trim(), password: qrzPassword.trim() }),
-                              });
-                              const data = await res.json();
-                              if (data.success) {
-                                setQrzMessage({ type: 'success', text: 'Connected to QRZ.com successfully!' });
-                                setQrzPassword('');
-                                // Refresh status
-                                const st = await fetch('/api/qrz/status').then((r) => r.json());
-                                setQrzStatus(st);
+                              if (!isLocalInstall) {
+                                // Shared/hosted instance: verify against QRZ, then keep the
+                                // credentials in this browser only (see utils/callbookAuth.js)
+                                const res = await fetch('/api/callsign/verify-credentials', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    provider: 'qrz',
+                                    username: qrzUsername.trim(),
+                                    password: qrzPassword,
+                                  }),
+                                });
+                                const data = await res.json();
+                                if (data.success) {
+                                  setCallbookCredentials({
+                                    ...getCallbookCredentials(),
+                                    qrzUsername: qrzUsername.trim(),
+                                    qrzPassword,
+                                  });
+                                  setPersonalQrz(true);
+                                  setQrzPassword('');
+                                  setQrzMessage({
+                                    type: 'success',
+                                    text: 'Verified — stored in this browser only, used only for your lookups.',
+                                  });
+                                } else {
+                                  setQrzMessage({ type: 'error', text: data.error || 'Login failed' });
+                                }
                               } else {
-                                setQrzMessage({ type: 'error', text: data.error || 'Login failed' });
+                                const res = await fetch('/api/qrz/configure', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ username: qrzUsername.trim(), password: qrzPassword.trim() }),
+                                });
+                                const data = await res.json();
+                                if (data.success) {
+                                  setQrzMessage({ type: 'success', text: 'Connected to QRZ.com successfully!' });
+                                  setQrzPassword('');
+                                  // Refresh status
+                                  const st = await fetch('/api/qrz/status').then((r) => r.json());
+                                  setQrzStatus(st);
+                                } else {
+                                  setQrzMessage({ type: 'error', text: data.error || 'Login failed' });
+                                }
                               }
                             } catch (e) {
                               setQrzMessage({ type: 'error', text: 'Connection error' });
@@ -3366,9 +3414,21 @@ export const SettingsPanel = ({
                         >
                           {qrzTesting ? 'Testing...' : 'Save & Test'}
                         </button>
-                        {qrzStatus?.configured && qrzStatus.source !== 'env' && (
+                        {((qrzStatus?.configured && qrzStatus.source !== 'env') ||
+                          (!isLocalInstall && personalQrz)) && (
                           <button
                             onClick={async () => {
+                              if (!isLocalInstall) {
+                                const creds = getCallbookCredentials();
+                                delete creds.qrzUsername;
+                                delete creds.qrzPassword;
+                                setCallbookCredentials(creds);
+                                setPersonalQrz(false);
+                                setQrzUsername('');
+                                setQrzPassword('');
+                                setQrzMessage(null);
+                                return;
+                              }
                               await fetch('/api/qrz/remove', { method: 'POST' });
                               setQrzUsername('');
                               setQrzPassword('');
@@ -3434,6 +3494,20 @@ export const SettingsPanel = ({
                     }}
                   >
                     <span>📡 HamQTH Callsign Lookup</span>
+                    {!isLocalInstall && personalHamqth && (
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: '500',
+                          padding: '1px 6px',
+                          borderRadius: '3px',
+                          background: 'rgba(46, 204, 113, 0.15)',
+                          color: '#2ecc71',
+                        }}
+                      >
+                        ● Your login (this browser)
+                      </span>
+                    )}
                     {hamqthStatus?.configured && (
                       <span
                         style={{
@@ -3461,11 +3535,12 @@ export const SettingsPanel = ({
                       HamQTH.com
                     </a>{' '}
                     user profiles (names, user-supplied details, grid squares). Without this, data falls back to the
-                    simple HamQTH DXCC API.
+                    simple HamQTH DXCC API. A free HamQTH account is all you need.
                     <br />
-                    <strong>Note</strong> this is a server setting and is related to the extra data in popup shown when
-                    clicking callsigns. If you are not running a server, you will likely not have the permissions to
-                    change this.
+                    <strong>Note</strong>{' '}
+                    {isLocalInstall
+                      ? 'this is a server setting and is related to the extra data in popup shown when clicking callsigns.'
+                      : 'on this shared instance, your HamQTH login is stored only in this browser and used only for your own lookups — it is never saved on the server.'}
                   </div>
                   {hamqthStatus?.source === 'env' ? (
                     <div
@@ -3491,7 +3566,6 @@ export const SettingsPanel = ({
                     <>
                       <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                         <input
-                          disabled={!isLocalInstall}
                           type="text"
                           placeholder="HamQTH Username (callsign)"
                           value={hamqthUsername}
@@ -3509,7 +3583,6 @@ export const SettingsPanel = ({
                           }}
                         />
                         <input
-                          disabled={!isLocalInstall}
                           type="password"
                           placeholder="HamQTH Password"
                           value={hamqthPassword}
@@ -3529,29 +3602,57 @@ export const SettingsPanel = ({
                       </div>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <button
-                          disabled={
-                            !isLocalInstall || hamqthTesting || !hamqthUsername.trim() || !hamqthPassword.trim()
-                          }
+                          disabled={hamqthTesting || !hamqthUsername.trim() || !hamqthPassword.trim()}
                           onClick={async () => {
                             setHamqthTesting(true);
                             setHamqthMessage(null);
                             try {
-                              const res = await fetch('/api/hamqth/configure', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  username: hamqthUsername.trim(),
-                                  password: hamqthPassword.trim(),
-                                }),
-                              });
-                              const data = await res.json();
-                              if (data.success) {
-                                setHamqthMessage({ type: 'success', text: 'Connected to HamQTH successfully!' });
-                                setHamqthPassword('');
-                                const st = await fetch('/api/hamqth/status').then((r) => r.json());
-                                setHamqthStatus(st);
+                              if (!isLocalInstall) {
+                                // Shared/hosted instance: verify against HamQTH, then keep the
+                                // credentials in this browser only (see utils/callbookAuth.js)
+                                const res = await fetch('/api/callsign/verify-credentials', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    provider: 'hamqth',
+                                    username: hamqthUsername.trim(),
+                                    password: hamqthPassword,
+                                  }),
+                                });
+                                const data = await res.json();
+                                if (data.success) {
+                                  setCallbookCredentials({
+                                    ...getCallbookCredentials(),
+                                    hamqthUsername: hamqthUsername.trim(),
+                                    hamqthPassword,
+                                  });
+                                  setPersonalHamqth(true);
+                                  setHamqthPassword('');
+                                  setHamqthMessage({
+                                    type: 'success',
+                                    text: 'Verified — stored in this browser only, used only for your lookups.',
+                                  });
+                                } else {
+                                  setHamqthMessage({ type: 'error', text: data.error || 'Login failed' });
+                                }
                               } else {
-                                setHamqthMessage({ type: 'error', text: data.error || 'Login failed' });
+                                const res = await fetch('/api/hamqth/configure', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    username: hamqthUsername.trim(),
+                                    password: hamqthPassword.trim(),
+                                  }),
+                                });
+                                const data = await res.json();
+                                if (data.success) {
+                                  setHamqthMessage({ type: 'success', text: 'Connected to HamQTH successfully!' });
+                                  setHamqthPassword('');
+                                  const st = await fetch('/api/hamqth/status').then((r) => r.json());
+                                  setHamqthStatus(st);
+                                } else {
+                                  setHamqthMessage({ type: 'error', text: data.error || 'Login failed' });
+                                }
                               }
                             } catch (e) {
                               setHamqthMessage({ type: 'error', text: 'Connection error' });
@@ -3575,9 +3676,21 @@ export const SettingsPanel = ({
                         >
                           {hamqthTesting ? 'Testing...' : 'Save & Test'}
                         </button>
-                        {hamqthStatus?.configured && hamqthStatus.source !== 'env' && (
+                        {((hamqthStatus?.configured && hamqthStatus.source !== 'env') ||
+                          (!isLocalInstall && personalHamqth)) && (
                           <button
                             onClick={async () => {
+                              if (!isLocalInstall) {
+                                const creds = getCallbookCredentials();
+                                delete creds.hamqthUsername;
+                                delete creds.hamqthPassword;
+                                setCallbookCredentials(creds);
+                                setPersonalHamqth(false);
+                                setHamqthUsername('');
+                                setHamqthPassword('');
+                                setHamqthMessage(null);
+                                return;
+                              }
                               await fetch('/api/hamqth/remove', { method: 'POST' });
                               setHamqthUsername('');
                               setHamqthPassword('');

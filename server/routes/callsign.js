@@ -3,6 +3,7 @@
  * Lines ~4194-6094 of original server.js
  */
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { lookupCall } = require('../../src/server/ctydat.js');
@@ -234,29 +235,32 @@ module.exports = function (app, ctx) {
   }
   loadQRZCredentials();
 
-  function isQRZConfigured() {
-    return !!(qrzSession.username && qrzSession.password);
+  // All QRZ session functions take a session object so the same code serves
+  // both the instance credentials (default) and per-user credentials sent
+  // from the browser on the hosted site.
+  function isQRZConfigured(session = qrzSession) {
+    return !!(session.username && session.password);
   }
 
   // Login to QRZ XML API and obtain a session key
-  async function qrzLogin() {
-    if (!isQRZConfigured()) return null;
+  async function qrzLogin(session = qrzSession) {
+    if (!isQRZConfigured(session)) return null;
 
     // Don't retry if credentials failed recently — avoids hammering QRZ with bad creds
-    if (Date.now() < qrzSession.authFailedUntil) {
+    if (Date.now() < session.authFailedUntil) {
       return null;
     }
 
     // Dedup: if a login is already in-flight, piggyback on it
-    if (qrzSession.loginInFlight) return qrzSession.loginInFlight;
+    if (session.loginInFlight) return session.loginInFlight;
 
-    qrzSession.loginInFlight = (async () => {
+    session.loginInFlight = (async () => {
       try {
-        const url = `https://xmldata.qrz.com/xml/current/?username=${encodeURIComponent(qrzSession.username)};password=${encodeURIComponent(qrzSession.password)};agent=OpenHamClock/${APP_VERSION}`;
+        const url = `https://xmldata.qrz.com/xml/current/?username=${encodeURIComponent(session.username)};password=${encodeURIComponent(session.password)};agent=OpenHamClock/${APP_VERSION}`;
         const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
 
         if (!response.ok) {
-          qrzSession.lastError = `HTTP ${response.status}`;
+          session.lastError = `HTTP ${response.status}`;
           return null;
         }
 
@@ -268,14 +272,14 @@ module.exports = function (app, ctx) {
         const subExpMatch = xml.match(/<SubExp>([^<]+)<\/SubExp>/);
 
         if (errorMatch) {
-          qrzSession.lastError = errorMatch[1];
+          session.lastError = errorMatch[1];
           // Credential failures get a long cooldown — no point retrying until creds change
           if (
             errorMatch[1].includes('incorrect') ||
             errorMatch[1].includes('Invalid') ||
             errorMatch[1].includes('denied')
           ) {
-            qrzSession.authFailedUntil = Date.now() + qrzSession.authFailCooldown;
+            session.authFailedUntil = Date.now() + session.authFailCooldown;
             console.error(`[QRZ] Login failed: ${errorMatch[1]} — suppressing retries for 1 hour`);
           } else {
             console.error(`[QRZ] Login failed: ${errorMatch[1]}`);
@@ -284,46 +288,46 @@ module.exports = function (app, ctx) {
         }
 
         if (keyMatch) {
-          qrzSession.key = keyMatch[1];
-          qrzSession.expiry = Date.now() + qrzSession.maxAge;
-          qrzSession.lastError = null;
-          qrzSession.authFailedUntil = 0; // Clear cooldown on success
+          session.key = keyMatch[1];
+          session.expiry = Date.now() + session.maxAge;
+          session.lastError = null;
+          session.authFailedUntil = 0; // Clear cooldown on success
           const subInfo = subExpMatch ? subExpMatch[1] : 'unknown';
           console.log(`[QRZ] Session established (subscription: ${subInfo})`);
-          return qrzSession.key;
+          return session.key;
         }
 
-        qrzSession.lastError = 'No session key in response';
+        session.lastError = 'No session key in response';
         return null;
       } catch (err) {
         if (err.name !== 'AbortError') {
-          qrzSession.lastError = err.message;
+          session.lastError = err.message;
           logErrorOnce('QRZ', `Login error: ${err.message}`);
         }
         return null;
       } finally {
-        qrzSession.loginInFlight = null;
+        session.loginInFlight = null;
       }
     })();
 
-    return qrzSession.loginInFlight;
+    return session.loginInFlight;
   }
 
   // Get a valid QRZ session key (login if needed)
-  async function getQRZSessionKey() {
-    if (!isQRZConfigured()) return null;
+  async function getQRZSessionKey(session = qrzSession) {
+    if (!isQRZConfigured(session)) return null;
 
     // Reuse existing key if still fresh
-    if (qrzSession.key && Date.now() < qrzSession.expiry) {
-      return qrzSession.key;
+    if (session.key && Date.now() < session.expiry) {
+      return session.key;
     }
 
-    return qrzLogin();
+    return qrzLogin(session);
   }
 
   // Look up a callsign via QRZ XML API — returns rich data including geoloc source
-  async function qrzLookup(callsign) {
-    const sessionKey = await getQRZSessionKey();
+  async function qrzLookup(callsign, session = qrzSession) {
+    const sessionKey = await getQRZSessionKey(session);
     if (!sessionKey) return null;
 
     try {
@@ -340,11 +344,11 @@ module.exports = function (app, ctx) {
         const err = errorMatch[1];
         if (err.includes('Session') || err.includes('Invalid session')) {
           // Session expired — force re-login and retry
-          qrzSession.key = null;
-          qrzSession.expiry = 0;
-          const newKey = await qrzLogin();
+          session.key = null;
+          session.expiry = 0;
+          const newKey = await qrzLogin(session);
           if (newKey) {
-            return qrzLookup(callsign); // Retry with new key (recursive, max 1 deep)
+            return qrzLookup(callsign, session); // Retry with new key (recursive, max 1 deep)
           }
         }
         // "Not found" is not an error we need to log
@@ -365,7 +369,7 @@ module.exports = function (app, ctx) {
 
       if (!lat || !lon) return null;
 
-      qrzSession.lookupCount++;
+      session.lookupCount++;
 
       const result = {
         callsign: get('call') || callsign,
@@ -436,29 +440,31 @@ module.exports = function (app, ctx) {
   }
   loadHamQTHCredentials();
 
-  function isHamQTHConfigured() {
-    return !!(hamqthSession.username && hamqthSession.password);
+  // Like the QRZ functions above, these take a session object so per-user
+  // credentials from the hosted site reuse the same login/lookup code.
+  function isHamQTHConfigured(session = hamqthSession) {
+    return !!(session.username && session.password);
   }
 
   // Login to HamQTH XML API and obtain a session ID
-  async function hamqthLogin() {
-    if (!isHamQTHConfigured()) return null;
+  async function hamqthLogin(session = hamqthSession) {
+    if (!isHamQTHConfigured(session)) return null;
 
     // Don't retry if credentials failed recently
-    if (Date.now() < hamqthSession.authFailedUntil) {
+    if (Date.now() < session.authFailedUntil) {
       return null;
     }
 
     // Dedup: if a login is already in-flight, piggyback on it
-    if (hamqthSession.loginInFlight) return hamqthSession.loginInFlight;
+    if (session.loginInFlight) return session.loginInFlight;
 
-    hamqthSession.loginInFlight = (async () => {
+    session.loginInFlight = (async () => {
       try {
-        const url = `https://www.hamqth.com/xml.php?u=${encodeURIComponent(hamqthSession.username)}&p=${encodeURIComponent(hamqthSession.password)}`;
+        const url = `https://www.hamqth.com/xml.php?u=${encodeURIComponent(session.username)}&p=${encodeURIComponent(session.password)}`;
         const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
 
         if (!response.ok) {
-          hamqthSession.lastError = `HTTP ${response.status}`;
+          session.lastError = `HTTP ${response.status}`;
           return null;
         }
 
@@ -467,13 +473,13 @@ module.exports = function (app, ctx) {
         // Check for error first (HamQTH wraps errors in <session>)
         const errorMatch = xml.match(/<error>([^<]+)<\/error>/);
         if (errorMatch) {
-          hamqthSession.lastError = errorMatch[1];
+          session.lastError = errorMatch[1];
           if (
             errorMatch[1].includes('incorrect') ||
             errorMatch[1].includes('Wrong') ||
             errorMatch[1].includes('denied')
           ) {
-            hamqthSession.authFailedUntil = Date.now() + hamqthSession.authFailCooldown;
+            session.authFailedUntil = Date.now() + session.authFailCooldown;
             console.error(`[HamQTH] Login failed: ${errorMatch[1]} — suppressing retries for 1 hour`);
           } else {
             console.error(`[HamQTH] Login failed: ${errorMatch[1]}`);
@@ -484,45 +490,45 @@ module.exports = function (app, ctx) {
         // Parse session ID
         const idMatch = xml.match(/<session_id>([^<]+)<\/session_id>/);
         if (idMatch) {
-          hamqthSession.id = idMatch[1];
-          hamqthSession.expiry = Date.now() + hamqthSession.maxAge;
-          hamqthSession.lastError = null;
-          hamqthSession.authFailedUntil = 0;
+          session.id = idMatch[1];
+          session.expiry = Date.now() + session.maxAge;
+          session.lastError = null;
+          session.authFailedUntil = 0;
           console.log('[HamQTH] Session established');
-          return hamqthSession.id;
+          return session.id;
         }
 
-        hamqthSession.lastError = 'No session ID in response';
+        session.lastError = 'No session ID in response';
         return null;
       } catch (err) {
         if (err.name !== 'AbortError') {
-          hamqthSession.lastError = err.message;
+          session.lastError = err.message;
           logErrorOnce('HamQTH', `Login error: ${err.message}`);
         }
         return null;
       } finally {
-        hamqthSession.loginInFlight = null;
+        session.loginInFlight = null;
       }
     })();
 
-    return hamqthSession.loginInFlight;
+    return session.loginInFlight;
   }
 
   // Get a valid HamQTH session ID (login if needed)
-  async function getHamQTHSessionId() {
-    if (!isHamQTHConfigured()) return null;
+  async function getHamQTHSessionId(session = hamqthSession) {
+    if (!isHamQTHConfigured(session)) return null;
 
     // Reuse existing key if still fresh
-    if (hamqthSession.id && Date.now() < hamqthSession.expiry) {
-      return hamqthSession.id;
+    if (session.id && Date.now() < session.expiry) {
+      return session.id;
     }
 
-    return hamqthLogin();
+    return hamqthLogin(session);
   }
 
   // Look up a callsign via HamQTH XML Search API — returns rich data
-  async function hamqthXmlSearch(callsign) {
-    const sessionId = await getHamQTHSessionId();
+  async function hamqthXmlSearch(callsign, session = hamqthSession) {
+    const sessionId = await getHamQTHSessionId(session);
     if (!sessionId) return null;
 
     try {
@@ -539,11 +545,11 @@ module.exports = function (app, ctx) {
         const err = errorMatch[1];
         if (err.includes('Session') || err.includes('expired') || err.includes('does not exist')) {
           // Session expired — force re-login and retry
-          hamqthSession.id = null;
-          hamqthSession.expiry = 0;
-          const newId = await hamqthLogin();
+          session.id = null;
+          session.expiry = 0;
+          const newId = await hamqthLogin(session);
           if (newId) {
-            return hamqthXmlSearch(callsign); // Retry with new session (recursive, max 1 deep)
+            return hamqthXmlSearch(callsign, session); // Retry with new session (recursive, max 1 deep)
           }
         }
         // "Callsign not found" is not an error we need to log
@@ -595,6 +601,90 @@ module.exports = function (app, ctx) {
       return null;
     }
   }
+
+  // ── Per-user callbook sessions (hosted multi-user support) ──
+  // Users may send their own QRZ / HamQTH credentials from the browser
+  // (X-QRZ-Auth / X-HamQTH-Auth headers, base64 "username:password").
+  // Sessions live only in memory, keyed by a credential hash, and lookup
+  // results are cached under the same hash so one subscriber's callbook data
+  // is never served to anyone else (QRZ terms: the account is personal).
+  const userCallbookSessions = new Map(); // credHash -> session object
+  const USER_CALLBOOK_SESSION_MAX = 500; // LRU cap on distinct credential sets
+
+  function makeUserCallbookSession(username, password) {
+    return {
+      key: null, // QRZ session key
+      id: null, // HamQTH session id
+      expiry: 0,
+      maxAge: 3600000,
+      username,
+      password,
+      loginInFlight: null,
+      lookupCount: 0,
+      lastError: null,
+      authFailedUntil: 0,
+      authFailCooldown: 60 * 60 * 1000,
+      lastUsed: Date.now(),
+    };
+  }
+
+  function getUserCallbookSession(provider, username, password) {
+    const hash = crypto.createHash('sha256').update(`${provider}\0${username}\0${password}`).digest('hex').slice(0, 32);
+    let session = userCallbookSessions.get(hash);
+    if (!session) {
+      if (userCallbookSessions.size >= USER_CALLBOOK_SESSION_MAX) {
+        let oldestKey = null;
+        let oldestUsed = Infinity;
+        for (const [k, v] of userCallbookSessions) {
+          if (v.lastUsed < oldestUsed) {
+            oldestUsed = v.lastUsed;
+            oldestKey = k;
+          }
+        }
+        userCallbookSessions.delete(oldestKey);
+      }
+      session = makeUserCallbookSession(username, password);
+      userCallbookSessions.set(hash, session);
+    }
+    session.lastUsed = Date.now();
+    return { session, hash };
+  }
+
+  // Parse an X-QRZ-Auth / X-HamQTH-Auth header value: base64("username:password")
+  function parseCallbookAuthHeader(value) {
+    if (!value || typeof value !== 'string' || value.length > 400) return null;
+    let decoded;
+    try {
+      decoded = Buffer.from(value, 'base64').toString('utf8');
+    } catch {
+      return null;
+    }
+    const sep = decoded.indexOf(':');
+    if (sep < 1) return null;
+    const username = decoded.slice(0, sep).trim();
+    const password = decoded.slice(sep + 1);
+    if (!username || !password || username.length > 64 || password.length > 128) return null;
+    return { username, password };
+  }
+
+  // Verify user-supplied callbook credentials without persisting them.
+  // Logs in with a per-user in-memory session; the browser stores the
+  // credentials locally and sends them on subsequent lookups.
+  app.post('/api/callsign/verify-credentials', writeLimiter, async (req, res) => {
+    const { provider, username, password } = req.body || {};
+    if ((provider !== 'qrz' && provider !== 'hamqth') || typeof username !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ error: 'provider (qrz|hamqth), username, and password are required' });
+    }
+    const user = username.trim();
+    if (!user || !password || user.length > 64 || password.length > 128) {
+      return res.status(400).json({ error: 'Invalid credentials format' });
+    }
+    const { session } = getUserCallbookSession(provider, user, password);
+    session.authFailedUntil = 0; // user just (re)entered these — try now
+    const token = provider === 'qrz' ? await qrzLogin(session) : await hamqthLogin(session);
+    if (token) return res.json({ success: true });
+    res.json({ success: false, error: session.lastError || 'Login failed' });
+  });
 
   // Look up via HamQTH DXCC JSON API (no auth, but only DXCC-level accuracy)
   async function hamqthLookup(callsign, _retried = false) {
@@ -848,8 +938,28 @@ module.exports = function (app, ctx) {
     // Extract base callsign: 5Z4/OZ6ABL → OZ6ABL, UA1TAN/M → UA1TAN
     const callsign = extractBaseCallsign(rawCallsign);
 
+    // Per-user callbook credentials (hosted): the user's own QRZ/HamQTH
+    // account serves their lookups. Results are cached per credential hash —
+    // an authenticated result must never be served to a different user.
+    const userQrzCreds = parseCallbookAuthHeader(req.headers['x-qrz-auth']);
+    const userHamqthCreds = parseCallbookAuthHeader(req.headers['x-hamqth-auth']);
+    let cacheSuffix = '';
+    let userQrzSession = null;
+    let userHamqthSession = null;
+    if (userQrzCreds) {
+      const { session, hash } = getUserCallbookSession('qrz', userQrzCreds.username, userQrzCreds.password);
+      userQrzSession = session;
+      cacheSuffix += `:q${hash}`;
+    }
+    if (userHamqthCreds) {
+      const { session, hash } = getUserCallbookSession('hamqth', userHamqthCreds.username, userHamqthCreds.password);
+      userHamqthSession = session;
+      cacheSuffix += `:h${hash}`;
+    }
+
     // Check cache first (check both raw and base forms)
-    const cached = callsignLookupCache.get(callsign) || callsignLookupCache.get(rawCallsign);
+    const cached =
+      callsignLookupCache.get(callsign + cacheSuffix) || callsignLookupCache.get(rawCallsign + cacheSuffix);
     if (cached && now - cached.timestamp < CALLSIGN_CACHE_TTL) {
       logDebug('[Callsign Lookup] Cache hit for:', callsign);
       return res.json(cached.data);
@@ -868,22 +978,32 @@ module.exports = function (app, ctx) {
     try {
       let result = null;
 
-      // 1. Try QRZ XML API (most accurate — user-supplied coords, geocoded, or grid-derived)
-      if (isQRZConfigured()) {
+      // 1. User-supplied QRZ credentials (their own subscription, sent from the browser)
+      if (userQrzSession) {
+        result = await qrzLookup(callsign, userQrzSession);
+      }
+
+      // 2. User-supplied HamQTH credentials
+      if (!result && userHamqthSession) {
+        result = await hamqthXmlSearch(callsign, userHamqthSession);
+      }
+
+      // 3. Instance QRZ XML API (most accurate — user-supplied coords, geocoded, or grid-derived)
+      if (!result && isQRZConfigured()) {
         result = await qrzLookup(callsign);
       }
 
-      // 2. Try HamQTH XML Search (if configured) — rich data with accurate coords
+      // 4. Instance HamQTH XML Search (if configured) — rich data with accurate coords
       if (!result && isHamQTHConfigured()) {
         result = await hamqthXmlSearch(callsign);
       }
 
-      // 3. Fall back to HamQTH DXCC (no auth, but only country-level accuracy)
+      // 5. Fall back to HamQTH DXCC (no auth, but only country-level accuracy)
       if (!result) {
         result = await hamqthLookup(callsign);
       }
 
-      // 4. Last resort: estimate from callsign prefix
+      // 6. Last resort: estimate from callsign prefix
       if (!result) {
         const estimated = estimateLocationFromPrefix(callsign);
         if (estimated) {
@@ -895,7 +1015,7 @@ module.exports = function (app, ctx) {
         logDebug(
           `[Callsign Lookup] ${callsign}: ${result.source} -> ${result.lat?.toFixed(2)}, ${result.lon?.toFixed(2)}`,
         );
-        cacheCallsignLookup(callsign, { data: result, timestamp: now });
+        cacheCallsignLookup(callsign + cacheSuffix, { data: result, timestamp: now });
         return res.json(result);
       }
 

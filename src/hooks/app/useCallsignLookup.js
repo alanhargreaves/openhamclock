@@ -14,6 +14,7 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../utils/apiFetch.js';
+import { callbookAuthHeaders } from '../../utils/callbookAuth.js';
 import { extractBaseCall } from '../../components/CallsignLink.jsx';
 
 // TTL: 24 hours (matches server-side cache TTL)
@@ -66,6 +67,7 @@ export default function useCallsignLookup(call) {
 
     try {
       const res = await apiFetch(`/api/callsign/${encodeURIComponent(callsign)}`, {
+        headers: callbookAuthHeaders(),
         signal: AbortSignal.timeout(5000),
       });
       if (!res) {
