@@ -891,6 +891,20 @@ module.exports = function (app, ctx) {
           locSource = 'bridge';
         }
 
+        // ==========================================
+        // CACHE PATCH: Pull coordinates from active preview line
+        // ==========================================
+        if (!locSource && qso.status === 'log') {
+          const existing = n3fjpQsos.find((q) => q.dx_call === qso.dx_call && q.lat !== 0 && q.lon !== 0);
+          if (existing) {
+            qso.lat = existing.lat;
+            qso.lon = existing.lon;
+            qso.loc_source = 'cache';
+            locSource = 'cache';
+          }
+        }
+        // ==========================================
+
         // 2) Otherwise prefer the exact operating grid (N3FJP “Grid Rec” field).
         if (!locSource && qso.dx_grid) {
           const loc = maidenheadToLatLon(qso.dx_grid);
