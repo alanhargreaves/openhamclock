@@ -9,7 +9,9 @@
  * Serve:   classic telnet cluster on :7300, HTTP API on :3002.
  *
  * Environment:
- *   PORT          HTTP port             (default 3002)
+ *   HTTP_PORT     HTTP port             (default 3002; falls back to PORT
+ *                 unless PORT is the telnet port — Railway sets PORT to the
+ *                 TCP proxy target)
  *   TELNET_PORT   telnet cluster port   (default 7300)
  *   CALLSIGN      callsign used to log in to RBN          (default K0CJH)
  *   NODE_CALL     node callsign shown to telnet users     (default K0CJH-2)
@@ -26,8 +28,20 @@ const { buildHttpApi } = require('./lib/httpApi.js');
 const { isValidCallsign } = require('./lib/callsign.js');
 const pkg = require('./package.json');
 
-const HTTP_PORT = parseInt(process.env.PORT, 10) || 3002;
 const TELNET_PORT = parseInt(process.env.TELNET_PORT, 10) || 7300;
+// Railway sets PORT to the TCP proxy's application port — i.e. the telnet
+// port — so a PORT that matches TELNET_PORT is not meant for the HTTP API.
+let HTTP_PORT = parseInt(process.env.HTTP_PORT ?? process.env.PORT, 10) || 3002;
+if (HTTP_PORT === TELNET_PORT) {
+  console.warn(
+    `PORT ${HTTP_PORT} is the telnet cluster port; HTTP API falling back to 3002. Set HTTP_PORT to pick another.`,
+  );
+  HTTP_PORT = 3002;
+  if (HTTP_PORT === TELNET_PORT) {
+    console.error('FATAL: HTTP_PORT and TELNET_PORT are both 3002; set them to different ports.');
+    process.exit(1);
+  }
+}
 const CALLSIGN = (process.env.CALLSIGN || 'K0CJH').trim().toUpperCase();
 const NODE_CALL = (process.env.NODE_CALL || 'K0CJH-2').trim().toUpperCase();
 

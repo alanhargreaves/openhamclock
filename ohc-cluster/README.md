@@ -40,21 +40,23 @@ send that email.
 
 1. New service from this directory (`ohc-cluster/`).
 2. Set `CALLSIGN` (RBN login) and `NODE_CALL` (what telnet users see).
-3. HTTP is exposed normally via `PORT`.
+3. HTTP listens on 3002 by default (set `HTTP_PORT` to change it). Note:
+   once a TCP proxy is attached, Railway sets `PORT` to the proxy's target
+   port; the server detects that and keeps the HTTP API on 3002.
 4. Telnet needs a **TCP Proxy**: Settings → Networking → TCP Proxy →
    internal port 7300. Railway assigns the public `host:port` — publish that.
 
 ## Environment
 
-| Var              | Default | Purpose                             |
-| ---------------- | ------- | ----------------------------------- |
-| `PORT`           | 3002    | HTTP API port                       |
-| `TELNET_PORT`    | 7300    | telnet cluster port                 |
-| `CALLSIGN`       | K0CJH   | RBN login callsign (must be valid)  |
-| `NODE_CALL`      | K0CJH-2 | node callsign shown to telnet users |
-| `RBN_ENABLED`    | 1       | set `0` to disable RBN ingest       |
-| `HAMQTH_ENABLED` | 1       | set `0` to disable HamQTH polling   |
-| `LOG_LEVEL`      | info    | `debug` / `info` / `warn`           |
+| Var              | Default | Purpose                                                             |
+| ---------------- | ------- | ------------------------------------------------------------------- |
+| `HTTP_PORT`      | 3002    | HTTP API port (falls back to `PORT` unless that is the telnet port) |
+| `TELNET_PORT`    | 7300    | telnet cluster port                                                 |
+| `CALLSIGN`       | K0CJH   | RBN login callsign (must be valid)                                  |
+| `NODE_CALL`      | K0CJH-2 | node callsign shown to telnet users                                 |
+| `RBN_ENABLED`    | 1       | set `0` to disable RBN ingest                                       |
+| `HAMQTH_ENABLED` | 1       | set `0` to disable HamQTH polling                                   |
+| `LOG_LEVEL`      | info    | `debug` / `info` / `warn`                                           |
 
 ## Tests
 
