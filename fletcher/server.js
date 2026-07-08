@@ -146,8 +146,18 @@ const server = http.createServer(async (req, res) => {
 
   if (upstreamBase) {
     const rest = segments.slice(1).join('/');
-    const target = `${upstreamBase}/${rest}${url.search}`;
-    return relay(upstreamName, target, req, res);
+    let target;
+    try {
+      target = new URL(`${rest}${url.search}`, `${upstreamBase}/`);
+    } catch {
+      target = null;
+    }
+    // The path/query are caller-controlled; the origin must never be.
+    if (!target || target.origin !== new URL(upstreamBase).origin) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'invalid relay path' }));
+    }
+    return relay(upstreamName, target.href, req, res);
   }
 
   res.writeHead(404, { 'Content-Type': 'application/json' });
