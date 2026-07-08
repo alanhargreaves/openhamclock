@@ -82,7 +82,16 @@ module.exports = function (app, ctx) {
 
   // OpenHamClock's own cluster node (ohc-cluster/ sibling service).
   // Unset = not deployed yet; the source is hidden and auto mode skips it.
-  const OHC_CLUSTER_URL = (process.env.OHC_CLUSTER_URL || '').replace(/\/$/, '');
+  // A schemeless value (e.g. "ohc-cluster.railway.internal:3002") would make
+  // every fetch throw "Only absolute URLs are supported" — normalize it.
+  const OHC_CLUSTER_URL = (() => {
+    const raw = (process.env.OHC_CLUSTER_URL || '').trim().replace(/\/$/, '');
+    if (raw && !/^https?:\/\//i.test(raw)) {
+      console.warn(`[DX Cluster] OHC_CLUSTER_URL has no scheme — assuming http://${raw}`);
+      return `http://${raw}`;
+    }
+    return raw;
+  })();
 
   // Hosted-instance lockdown. Set OHC_HOSTED=1 ONLY on our Railway deployments:
   // the hosted site serves many users from one egress IP, so user-directed
@@ -90,6 +99,11 @@ module.exports = function (app, ctx) {
   // everything comes from our own cluster node. Self-hosted installs never set
   // this and keep the full source list (with their own callsign enforced).
   const IS_HOSTED = process.env.OHC_HOSTED === '1' || process.env.OHC_HOSTED === 'true';
+  if (IS_HOSTED && !OHC_CLUSTER_URL) {
+    console.error(
+      '[DX Cluster] OHC_HOSTED is set but OHC_CLUSTER_URL is not — the hosted source list offers only the OHC node, and every fetch to it will fail. Set OHC_CLUSTER_URL.',
+    );
+  }
 
   // Cache for DX Spider telnet spots (to avoid excessive connections)
   let dxSpiderCache = { spots: [], timestamp: 0 };
