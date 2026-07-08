@@ -1221,11 +1221,16 @@ module.exports = function (app, ctx) {
 
   // satellite data endpoint
   app.get('/api/satellites/data', async (req, res) => {
-    // Don't let Fastly/CDN pin an empty payload — when all sources fail we want
+    // Don't let the CDN pin an empty payload — when all sources fail we want
     // the next request after backoff to hit the origin, not the edge cache.
+    // Good payloads get an explicit short edge TTL: the Cloudflare cache rule
+    // honors origin Cache-Control and bypasses when it's absent, so without
+    // this header the endpoint wouldn't be edge-cached at all.
     const sendSatelliteData = (payload) => {
       if (!payload || Object.keys(payload).length === 0) {
         res.set('Cache-Control', 'no-store');
+      } else {
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=300');
       }
 
       const newestTimestamp = Object.values(ommCache)
