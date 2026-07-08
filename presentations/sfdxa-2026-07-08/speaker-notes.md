@@ -286,8 +286,11 @@ _[Click the callsign in the popup.]_
 
 _[Open the DX cluster filters; toggle "Show only DXpeditions."]_
 
-> Here's the "show only DXpeditions" toggle — and the list collapses to
-> just the ATNOs.
+> Here's the "show only DXpeditions" toggle — it cross-references the
+> DXpedition calendar, so whatever's left is just the expeditions. And if
+> the list is short right now — or even empty — that's honest data: it
+> means nobody's spotted an expedition in the last hour. They're rare
+> catches by definition. When one pops up, this is where you'll see it.
 
 _[Point at the spot button — do not send.]_
 
