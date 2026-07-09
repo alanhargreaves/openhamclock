@@ -320,6 +320,52 @@ export const applyDXFilters = (item, filters) => {
 };
 
 /**
+ * Pick a mode-balanced display window from a spot list.
+ *
+ * The cluster feed is dominated by RBN skimmer spots, and FT8/FT4 churn keeps
+ * the newest entries almost exclusively digital — a plain "newest N" slice
+ * shows no SSB at all, because SSB only exists as human spots (skimmers can't
+ * decode phone) and those age past the window within minutes. Mirrors the
+ * server-side balancing in ohc-cluster/lib/store.js: reserve a slice of the
+ * window for human spots, cap FT8/FT4, give unused slots back to the pool.
+ * Returns spots in their original (newest-first) feed order.
+ */
+export const balanceSpotWindow = (spots, limit, { humanReserveShare = 0.25, ft8Ft4CapShare = 0.5 } = {}) => {
+  if (!Array.isArray(spots) || spots.length <= limit) return spots || [];
+
+  // Skimmer spots carry source 'RBN' from our node; other feeds mark them
+  // with the classic skimmer callsign suffix (-#).
+  const isSkimmer = (s) => s.source === 'RBN' || /-#$/.test(s.spotter || '');
+  const humans = [];
+  const ft8ft4 = [];
+  const other = [];
+  spots.forEach((spot, i) => {
+    const entry = [spot, i];
+    if (!isSkimmer(spot)) {
+      humans.push(entry);
+    } else {
+      const mode = spot.mode || detectMode(spot.comment, spot.freq);
+      (mode === 'FT8' || mode === 'FT4' ? ft8ft4 : other).push(entry);
+    }
+  });
+
+  const humanReserve = Math.ceil(limit * humanReserveShare);
+  const out = humans.slice(0, humanReserve);
+  out.push(...ft8ft4.slice(0, Math.min(Math.ceil(limit * ft8Ft4CapShare), limit - out.length)));
+  out.push(...other.slice(0, limit - out.length));
+
+  // Backfill with the remaining freshest spots if any group ran short
+  if (out.length < limit) {
+    const chosen = new Set(out.map(([, i]) => i));
+    for (let i = 0; i < spots.length && out.length < limit; i++) {
+      if (!chosen.has(i)) out.push([spots[i], i]);
+    }
+  }
+
+  return out.sort((a, b) => a[1] - b[1]).map(([spot]) => spot);
+};
+
+/**
  * Filter an array of DX spots/paths
  * Wrapper around applyDXFilters for filtering arrays
  */

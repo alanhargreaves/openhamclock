@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { applyDXFilters, filterDXPaths } from '../utils/dxClusterFilters.js';
+import { applyDXFilters, filterDXPaths, balanceSpotWindow } from '../utils/dxClusterFilters.js';
 
 describe('dxClusterFilters', () => {
   let mockSpot;
@@ -742,6 +742,82 @@ describe('dxClusterFilters', () => {
         excludeDXCallList: ['4U1UN', '4X6TU'],
       };
       expect(applyDXFilters(beaconSpot, filters)).toBe(false);
+    });
+  });
+
+  describe('balanceSpotWindow', () => {
+    const ft8Spot = (i) => ({
+      call: `F${i}T8`,
+      spotter: 'KM3T-#',
+      freq: '14.074',
+      comment: 'FT8 -12 dB CQ',
+      mode: 'FT8',
+      source: 'RBN',
+    });
+    const cwSpot = (i) => ({
+      call: `C${i}W`,
+      spotter: 'W3OA-#',
+      freq: '14.025',
+      comment: 'CW 20 dB 22 WPM CQ',
+      mode: 'CW',
+      source: 'RBN',
+    });
+    const humanSpot = (i) => ({
+      call: `HU${i}MAN`,
+      spotter: 'K0CJH',
+      freq: '14.200',
+      comment: '59 tnx',
+      source: 'HamQTH',
+    });
+
+    it('returns the list untouched when it fits the window', () => {
+      const spots = [ft8Spot(0), humanSpot(0)];
+      expect(balanceSpotWindow(spots, 50)).toEqual(spots);
+    });
+
+    it('keeps human spots buried deep behind skimmer churn', () => {
+      // 100 fresh FT8 spots ahead of 10 aging human spots — a plain
+      // newest-50 slice would show zero humans
+      const spots = [
+        ...Array.from({ length: 100 }, (_, i) => ft8Spot(i)),
+        ...Array.from({ length: 10 }, (_, i) => humanSpot(i)),
+      ];
+      const windowed = balanceSpotWindow(spots, 50);
+      expect(windowed).toHaveLength(50);
+      expect(windowed.filter((s) => s.source === 'HamQTH')).toHaveLength(10);
+    });
+
+    it('caps FT8/FT4 so other skimmer modes survive', () => {
+      const spots = [];
+      for (let i = 0; i < 60; i++) spots.push(ft8Spot(i));
+      for (let i = 0; i < 60; i++) spots.push(cwSpot(i));
+      const windowed = balanceSpotWindow(spots, 40);
+      expect(windowed).toHaveLength(40);
+      expect(windowed.filter((s) => s.mode === 'FT8').length).toBeLessThanOrEqual(20);
+      expect(windowed.filter((s) => s.mode === 'CW').length).toBeGreaterThanOrEqual(20);
+    });
+
+    it('backfills the window when only FT8 is on the air', () => {
+      const spots = Array.from({ length: 80 }, (_, i) => ft8Spot(i));
+      expect(balanceSpotWindow(spots, 50)).toHaveLength(50);
+    });
+
+    it('preserves feed order in the output', () => {
+      const spots = [...Array.from({ length: 60 }, (_, i) => ft8Spot(i)), humanSpot(0)];
+      const windowed = balanceSpotWindow(spots, 50);
+      const idx = (call) => spots.findIndex((s) => s.call === call);
+      for (let i = 1; i < windowed.length; i++) {
+        expect(idx(windowed[i].call)).toBeGreaterThan(idx(windowed[i - 1].call));
+      }
+    });
+
+    it('recognizes skimmers by the -# suffix when spots carry no source field', () => {
+      const spots = [
+        ...Array.from({ length: 60 }, (_, i) => ({ ...ft8Spot(i), source: undefined })),
+        { call: 'PY6RT', spotter: 'K0CJH', freq: '14.200', comment: '59', source: undefined },
+      ];
+      const windowed = balanceSpotWindow(spots, 50);
+      expect(windowed.some((s) => s.call === 'PY6RT')).toBe(true);
     });
   });
 });
