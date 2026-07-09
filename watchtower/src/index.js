@@ -73,7 +73,9 @@ const SERVICES = [
   },
   {
     name: 'ohc-cluster',
-    url: 'https://ohc-cluster-production.openhamclock.com/health',
+    // NOTE: the domain's target port must be 3002 (the HTTP API) — telnet
+    // (7300) is exposed separately via the Railway TCP proxy.
+    url: 'https://ohc-cluster-production.up.railway.app/health',
     parse: parseSimple200,
     railwayEnv: 'production',
   },
