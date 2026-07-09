@@ -746,55 +746,56 @@ describe('dxClusterFilters', () => {
   });
 
   describe('balanceSpotWindow', () => {
+    // Spots in the shape the panel actually receives via useDXClusterData:
+    // the paths endpoint drops mode/source and strips the -# skimmer suffix,
+    // so comment + frequency are the only mode signals available.
     const ft8Spot = (i) => ({
       call: `F${i}T8`,
-      spotter: 'KM3T-#',
+      spotter: 'KM3T',
       freq: '14.074',
       comment: 'FT8 -12 dB CQ',
-      mode: 'FT8',
-      source: 'RBN',
+      source: 'DXCluster',
     });
     const cwSpot = (i) => ({
       call: `C${i}W`,
-      spotter: 'W3OA-#',
+      spotter: 'W3OA',
       freq: '14.025',
       comment: 'CW 20 dB 22 WPM CQ',
-      mode: 'CW',
-      source: 'RBN',
+      source: 'DXCluster',
     });
-    const humanSpot = (i) => ({
-      call: `HU${i}MAN`,
+    const ssbSpot = (i) => ({
+      call: `S${i}SB`,
       spotter: 'K0CJH',
-      freq: '14.200',
+      freq: '14.2',
       comment: '59 tnx',
-      source: 'HamQTH',
+      source: 'DXCluster',
     });
 
     it('returns the list untouched when it fits the window', () => {
-      const spots = [ft8Spot(0), humanSpot(0)];
+      const spots = [ft8Spot(0), ssbSpot(0)];
       expect(balanceSpotWindow(spots, 50)).toEqual(spots);
     });
 
-    it('keeps human spots buried deep behind skimmer churn', () => {
-      // 100 fresh FT8 spots ahead of 10 aging human spots — a plain
-      // newest-50 slice would show zero humans
+    it('keeps SSB spots buried deep behind skimmer churn', () => {
+      // 100 fresh FT8 spots ahead of 10 aging SSB spots — a plain
+      // newest-50 slice would show zero SSB
       const spots = [
         ...Array.from({ length: 100 }, (_, i) => ft8Spot(i)),
-        ...Array.from({ length: 10 }, (_, i) => humanSpot(i)),
+        ...Array.from({ length: 10 }, (_, i) => ssbSpot(i)),
       ];
       const windowed = balanceSpotWindow(spots, 50);
       expect(windowed).toHaveLength(50);
-      expect(windowed.filter((s) => s.source === 'HamQTH')).toHaveLength(10);
+      expect(windowed.filter((s) => s.spotter === 'K0CJH')).toHaveLength(10);
     });
 
-    it('caps FT8/FT4 so other skimmer modes survive', () => {
+    it('caps FT8/FT4 so other modes survive', () => {
       const spots = [];
       for (let i = 0; i < 60; i++) spots.push(ft8Spot(i));
       for (let i = 0; i < 60; i++) spots.push(cwSpot(i));
       const windowed = balanceSpotWindow(spots, 40);
       expect(windowed).toHaveLength(40);
-      expect(windowed.filter((s) => s.mode === 'FT8').length).toBeLessThanOrEqual(20);
-      expect(windowed.filter((s) => s.mode === 'CW').length).toBeGreaterThanOrEqual(20);
+      expect(windowed.filter((s) => s.comment.startsWith('FT8')).length).toBeLessThanOrEqual(20);
+      expect(windowed.filter((s) => s.comment.startsWith('CW')).length).toBeGreaterThanOrEqual(20);
     });
 
     it('backfills the window when only FT8 is on the air', () => {
@@ -803,7 +804,7 @@ describe('dxClusterFilters', () => {
     });
 
     it('preserves feed order in the output', () => {
-      const spots = [...Array.from({ length: 60 }, (_, i) => ft8Spot(i)), humanSpot(0)];
+      const spots = [...Array.from({ length: 60 }, (_, i) => ft8Spot(i)), ssbSpot(0)];
       const windowed = balanceSpotWindow(spots, 50);
       const idx = (call) => spots.findIndex((s) => s.call === call);
       for (let i = 1; i < windowed.length; i++) {
@@ -811,13 +812,24 @@ describe('dxClusterFilters', () => {
       }
     });
 
-    it('recognizes skimmers by the -# suffix when spots carry no source field', () => {
+    it('prefers an explicit mode field over comment/frequency inference', () => {
+      // OHC spots-endpoint shape carries mode; a "SSB" mode on an odd
+      // frequency must still land in the voice reserve
       const spots = [
-        ...Array.from({ length: 60 }, (_, i) => ({ ...ft8Spot(i), source: undefined })),
-        { call: 'PY6RT', spotter: 'K0CJH', freq: '14.200', comment: '59', source: undefined },
+        ...Array.from({ length: 60 }, (_, i) => ft8Spot(i)),
+        { call: 'PY6RT', spotter: 'K0CJH', freq: '14.347', comment: '', mode: 'SSB' },
       ];
       const windowed = balanceSpotWindow(spots, 50);
       expect(windowed.some((s) => s.call === 'PY6RT')).toBe(true);
+    });
+
+    it('treats mode-unknown spots as voice so human spots are never starved', () => {
+      const spots = [
+        ...Array.from({ length: 60 }, (_, i) => ft8Spot(i)),
+        { call: 'ZL1XYZ', spotter: 'K0CJH', freq: '14.100', comment: 'loud', source: 'DXCluster' },
+      ];
+      const windowed = balanceSpotWindow(spots, 50);
+      expect(windowed.some((s) => s.call === 'ZL1XYZ')).toBe(true);
     });
   });
 });
