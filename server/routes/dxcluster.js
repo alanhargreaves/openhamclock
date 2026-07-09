@@ -1987,8 +1987,13 @@ module.exports = function (app, ctx) {
       });
 
       // Look up prefix-based locations for all callsigns (includes grid squares!)
+      // estimateLocationFromPrefix is a local CTY-table lookup — cheap enough
+      // to run for every call in the batch. A 100-call cap here silently left
+      // spots past it uncharted once fetches grew past 50 spots (the map
+      // filters out paths with no spotter coordinates). The remote HamQTH
+      // batch below has its own 10-per-cycle cap.
       const prefixLocations = {};
-      const callsToLookup = [...allCalls].slice(0, 100);
+      const callsToLookup = [...allCalls].slice(0, 1000);
 
       for (const call of callsToLookup) {
         const loc = estimateLocationFromPrefix(call);
