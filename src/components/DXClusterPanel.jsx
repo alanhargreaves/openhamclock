@@ -516,7 +516,7 @@ export const DXClusterPanel = ({
             {showSpotter && <span role="columnheader">Spotter</span>}
             <span role="columnheader">Age</span>
           </div>
-          {spots.slice(0, 25).map((spot, i) => {
+          {spots.slice(0, 50).map((spot, i) => {
             // Frequency can be in MHz (string like "14.070") or kHz (number like 14070)
             let freqDisplay = '?';
             let freqMHz = 0;
