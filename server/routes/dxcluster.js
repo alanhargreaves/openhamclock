@@ -6,7 +6,7 @@
 const dgram = require('dgram');
 const net = require('net');
 const { maidenheadToLatLon } = require('../utils/grid.js');
-const { areDXPathsDuplicate } = require('../utils/dxClusterPathIdentity');
+const { areDXPathsDuplicate, collapseDuplicateDXPaths } = require('../utils/dxClusterPathIdentity');
 const { isPrivateIP, validateCustomHost } = require('../utils/ssrf');
 
 module.exports = function (app, ctx) {
@@ -2221,10 +2221,13 @@ module.exports = function (app, ctx) {
         }
       }
 
-      // Sort by timestamp (newest first) and cap. 600 holds a full hour of
-      // balanced history — the accumulator is what mode filters draw from.
+      // Sort by timestamp (newest first), collapse re-spots of the same
+      // station (same call within ~2 kHz keeps only the newest row — every
+      // extra spotter of an activator was another visible duplicate), then
+      // cap. 600 holds a full hour of balanced history — the accumulator is
+      // what mode filters draw from.
       const sortedPaths = capWithDXpeditions(
-        mergedPaths.sort((a, b) => b.timestamp - a.timestamp),
+        collapseDuplicateDXPaths(mergedPaths.sort((a, b) => b.timestamp - a.timestamp)),
         600,
       );
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { applyDXFilters, filterDXPaths, balanceSpotWindow } from '../utils/dxClusterFilters.js';
+import { applyDXFilters, filterDXPaths, balanceSpotWindow, collapseDuplicateSpots } from '../utils/dxClusterFilters.js';
 
 describe('dxClusterFilters', () => {
   let mockSpot;
@@ -830,6 +830,57 @@ describe('dxClusterFilters', () => {
       ];
       const windowed = balanceSpotWindow(spots, 50);
       expect(windowed.some((s) => s.call === 'ZL1XYZ')).toBe(true);
+    });
+  });
+
+  describe('collapseDuplicateSpots', () => {
+    const spot = (over = {}) => ({
+      dxCall: 'NX9T',
+      spotter: 'K0CJH',
+      freq: '7.225',
+      comment: 'POTA US-1502',
+      timestamp: 1000,
+      ...over,
+    });
+
+    it('collapses re-spots of the same station by different spotters, keeping the newest', () => {
+      // newest-first input, as the accumulator provides
+      const spots = [
+        spot({ spotter: 'W1AW', comment: 'POTA US-1502 59 OH', timestamp: 3000 }),
+        spot({ spotter: 'K2ABC', timestamp: 2000 }),
+        spot({ timestamp: 1000 }),
+      ];
+      const out = collapseDuplicateSpots(spots);
+      expect(out).toHaveLength(1);
+      expect(out[0].spotter).toBe('W1AW');
+    });
+
+    it('collapses slightly-off frequencies (within 2 kHz) of the same call', () => {
+      const spots = [spot({ freq: '14.208' }), spot({ freq: '14.2085', spotter: 'W2XYZ' })];
+      expect(collapseDuplicateSpots(spots)).toHaveLength(1);
+    });
+
+    it('keeps a real QSY as a separate row', () => {
+      const spots = [spot({ freq: '14.208' }), spot({ freq: '14.288', spotter: 'W2XYZ' })];
+      expect(collapseDuplicateSpots(spots)).toHaveLength(2);
+    });
+
+    it('keeps different stations on the same frequency', () => {
+      const spots = [spot(), spot({ dxCall: 'K2LT', spotter: 'W2XYZ' })];
+      expect(collapseDuplicateSpots(spots)).toHaveLength(2);
+    });
+
+    it('handles the legacy call field and kHz frequencies', () => {
+      const spots = [
+        { call: 'ZF2OO', spotter: 'A1AA', freq: 14208, comment: '' },
+        { call: 'ZF2OO', spotter: 'B2BB', freq: 14208.5, comment: '' },
+      ];
+      expect(collapseDuplicateSpots(spots)).toHaveLength(1);
+    });
+
+    it('passes through rows it cannot key', () => {
+      const spots = [spot({ dxCall: '', call: '' }), spot({ freq: 'garbage', dxCall: 'W9XYZ' })];
+      expect(collapseDuplicateSpots(spots)).toHaveLength(2);
     });
   });
 });
