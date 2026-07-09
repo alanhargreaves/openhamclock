@@ -1136,9 +1136,40 @@ module.exports = function (app, ctx) {
   // handful of spots it exists to surface.
   const DXPEDITION_RETENTION = 60 * 60 * 1000;
   const isPathLive = (p, now) => now - p.timestamp < (p.isDXpedition ? DXPEDITION_RETENTION : DXPATHS_RETENTION);
+  // Mode-balanced cap. A plain newest-N slice is almost pure FT8/FT4 skimmer
+  // churn (freshest timestamps always), which starves the window of SSB
+  // entirely — SSB only exists as human spots, and RBN can't decode phone.
+  // RBN comments always lead with the mode ("FT8 -13 dB", "CW 26 dB 22 WPM"),
+  // so a spot without a mode marker is human traffic and gets the reserve.
+  const balancePathsByMode = (paths, limit) => {
+    if (paths.length <= limit) return paths;
+    const voice = [];
+    const ft8ft4 = [];
+    const other = [];
+    for (const p of paths) {
+      const c = String(p.comment || '').toUpperCase();
+      if (/\bFT[84]\b/.test(c)) ft8ft4.push(p);
+      else if (/\b(CW|RTTY|PSK)/.test(c)) other.push(p);
+      else voice.push(p); // voice keywords or no mode marker — human spots
+    }
+    const out = voice.slice(0, Math.ceil(limit * 0.25));
+    out.push(...ft8ft4.slice(0, Math.min(Math.ceil(limit * 0.5), limit - out.length)));
+    out.push(...other.slice(0, limit - out.length));
+    if (out.length < limit) {
+      const chosen = new Set(out);
+      for (const p of paths) {
+        if (out.length >= limit) break;
+        if (!chosen.has(p)) out.push(p);
+      }
+    }
+    return out;
+  };
   const capWithDXpeditions = (paths, limit) => {
     const dxpeditions = paths.filter((p) => p.isDXpedition);
-    const regular = paths.filter((p) => !p.isDXpedition).slice(0, limit);
+    const regular = balancePathsByMode(
+      paths.filter((p) => !p.isDXpedition),
+      limit,
+    );
     return [...dxpeditions, ...regular].sort((a, b) => b.timestamp - a.timestamp);
   };
   const DXPATHS_MAX_KEYS = 100; // Hard cap on cache keys

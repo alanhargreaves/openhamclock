@@ -327,30 +327,36 @@ export const applyDXFilters = (item, filters) => {
  * shows no SSB at all, because SSB only exists as human spots (skimmers can't
  * decode phone) and those age past the window within minutes. Mirrors the
  * server-side balancing in ohc-cluster/lib/store.js: reserve a slice of the
- * window for human spots, cap FT8/FT4, give unused slots back to the pool.
- * Returns spots in their original (newest-first) feed order.
+ * window for voice-mode spots, cap FT8/FT4, give unused slots back to the
+ * pool. Returns spots in their original (newest-first) feed order.
+ *
+ * Classification goes through detectMode (comment keywords, then band-plan
+ * frequency inference) rather than source/spotter markers: the paths endpoint
+ * strips the -# skimmer suffix and drops the mode/source fields, so comment
+ * and frequency are the only signals that survive every feed shape.
  */
-export const balanceSpotWindow = (spots, limit, { humanReserveShare = 0.25, ft8Ft4CapShare = 0.5 } = {}) => {
+export const balanceSpotWindow = (spots, limit, { voiceReserveShare = 0.25, ft8Ft4CapShare = 0.5 } = {}) => {
   if (!Array.isArray(spots) || spots.length <= limit) return spots || [];
 
-  // Skimmer spots carry source 'RBN' from our node; other feeds mark them
-  // with the classic skimmer callsign suffix (-#).
-  const isSkimmer = (s) => s.source === 'RBN' || /-#$/.test(s.spotter || '');
-  const humans = [];
+  const voice = [];
   const ft8ft4 = [];
   const other = [];
   spots.forEach((spot, i) => {
     const entry = [spot, i];
-    if (!isSkimmer(spot)) {
-      humans.push(entry);
+    const mode = spot.mode || detectMode(spot.comment, spot.freq);
+    if (mode === 'FT8' || mode === 'FT4') {
+      ft8ft4.push(entry);
+    } else if (mode === 'SSB' || mode === 'AM' || mode === 'FM' || !mode) {
+      // Voice modes and mode-unknown spots — the human-spotted traffic that
+      // skimmer churn otherwise pushes out of the window
+      voice.push(entry);
     } else {
-      const mode = spot.mode || detectMode(spot.comment, spot.freq);
-      (mode === 'FT8' || mode === 'FT4' ? ft8ft4 : other).push(entry);
+      other.push(entry);
     }
   });
 
-  const humanReserve = Math.ceil(limit * humanReserveShare);
-  const out = humans.slice(0, humanReserve);
+  const voiceReserve = Math.ceil(limit * voiceReserveShare);
+  const out = voice.slice(0, voiceReserve);
   out.push(...ft8ft4.slice(0, Math.min(Math.ceil(limit * ft8Ft4CapShare), limit - out.length)));
   out.push(...other.slice(0, limit - out.length));
 
