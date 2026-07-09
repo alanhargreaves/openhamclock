@@ -16,8 +16,12 @@
 const { bandForKhz, toHHMMz } = require('./format.js');
 
 const DEFAULTS = {
-  retentionMs: 30 * 60 * 1000, // drop spots older than 30 min
-  maxSpots: 2000, // hard cap across all sources
+  // A full hour of history so mode-filtered queries (?mode=SSB) have real
+  // depth — SSB-only traffic is sparse and a 30-min window left users with a
+  // handful of results. New-aggregate rate runs ~4700/hour (measured), so the
+  // cap needs headroom above that or eviction silently undercuts retention.
+  retentionMs: 60 * 60 * 1000,
+  maxSpots: 8000, // hard cap across all sources
   humanDedupWindowMs: 2 * 60 * 1000, // same spotter+call+freq within 2 min = dupe
   skimmerRebroadcastMs: 10 * 60 * 1000, // re-announce a busy station at most every 10 min
   humanReserveShare: 0.25, // slice of the default query window held for human spots

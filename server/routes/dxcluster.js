@@ -1129,12 +1129,12 @@ module.exports = function (app, ctx) {
   // Cache for DX spot paths to avoid excessive lookups (per source/profile)
   const dxSpotPathsCacheByKey = new Map();
   const DXPATHS_CACHE_TTL = 25000; // 25 seconds cache (just under 30s poll interval to maximize cache hits)
-  const DXPATHS_RETENTION = 30 * 60 * 1000; // 30 minute spot retention
+  const DXPATHS_RETENTION = 60 * 60 * 1000; // 60 min — deep enough that mode filters (SSB-only) have real history
   // DXpedition-tagged paths get longer retention and are exempt from display
-  // caps: under RBN skimmer volume (OHC Cluster source) the newest-100 window
-  // spans only a few minutes, which starved the dxpeditionsOnly filter of the
+  // caps: under RBN skimmer volume (OHC Cluster source) a newest-N window
+  // spans only minutes, which starved the dxpeditionsOnly filter of the
   // handful of spots it exists to surface.
-  const DXPEDITION_RETENTION = 60 * 60 * 1000;
+  const DXPEDITION_RETENTION = 2 * 60 * 60 * 1000;
   const isPathLive = (p, now) => now - p.timestamp < (p.isDXpedition ? DXPEDITION_RETENTION : DXPATHS_RETENTION);
   // Mode-balanced cap. A plain newest-N slice is almost pure FT8/FT4 skimmer
   // churn (freshest timestamps always), which starves the window of SSB
@@ -1958,7 +1958,7 @@ module.exports = function (app, ctx) {
       if (newSpots.length === 0) {
         // Return existing paths if fetch failed
         const validPaths = pathsCache.allPaths.filter((p) => isPathLive(p, now));
-        return res.json(capWithDXpeditions(validPaths, 50));
+        return res.json(capWithDXpeditions(validPaths, 150));
       }
 
       // Get unique callsigns to look up (sanitize and strip modifiers)
@@ -2216,10 +2216,11 @@ module.exports = function (app, ctx) {
         }
       }
 
-      // Sort by timestamp (newest first) and limit
+      // Sort by timestamp (newest first) and cap. 600 holds a full hour of
+      // balanced history — the accumulator is what mode filters draw from.
       const sortedPaths = capWithDXpeditions(
         mergedPaths.sort((a, b) => b.timestamp - a.timestamp),
-        100,
+        600,
       );
 
       logDebug(
@@ -2251,12 +2252,12 @@ module.exports = function (app, ctx) {
 
       // Update cache
       dxSpotPathsCacheByKey.set(cacheKey, {
-        paths: capWithDXpeditions(sortedPaths, 50), // Return 50 for display
+        paths: capWithDXpeditions(sortedPaths, 150), // Return 150 for display/filtering
         allPaths: sortedPaths, // Keep all for accumulation
         timestamp: now,
       });
 
-      res.json(capWithDXpeditions(sortedPaths, 50));
+      res.json(capWithDXpeditions(sortedPaths, 150));
     } catch (error) {
       logErrorOnce('DX Paths', error.message);
       // Return cached data on error
