@@ -901,7 +901,7 @@ module.exports = function (app, ctx) {
       const timeout = setTimeout(() => controller.abort(), 10000);
 
       try {
-        const response = await fetch(`${OHC_CLUSTER_URL}/api/dxcluster/spots?limit=50`, {
+        const response = await fetch(`${OHC_CLUSTER_URL}/api/dxcluster/spots?limit=150`, {
           headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
           signal: controller.signal,
         });
@@ -1791,7 +1791,7 @@ module.exports = function (app, ctx) {
         const ohcController = new AbortController();
         const ohcTimeout = setTimeout(() => ohcController.abort(), 10000);
         try {
-          const ohcResponse = await fetch(`${OHC_CLUSTER_URL}/api/dxcluster/spots?limit=100`, {
+          const ohcResponse = await fetch(`${OHC_CLUSTER_URL}/api/dxcluster/spots?limit=150`, {
             headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
             signal: ohcController.signal,
           });

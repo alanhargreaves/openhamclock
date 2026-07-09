@@ -58,7 +58,7 @@ function buildHttpApi({ store, feeds, telnetServer, hamqth, log, startTime, node
   });
 
   app.get('/api/dxcluster/spots', (req, res) => {
-    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 500);
     const spots = store.query({
       limit,
       band: req.query.band || null,
