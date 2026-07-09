@@ -42,13 +42,11 @@ const RAILWAY_ENV_IDS = {
 const SERVICES = [
   {
     name: 'openhamclock',
-    // Probe Staging for now: it has Phase A (subsystems block) and the
-    // rate-limit skip on /api/health. Prod gets both with the next release,
-    // at which point this flips to https://openhamclock.up.railway.app or
-    // https://openhamclock.com once CF Bot Fight stops 429ing the worker.
-    url: 'https://openhamclock-staging.up.railway.app/api/health',
+    // Probe PRODUCTION via the Railway-direct URL — openhamclock.com sits
+    // behind CF Bot Fight, which 429s worker-to-worker fetches.
+    url: 'https://openhamclock.up.railway.app/api/health',
     parse: parseOpenHamClock, // returns { aggregate, subsystems: {fletcher, rbn, ...} }
-    railwayEnv: 'staging',
+    railwayEnv: 'production',
   },
   {
     name: 'proppy',
