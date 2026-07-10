@@ -372,6 +372,40 @@ export const balanceSpotWindow = (spots, limit, { voiceReserveShare = 0.25, ft8F
 };
 
 /**
+ * Collapse re-spots of the same station into one row: same call within
+ * ~2 kHz keeps only the first (newest, given newest-first input) occurrence.
+ * Accumulator dedupe keys on spotter, so every extra spotter of a POTA
+ * activator otherwise produces another visible row. A larger QSY stays a
+ * separate row — the station moving is real information. Mirrors the
+ * server-side collapseDuplicateDXPaths in utils/dxClusterPathIdentity.js.
+ */
+export const collapseDuplicateSpots = (spots) => {
+  if (!Array.isArray(spots)) return spots || [];
+  const kept = [];
+  const freqsByCall = new Map();
+  for (const s of spots) {
+    const call = String(s.dxCall || s.call || '')
+      .trim()
+      .toUpperCase();
+    const f = parseFloat(s.freq);
+    const khz = Number.isFinite(f) ? (f > 1000 ? f : f * 1000) : NaN;
+    if (!call || !Number.isFinite(khz)) {
+      kept.push(s);
+      continue;
+    }
+    const freqs = freqsByCall.get(call);
+    if (freqs) {
+      if (freqs.some((k) => Math.abs(k - khz) < 2)) continue;
+      freqs.push(khz);
+    } else {
+      freqsByCall.set(call, [khz]);
+    }
+    kept.push(s);
+  }
+  return kept;
+};
+
+/**
  * Filter an array of DX spots/paths
  * Wrapper around applyDXFilters for filtering arrays
  */
