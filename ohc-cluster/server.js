@@ -5,8 +5,8 @@
  * OK. Done.
  *
  * Ingest:  RBN skimmer feeds (CW/RTTY + FT8/FT4), human spots from HamQTH,
- *          POTA, SOTA, DX Summit and our dxspider-proxy node, plus user
- *          submissions (telnet `dx` command + HTTP POST).
+ *          POTA, SOTA, WWFF, Parks n Peaks, DX Summit and our dxspider-proxy
+ *          node, plus user submissions (telnet `dx` command + HTTP POST).
  * Serve:   classic telnet cluster on :7300, HTTP API on :3002.
  *
  * Environment:
@@ -18,7 +18,8 @@
  *   NODE_CALL     node callsign shown to telnet users     (default K0CJH-2)
  *   RBN_ENABLED   set to '0' to disable RBN ingest
  *   HAMQTH_ENABLED set to '0' to disable HamQTH ingest
- *   POTA_ENABLED / SOTA_ENABLED / DXSUMMIT_ENABLED / DXSPIDER_ENABLED
+ *   POTA_ENABLED / SOTA_ENABLED / DXSUMMIT_ENABLED / DXSPIDER_ENABLED /
+ *   WWFF_ENABLED / PNP_ENABLED
  *                 set to '0' to disable the matching human-spot poller
  *   DXSPIDER_PROXY_URL  our proxy's base URL (defaults to production)
  *   LOG_LEVEL     debug | info | warn   (default info)
@@ -33,6 +34,8 @@ const {
   parseSotaSpots,
   parseDxSummitSpots,
   parseDxSpiderSpots,
+  parseWwffSpots,
+  parsePnpSpots,
 } = require('./lib/pollers.js');
 const { TelnetClusterServer } = require('./lib/telnetServer.js');
 const { buildHttpApi } = require('./lib/httpApi.js');
@@ -127,6 +130,8 @@ const pollerDefs = [
     url: `${DXSPIDER_PROXY_URL}/api/dxcluster/spots?limit=50`,
     parse: parseDxSpiderSpots,
   },
+  { flag: 'WWFF_ENABLED', name: 'wwff', url: 'https://spots.wwff.co/static/spots.json', parse: parseWwffSpots },
+  { flag: 'PNP_ENABLED', name: 'parksnpeaks', url: 'https://www.parksnpeaks.org/api/ALL', parse: parsePnpSpots },
 ];
 const pollers = [];
 for (const def of pollerDefs) {

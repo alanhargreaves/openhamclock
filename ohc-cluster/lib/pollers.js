@@ -4,10 +4,12 @@
  * RBN can't decode phone, so SSB exists only where humans type spots. One
  * 50-row HamQTH poll per minute was our whole phone supply; these pollers
  * widen it:
- *   POTA      api.pota.app          activator spots, explicit mode, kHz
- *   SOTA      api2.sota.org.uk      summit spots, explicit mode, MHz
- *   DXSummit  dxsummit.fi           classic cluster spots, no mode field
- *   DXSpider  our own dxspider-proxy node feed
+ *   POTA        api.pota.app        activator spots, explicit mode, kHz
+ *   SOTA        api2.sota.org.uk    summit spots, explicit mode, MHz
+ *   DXSummit    dxsummit.fi         classic cluster spots, no mode field
+ *   DXSpider    our own dxspider-proxy node feed
+ *   WWFF        spots.wwff.co       park spots, explicit mode, kHz, lat/lon
+ *   ParksNPeaks parksnpeaks.org     VK/ZL park+summit spots, explicit mode, MHz
  *
  * Each source gets a seen-key dedupe (spot ids where the API provides them,
  * composite keys otherwise) because re-polling returns mostly the same rows —
@@ -34,6 +36,22 @@ const clean = (s) =>
   String(s || '')
     .trim()
     .toUpperCase();
+
+// Maidenhead grid (6-char) from lat/lon — WWFF publishes park coordinates,
+// and a real grid places the spot at the park instead of a country centroid.
+function latLonToGrid6(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  const adjLon = lon + 180;
+  const adjLat = lat + 90;
+  return (
+    String.fromCharCode(65 + Math.floor(adjLon / 20)) +
+    String.fromCharCode(65 + Math.floor(adjLat / 10)) +
+    Math.floor((adjLon % 20) / 2) +
+    Math.floor(adjLat % 10) +
+    String.fromCharCode(97 + Math.floor((adjLon % 2) * 12)) +
+    String.fromCharCode(97 + Math.floor((adjLat % 1) * 24))
+  );
+}
 
 /** api.pota.app/spot/activator */
 function parsePotaSpots(json) {
@@ -147,6 +165,62 @@ function parseDxSpiderSpots(json) {
   return out;
 }
 
+/** spots.wwff.co/static/spots.json — kHz, explicit mode, park lat/lon, epoch-seconds time */
+function parseWwffSpots(json) {
+  const out = [];
+  for (const row of Array.isArray(json) ? json : []) {
+    const call = clean(row.activator);
+    const freqKhz = parseFloat(row.frequency_khz);
+    if (!call || !Number.isFinite(freqKhz) || freqKhz <= 0) continue;
+    const comment = ['WWFF', row.reference, String(row.remarks || '').trim()].filter(Boolean).join(' ').slice(0, 72);
+    const epochSec = parseFloat(row.spot_time);
+    out.push({
+      key: `wwff|${row.id}`,
+      spot: {
+        spotter: clean(row.spotter) || call,
+        call,
+        freqKhz,
+        mode: clean(row.mode) || null,
+        comment,
+        dxGrid: latLonToGrid6(parseFloat(row.latitude), parseFloat(row.longitude)),
+        timestamp: Number.isFinite(epochSec) && epochSec > 0 ? epochSec * 1000 : Date.now(),
+        source: 'WWFF',
+        isSkimmer: false,
+      },
+    });
+  }
+  return out;
+}
+
+/** parksnpeaks.org/api/ALL — VK/ZL spots, MHz, explicit mode ("actSpoter" is the API's own spelling) */
+function parsePnpSpots(json) {
+  const out = [];
+  for (const row of Array.isArray(json) ? json : []) {
+    const call = clean(row.actCallsign);
+    const mhz = parseFloat(row.actFreq);
+    if (!call || !Number.isFinite(mhz) || mhz <= 0) continue;
+    const freqKhz = mhz > 1000 ? mhz : mhz * 1000;
+    const comment = [String(row.actClass || '').trim(), row.actSiteID, String(row.actComments || '').trim()]
+      .filter(Boolean)
+      .join(' ')
+      .slice(0, 72);
+    out.push({
+      key: `pnp|${row.actID}`,
+      spot: {
+        spotter: clean(row.actSpoter) || call,
+        call,
+        freqKhz,
+        mode: clean(row.actMode) || null,
+        comment,
+        timestamp: parseUtcNoZ(String(row.actTime || '').replace(' ', 'T')),
+        source: 'ParksNPeaks',
+        isSkimmer: false,
+      },
+    });
+  }
+  return out;
+}
+
 class JsonPoller {
   constructor({ name, url, parse, store, log, appVersion, intervalMs = POLL_INTERVAL_MS }) {
     this.name = name;
@@ -234,4 +308,7 @@ module.exports = {
   parseSotaSpots,
   parseDxSummitSpots,
   parseDxSpiderSpots,
+  parseWwffSpots,
+  parsePnpSpots,
+  latLonToGrid6,
 };

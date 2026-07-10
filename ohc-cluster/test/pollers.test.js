@@ -7,6 +7,9 @@ const {
   parseSotaSpots,
   parseDxSummitSpots,
   parseDxSpiderSpots,
+  parseWwffSpots,
+  parsePnpSpots,
+  latLonToGrid6,
 } = require('../lib/pollers.js');
 const { SpotStore } = require('../lib/store.js');
 
@@ -100,6 +103,66 @@ test('parseDxSpiderSpots: MHz to kHz, composite key covers the missing date', ()
   assert.equal(rows[0].key, 'spider|PU2LQX|KA1MXL|21074|23:14z');
   assert.equal(rows[0].spot.freqKhz, 21074);
   assert.equal(rows[0].spot.mode, 'FT8');
+});
+
+// Fixtures mirror real API responses captured 2026-07-10
+const WWFF_ROW = {
+  id: 118726,
+  activator: 'KO4FX',
+  frequency_khz: 14240,
+  mode: 'SSB',
+  reference: 'KFF-7436',
+  remarks: '',
+  spotter: 'KO4FX',
+  latitude: 36.1538,
+  longitude: -86.6212,
+  spot_time: 1783647417,
+};
+
+const PNP_ROW = {
+  actTime: '2026-07-10 03:52:18',
+  actID: '2773693',
+  actSiteID: 'VKFF-1331',
+  actCallsign: 'VK2USH',
+  actMode: 'SSB',
+  actFreq: '14.310',
+  actClass: 'WWFF',
+  actComments: '',
+  actSpoter: 'VK2USH',
+};
+
+test('parseWwffSpots: kHz passthrough, park coords become a grid square', () => {
+  const rows = parseWwffSpots([WWFF_ROW]);
+  assert.equal(rows.length, 1);
+  const { key, spot } = rows[0];
+  assert.equal(key, 'wwff|118726');
+  assert.equal(spot.call, 'KO4FX');
+  assert.equal(spot.freqKhz, 14240);
+  assert.equal(spot.mode, 'SSB');
+  assert.equal(spot.comment, 'WWFF KFF-7436');
+  assert.equal(spot.dxGrid, 'EM66qd'); // Percy Priest, Tennessee
+  assert.equal(spot.timestamp, 1783647417000); // epoch seconds -> ms
+  assert.equal(spot.source, 'WWFF');
+});
+
+test('parsePnpSpots: MHz to kHz, program tag in comment, API spotter typo handled', () => {
+  const rows = parsePnpSpots([PNP_ROW, { ...PNP_ROW, actID: '2', actCallsign: '' }]);
+  assert.equal(rows.length, 1);
+  const { key, spot } = rows[0];
+  assert.equal(key, 'pnp|2773693');
+  assert.equal(spot.call, 'VK2USH');
+  assert.equal(spot.spotter, 'VK2USH');
+  assert.equal(spot.freqKhz, 14310);
+  assert.equal(spot.mode, 'SSB');
+  assert.equal(spot.comment, 'WWFF VKFF-1331');
+  assert.equal(spot.timestamp, Date.parse('2026-07-10T03:52:18Z'));
+});
+
+test('latLonToGrid6: known references and invalid input', () => {
+  assert.equal(latLonToGrid6(36.1538, -86.6212), 'EM66qd');
+  assert.equal(latLonToGrid6(51.4779, -0.0015), 'IO91xl'); // Greenwich, just west of the meridian
+  assert.equal(latLonToGrid6(999, 0), null);
+  assert.equal(latLonToGrid6(NaN, 10), null);
 });
 
 test('JsonPoller.ingest: seen-set drops repeats across polls', () => {
