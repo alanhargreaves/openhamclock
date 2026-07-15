@@ -1120,6 +1120,13 @@ If the primary node is down, the proxy automatically tries the next one.
 > proxy from an older release, update it (or set a valid `CALLSIGN`) — pre-v26.4 proxies
 > default to the invalid login `OPENHAMCLOCK-56` and hammer nodes with `sh/dx` retries.
 
+**Remote kill switch:** both the app's cluster connections and the proxy consult
+`cluster-status.json` (fetched from this repo's Staging branch) before dialing any cluster
+node, and re-check every 15 minutes. If a release misbehaves against cluster nodes, flipping
+`"enabled": false` — or raising `"minAppVersion"` / `"minProxyVersion"` — remotely stops all
+up-to-date installs from dialing. The check fails open, so GitHub being unreachable never
+breaks cluster features. Override the flag URL with the `CLUSTER_STATUS_URL` env var.
+
 **SSID management:** Every DX Spider connection requires a unique callsign-SSID combination. OpenHamClock uses:
 
 - `CALLSIGN-56` for production (your live dashboard)

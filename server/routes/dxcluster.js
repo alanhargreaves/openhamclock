@@ -8,6 +8,7 @@ const net = require('net');
 const { maidenheadToLatLon } = require('../utils/grid.js');
 const { areDXPathsDuplicate, collapseDuplicateDXPaths } = require('../utils/dxClusterPathIdentity');
 const { isPrivateIP, validateCustomHost } = require('../utils/ssrf');
+const clusterStatus = require('../utils/clusterStatus');
 
 module.exports = function (app, ctx) {
   const {
@@ -406,6 +407,15 @@ module.exports = function (app, ctx) {
     if (session.reaped || session.parked) return;
     if (session.connected || session.connecting) return;
 
+    // Remote kill switch: checked before every dial (not just at startup) so a
+    // flag flip reaches long-lived sessions too. Returning here leaves the
+    // session idle; the next poll re-checks and dials once re-enabled.
+    const gate = clusterStatus.isDialingAllowed(APP_VERSION, 'app');
+    if (!gate.allowed) {
+      logWarn(`[DX Cluster] Not dialing ${session.node.host} — ${gate.reason}`);
+      return;
+    }
+
     // HARD FLOOR: never dial sooner than CUSTOM_DX_RECONNECT_MIN_MS since the last
     // attempt — even when a poll tries to force us. Reschedule for the remainder so a
     // busy polling client can't turn reconnect into a fast loop.
@@ -674,6 +684,14 @@ module.exports = function (app, ctx) {
   // DX Spider telnet connection helper - used by both /api/dxcluster/spots and /api/dxcluster/paths
   function tryDXSpiderNode(node, userCallsign = null) {
     return new Promise((resolve) => {
+      // Remote kill switch — same gate as the persistent sessions.
+      const gate = clusterStatus.isDialingAllowed(APP_VERSION, 'app');
+      if (!gate.allowed) {
+        logWarn(`[DX Cluster] Not dialing ${node.host} — ${gate.reason}`);
+        resolve(null);
+        return;
+      }
+
       const spots = [];
       let buffer = '';
       let loginSent = false;
@@ -810,7 +828,7 @@ module.exports = function (app, ctx) {
 
       try {
         const response = await fetch('https://www.hamqth.com/dxc_csv.php?limit=25', {
-          headers: { 'User-Agent': 'OpenHamClock/3.13.1' },
+          headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
           signal: controller.signal,
         });
         clearTimeout(timeout);
@@ -872,7 +890,7 @@ module.exports = function (app, ctx) {
 
       try {
         const response = await fetch(`${DXSPIDER_PROXY_URL}/api/dxcluster/spots?limit=50`, {
-          headers: { 'User-Agent': 'OpenHamClock/3.13.1' },
+          headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
           signal: controller.signal,
         });
         clearTimeout(timeout);
@@ -1862,7 +1880,7 @@ module.exports = function (app, ctx) {
         const proxyTimeout = setTimeout(() => proxyController.abort(), 10000);
         try {
           const proxyResponse = await fetch(`${DXSPIDER_PROXY_URL}/api/spots?limit=100`, {
-            headers: { 'User-Agent': 'OpenHamClock/3.14.11' },
+            headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
             signal: proxyController.signal,
           });
 
@@ -1897,7 +1915,7 @@ module.exports = function (app, ctx) {
         const hamqthTimeout = setTimeout(() => hamqthController.abort(), 10000);
         try {
           const response = await fetch('https://www.hamqth.com/dxc_csv.php?limit=50', {
-            headers: { 'User-Agent': 'OpenHamClock/3.13.1' },
+            headers: { 'User-Agent': `OpenHamClock/${APP_VERSION}` },
             signal: hamqthController.signal,
           });
 
