@@ -106,10 +106,6 @@ module.exports = function (app, ctx) {
     );
   }
 
-  // Cache for DX Spider telnet spots (to avoid excessive connections)
-  let dxSpiderCache = { spots: [], timestamp: 0 };
-  const DXSPIDER_CACHE_TTL = 90000; // 90 seconds cache - reduces reconnection frequency
-
   // DX Spider nodes - dxspider.co.uk primary per G6NHU
   // SSID -56 for OpenHamClock (HamClock uses -55)
   // dxc.nc7j.com (NG7M/NC7J, ArcConnect) removed at the sysop's request — do
@@ -144,6 +140,8 @@ module.exports = function (app, ctx) {
   // appendSsid: curated OHC sources tag logins with our -56 SSID. Custom
   // clusters pass false — the user connects to third-party nodes under their
   // own bare callsign (or their own SSID), with nothing linking back to OHC.
+  // Returns null when no usable callsign is configured — we never present
+  // GUEST (or any shared placeholder) to a cluster node.
   function getDxClusterLoginCallsign(preferredCallsign = null, appendSsid = true) {
     // Strip control characters to prevent telnet command injection via query params
     const candidate = (preferredCallsign || CONFIG.dxClusterCallsign || '').replace(/[\x00-\x1F\x7F]/g, '').trim();
@@ -159,7 +157,7 @@ module.exports = function (app, ctx) {
       return appendSsid ? `${CONFIG.callsign.toUpperCase()}${DXSPIDER_SSID}` : CONFIG.callsign.toUpperCase();
     }
 
-    return 'GUEST';
+    return null;
   }
 
   function parseDXSpiderSpotLine(line) {
@@ -461,9 +459,11 @@ module.exports = function (app, ctx) {
     client.setTimeout(0);
     client.setKeepAlive(true, 60000); // OS-level TCP keepalive probes every 60s
 
-    // SECURITY: session.node.host is always the resolved IP from validateCustomHost()
-    // which rejects private/reserved addresses and prevents DNS rebinding (TOCTOU).
-    // See the /api/dxcluster/paths handler where resolvedHost = hostCheck.resolvedIP.
+    // SECURITY: session.node.host is either the resolved IP from validateCustomHost()
+    // — which rejects private/reserved addresses and prevents DNS rebinding (TOCTOU),
+    // see the /api/dxcluster/paths handler where resolvedHost = hostCheck.resolvedIP —
+    // or one of the hardcoded DXSPIDER_NODES hostnames (trusted constants, never
+    // user input).
     client.connect(session.node.port, session.node.host, () => {
       // CodeQL: validated above
       session.connected = true;
@@ -619,8 +619,13 @@ module.exports = function (app, ctx) {
     });
   }
 
-  function getOrCreateCustomSession(node, userCallsign = null) {
-    const loginCallsign = getDxClusterLoginCallsign(userCallsign, false);
+  // appendSsid=true is the curated-source convention (CALL-56 identifies
+  // OpenHamClock to sysops); custom clusters keep the user's callsign as-is.
+  // Returns null instead of dialing when no valid callsign is available —
+  // a cluster node never sees GUEST or a junk login from us.
+  function getOrCreateCustomSession(node, userCallsign = null, appendSsid = false) {
+    const loginCallsign = getDxClusterLoginCallsign(userCallsign, appendSsid);
+    if (!isValidCallsign(loginCallsign)) return null;
     const key = buildCustomSessionKey(node, loginCallsign);
     let session = customDxSessions.get(key);
 
@@ -681,145 +686,11 @@ module.exports = function (app, ctx) {
     return session;
   }
 
-  // DX Spider telnet connection helper - used by both /api/dxcluster/spots and /api/dxcluster/paths
-  function tryDXSpiderNode(node, userCallsign = null) {
-    return new Promise((resolve) => {
-      // Remote kill switch — same gate as the persistent sessions.
-      const gate = clusterStatus.isDialingAllowed(APP_VERSION, 'app');
-      if (!gate.allowed) {
-        logWarn(`[DX Cluster] Not dialing ${node.host} — ${gate.reason}`);
-        resolve(null);
-        return;
-      }
-
-      const spots = [];
-      let buffer = '';
-      let loginSent = false;
-      let commandSent = false;
-      let finished = false;
-
-      // Prefer explicit callsign (frontend/API), then DX_CLUSTER_CALLSIGN from env, then CALLSIGN-56, then GUEST.
-      const loginCallsign = getDxClusterLoginCallsign(userCallsign);
-
-      const client = new net.Socket();
-      client.setTimeout(12000);
-
-      const finalize = (result) => {
-        if (finished) return;
-        finished = true;
-        try {
-          client.destroy();
-        } catch (e) {}
-        resolve(result);
-      };
-
-      // Try connecting to DX Spider node
-      client.connect(node.port, node.host, () => {
-        logDebug(`[DX Cluster] DX Spider: connected to ${node.host}:${node.port} as ${loginCallsign}`);
-      });
-
-      client.on('data', (data) => {
-        buffer += data.toString();
-
-        // Wait for login prompt
-        if (
-          !loginSent &&
-          (buffer.includes('login:') ||
-            buffer.includes('Please enter your call') ||
-            buffer.includes('enter your callsign'))
-        ) {
-          loginSent = true;
-          client.write(`${loginCallsign}\r\n`);
-          return;
-        }
-
-        // If the node refused the login, stop — do NOT fire sh/dx (the node reads
-        // follow-up commands as further bad logins). Return whatever we already have.
-        if (!commandSent && LOGIN_REJECTION_RE.test(buffer)) {
-          logWarn(`[DX Cluster] Login refused by ${node.host} — aborting (no sh/dx)`);
-          finalize(spots.length > 0 ? spots : null);
-          return;
-        }
-
-        // Wait for prompt after login, then send command
-        if (
-          loginSent &&
-          !commandSent &&
-          (buffer.includes('Hello') ||
-            buffer.includes('de ') ||
-            buffer.includes('>') ||
-            buffer.includes('GUEST') ||
-            buffer.includes(loginCallsign.split('-')[0]))
-        ) {
-          commandSent = true;
-          setTimeout(() => {
-            if (!finished) {
-              logInfo(`[DX Cluster] Sending command: sh/dx 25 to ${node.host}:${node.port} as ${loginCallsign}`);
-              client.write('sh/dx 25\r\n');
-            }
-          }, 1000);
-          return;
-        }
-
-        // Parse DX spots from the output
-        const lines = buffer.split('\n');
-        for (const line of lines) {
-          const parsed = parseDXSpiderSpotLine(line);
-          if (!parsed) continue;
-          // Avoid duplicates
-          if (!spots.find((s) => s.call === parsed.call && s.freq === parsed.freq && s.spotter === parsed.spotter)) {
-            spots.push(parsed);
-          }
-        }
-
-        // If we have enough spots, close connection
-        if (spots.length >= 20) {
-          client.write('bye\r\n');
-          setTimeout(() => finalize(spots), 500);
-        }
-      });
-
-      client.on('timeout', () => {
-        finalize(spots.length > 0 ? spots : null);
-      });
-
-      client.on('error', (err) => {
-        // Only log unexpected errors, not connection issues (they're common)
-        if (
-          !err.message.includes('ECONNRESET') &&
-          !err.message.includes('ETIMEDOUT') &&
-          !err.message.includes('ENOTFOUND') &&
-          !err.message.includes('ECONNREFUSED')
-        ) {
-          logErrorOnce('DX Cluster', `DX Spider ${node.host}: ${err.message}`);
-        }
-        finalize(spots.length > 0 ? spots : null);
-      });
-
-      client.on('close', () => {
-        if (!finished && spots.length > 0) {
-          logDebug('[DX Cluster] DX Spider:', spots.length, 'spots from', node.host);
-          dxSpiderCache = { spots: spots, timestamp: Date.now() };
-        }
-        finalize(spots.length > 0 ? spots : null);
-      });
-
-      // Fallback timeout - close after 15 seconds regardless
-      setTimeout(() => {
-        if (!finished) {
-          if (spots.length > 0) {
-            logDebug('[DX Cluster] DX Spider:', spots.length, 'spots from', node.host);
-            dxSpiderCache = { spots: spots, timestamp: Date.now() };
-          }
-          finalize(spots.length > 0 ? spots : null);
-        }
-      }, 15000);
-    });
-  }
-
   app.get('/api/dxcluster/spots', async (req, res) => {
     // Hosted instances serve OUR cluster only, whatever the client asks for.
     const source = IS_HOSTED ? 'ohc' : (req.query.source || CONFIG.dxClusterSource || 'auto').toLowerCase();
+    // Used by DX Spider direct for the telnet login (falls back to config).
+    const userCallsign = (req.query.callsign || '').trim();
 
     // Helper function for HamQTH (HTTP-based, works everywhere)
     async function fetchHamQTH() {
@@ -941,24 +812,31 @@ module.exports = function (app, ctx) {
       return null;
     }
 
-    // Helper function for DX Spider (telnet-based, works locally/Pi)
-    // Multiple nodes for failover - uses module-level constants and tryDXSpiderNode
-    async function fetchDXSpider() {
-      // Check cache first (use longer cache to reduce connection attempts)
-      if (Date.now() - dxSpiderCache.timestamp < DXSPIDER_CACHE_TTL && dxSpiderCache.spots.length > 0) {
-        logDebug('[DX Cluster] DX Spider: returning', dxSpiderCache.spots.length, 'cached spots');
-        return dxSpiderCache.spots;
+    // DX Spider direct (telnet, works locally/Pi) — PERSISTENT session only.
+    // Clusters are designed for one long-lived login per callsign with a
+    // streamed spot feed; the old connect → sh/dx → bye poll here churned
+    // third-party nodes (every login/logout is rebroadcast network-wide via
+    // the PC protocol) and is exactly what sysops flag as abuse. This reuses
+    // the custom-session machinery: login once as CALL-56, one sh/dx 25
+    // snapshot, set/dx stream, keepalive, backoff, kill-switch gate. Requires
+    // a real callsign — without one we skip telnet and fall back to HTTP.
+    function fetchDXSpider(userCallsign) {
+      if (!isValidCallsign(getDxClusterLoginCallsign(userCallsign))) {
+        logDebug('[DX Cluster] DX Spider direct needs a valid callsign — set one in Settings');
+        return null;
       }
-
-      // Try each node until one succeeds
       for (const node of DXSPIDER_NODES) {
-        const result = await tryDXSpiderNode(node);
-        if (result && result.length > 0) {
-          return result;
+        const session = getOrCreateCustomSession(node, userCallsign, true);
+        if (!session) return null;
+        if (session.spots.length > 0) {
+          return session.spots.slice(0, 50);
         }
+        // Session still warming up or backing off — serve the HTTP fallback
+        // this poll rather than dialing a second node alongside it. Only a
+        // parked session (login refused / dead node) falls through to the
+        // next node in the list.
+        if (!session.parked) return null;
       }
-
-      logDebug('[DX Cluster] DX Spider: all nodes failed');
       return null;
     }
 
@@ -985,23 +863,23 @@ module.exports = function (app, ctx) {
         spots = await fetchHamQTH();
       }
     } else if (source === 'dxspider') {
-      spots = await fetchDXSpider();
-      // Fallback to HamQTH if DX Spider fails
+      spots = fetchDXSpider(userCallsign);
+      // Fallback to HamQTH while the session warms up or when telnet fails
       if (!spots) {
-        logDebug('[DX Cluster] DX Spider failed, falling back to HamQTH');
+        logDebug('[DX Cluster] DX Spider has no spots yet, falling back to HamQTH');
         spots = await fetchHamQTH();
       }
     } else {
-      // Auto mode - our own cluster first (when deployed), then Proxy, then HamQTH, then DX Spider
+      // Auto mode - our own cluster first (when deployed), then Proxy, then HamQTH.
+      // Auto NEVER dials third-party telnet nodes — direct telnet is an explicit
+      // opt-in (source=dxspider), so a fleet of installs can't silently converge
+      // on someone else's node.
       spots = await fetchOHCCluster();
       if (!spots) {
         spots = await fetchDXSpiderProxy();
       }
       if (!spots) {
         spots = await fetchHamQTH();
-      }
-      if (!spots) {
-        spots = await fetchDXSpider();
       }
     }
 
@@ -1108,8 +986,8 @@ module.exports = function (app, ctx) {
         id: 'auto',
         name: 'Auto (Best Available)',
         description: OHC_CLUSTER_URL
-          ? 'Tries OHC Cluster first, then Proxy, then HamQTH, then direct telnet'
-          : 'Tries Proxy first, then HamQTH, then direct telnet',
+          ? 'Tries OHC Cluster first, then Proxy, then HamQTH'
+          : 'Tries Proxy first, then HamQTH',
       },
       // Our own node — only offered once OHC_CLUSTER_URL is configured
       ...(OHC_CLUSTER_URL
@@ -1134,7 +1012,7 @@ module.exports = function (app, ctx) {
       {
         id: 'dxspider',
         name: 'DX Spider Direct',
-        description: 'Direct telnet to dxspider.co.uk (G6NHU) - works locally/Pi',
+        description: 'Persistent telnet session to dxspider.co.uk (G6NHU) - works locally/Pi, requires your callsign',
       },
     ]);
   });
@@ -1721,7 +1599,7 @@ module.exports = function (app, ctx) {
       // requires the USER's own valid callsign. No GUEST, no shared default —
       // sysops must see who is actually connecting (the NC7J lesson).
       const loginCallsign = getDxClusterLoginCallsign(userCallsign, false);
-      if (loginCallsign === 'GUEST' || !isValidCallsign(loginCallsign)) {
+      if (!isValidCallsign(loginCallsign)) {
         return res.status(400).json({
           error:
             'Custom DX cluster requires your own valid callsign. Set your callsign in DX Cluster settings before connecting.',
@@ -1807,8 +1685,9 @@ module.exports = function (app, ctx) {
         );
         const customNode = { host: resolvedHost, port: customPort };
         const session = getOrCreateCustomSession(customNode, userCallsign);
-        // Take the most recent spots from persistent session buffer.
-        const customSpots = (session.spots || []).slice(0, 100).map((s) => ({
+        // Take the most recent spots from persistent session buffer. (session is
+        // null only if the callsign guard trips — already validated above.)
+        const customSpots = (session?.spots || []).slice(0, 100).map((s) => ({
           spotter: s.spotter,
           call: s.call,
           freq: s.freq,
